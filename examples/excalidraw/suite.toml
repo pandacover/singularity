@@ -24,6 +24,12 @@ base = "84e3f5a4"
 setup = ["yarn install --frozen-lockfile --prefer-offline"]
 keep = ["node_modules"]
 command_timeout_s = 600
+# Cap vitest at 4 of the machine's 16 cores, for the agent's own test runs as
+# well as the checks, so the user can keep working during long evals. (All
+# processes also run below normal priority.) Runs before this cap was added
+# (baseline-1, baseline-2-toggle, saved-scripts-1) used every core, so their
+# wall times aren't comparable with later runs; tokens and cost are.
+env = { VITEST_MIN_FORKS = "1", VITEST_MAX_FORKS = "4", VITEST_MIN_THREADS = "1", VITEST_MAX_THREADS = "4" }
 
 [agent]
 model = "sonnet"

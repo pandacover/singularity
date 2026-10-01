@@ -110,7 +110,7 @@ def run_task(
     }
 
     ws.reset(sha)
-    setup_results = [_command(c, ws.path, suite.command_timeout_s) for c in suite.setup]
+    setup_results = [_command(c, ws.path, suite.command_timeout_s, suite.env) for c in suite.setup]
     _write_logs(run_dir / "setup.log", setup_results)
     if not all(r.ok for _, r in setup_results):
         return {**record, "status": "setup_failed", "success": None}
@@ -123,7 +123,7 @@ def run_task(
 
     session_id = str(uuid.uuid4())
     command = build_command(claude, suite.agent, session_id, prompt_file)
-    agent = run_agent(command, session_id, task.prompt, ws.path, suite.agent.timeout_s)
+    agent = run_agent(command, session_id, task.prompt, ws.path, suite.agent.timeout_s, suite.env)
     (run_dir / "agent.stdout.json").write_text(agent.proc.stdout, encoding="utf-8")
     (run_dir / "agent.stderr.txt").write_text(agent.proc.stderr, encoding="utf-8")
 
@@ -133,7 +133,7 @@ def run_task(
 
     if task.check_files is not None:
         ws.overlay(task.check_files)
-    check_results = [_command(c, ws.path, suite.command_timeout_s) for c in task.checks]
+    check_results = [_command(c, ws.path, suite.command_timeout_s, suite.env) for c in task.checks]
     _write_logs(run_dir / "checks.log", check_results)
     success = all(r.ok for _, r in check_results) if check_results else None
 
@@ -232,8 +232,10 @@ def _save_trace(session_id: str, dest: Path) -> Trace | None:
     return parse_session(main)
 
 
-def _command(command: str, cwd: Path, timeout_s: float) -> tuple[str, ProcResult]:
-    return command, run_process(command, cwd=cwd, timeout_s=timeout_s, shell=True, env=dict(os.environ))
+def _command(command: str, cwd: Path, timeout_s: float, env: dict[str, str]) -> tuple[str, ProcResult]:
+    return command, run_process(
+        command, cwd=cwd, timeout_s=timeout_s, shell=True, env={**os.environ, **env}, low_priority=True
+    )
 
 
 def _write_logs(path: Path, results: list[tuple[str, ProcResult]]) -> None:
