@@ -5,8 +5,9 @@ README.md for commands and CLAUDE.md for how the code is written.
 
 ## Status
 
-- Work is on branch `procedural-memory`, pushed, with PR
-  https://github.com/pandacover/singularity/pull/1 open against `main`.
+- PR #1 (`procedural-memory`, the Python version up to `53dacd2`) was merged
+  into `main` on 2026-10-01 (merge commit `7244ca8`). The TypeScript port is
+  on branch `ts-effect-port`, with a PR against `main`.
   - `017370d`, `d95d508`: graph storage, session-log parser, eval harness,
     toy suite (all in Python then).
   - `a5fdd53`: excalidraw suite v1, workspaces outside the home folder,
@@ -15,10 +16,9 @@ README.md for commands and CLAUDE.md for how the code is written.
     `files_changed` and `shell_writes` metrics.
   - `cff66e7`: saved-scripts setup, `learn`, `report --compare`.
   - `53dacd2`: vitest worker cap and below-normal priority for eval runs.
-  - Branch `ts-effect-port` (from `procedural-memory` at `53dacd2`): the port
-    to TypeScript + Effect 4 (below), which removes the Python code. It was
-    pushed to its own branch at the user's request; `procedural-memory` and
-    PR #1 still hold the Python version.
+  - Branch `ts-effect-port` (from `53dacd2`): the port to TypeScript +
+    Effect 4 (below), which removes the Python code. `main` holds the Python
+    version until this branch is merged.
 - **The codebase is now TypeScript 7 + Effect 4.0**, run directly by Node 24.
   `npm test`: 59 passed. `npm run typecheck`: clean.
   - The port was checked against the Python version before Python was
@@ -457,7 +457,8 @@ These come from inspecting real session logs and the CLI binary
 
 ## Working notes
 
-- Commit only when the user asks, and work on `procedural-memory`, not `main`.
+- Commit only when the user asks, and work on a feature branch (currently
+  `ts-effect-port`), not `main`.
 - Runs cost real money on the user's account. Use `--dry-run` first, and set
   `max_budget_usd` in suites.
 - Keep heavy folders (workspaces, target repos' node_modules) out of this repo

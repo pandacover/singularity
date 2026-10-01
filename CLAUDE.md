@@ -70,7 +70,7 @@ records use those keys.
 
 ## Working rules
 
-- Commit only when the user asks. Work on the `procedural-memory` branch.
+- Commit only when the user asks. Work on a feature branch, not `main`.
 - Eval runs spend real money on the user's Claude account. Use `--dry-run`
   first and keep `max_budget_usd` set in suites.
 - The user needs their computer during runs: suites cap vitest workers and the
