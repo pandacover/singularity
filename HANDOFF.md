@@ -11,24 +11,18 @@ README.md for commands.
   - `d95d508`: session-log parser, eval harness, toy suite and their tests.
   - `a5fdd53`: excalidraw suite v1, workspaces moved out of the home folder,
     workspaces hide later commits.
-  - Not yet committed: suite v2 (scoped checks, toggle-action family),
+  - `ede0ae0`: suite v2 (scoped checks, toggle-action family),
     `files_changed` and `shell_writes` metrics.
-- `python -m pytest -q`: 39 passed.
-- **Baseline v1 is done** (`runs/excalidraw/baseline-1/`, Sonnet 5.5, medium
-  effort, 3 runs per task): 27/27 passed, $4.03 in total. The median run cost
-  $0.12 and made 14 tool calls in 144 s. Most tasks were cheap (6–24 calls),
-  so memory has little to save on them. See "Baseline findings" below.
-- **Suite v2 is built and validated.** All 6 hidden tests fail at the base
-  commit, and the suite's own checks pass on the references. The checks take
-  31–42 s per run. It keeps the alt-shortcut family (the one with headroom) and
-  replaces the two easy families with a harder `toggle-action` family. The
-  checks are now scoped (about 15–40 s instead of over 2 minutes, with vitest
-  capped at 4 workers). The user asked for this. See
-  [[eval-checks-controlled]] in memory.
-- **Next:** finish validating v2, then run a no-memory baseline for the
-  toggle-action family only (9 runs). The alt-shortcut runs from baseline-1
-  still count, because only the checks changed and the agent sees the same
-  task.
+  - The commit after that: saved-scripts setup, `learn` and
+    `report --compare`, absolute output dirs.
+- `python -m pytest -q`: 48 passed.
+- **First memory comparison is done.** It covers suite v2's 6 tasks: the
+  no-memory baselines (baseline-1 for the alt family, baseline-2-toggle for
+  the toggle family) against saved-scripts with frozen memory
+  (`runs/excalidraw/saved-scripts-1/`, 18 runs, $2.24). Every run passed in
+  both setups. See "Results so far" below.
+- **Next:** design and build the graph setup. The user wants to discuss the
+  design first.
 
 ## Goal
 
@@ -290,6 +284,56 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
   calls weren't affected.
 
 
+## Results so far
+
+Run `python -m singularity.eval report --compare runs/excalidraw/baseline-1
+runs/excalidraw/baseline-2-toggle runs/excalidraw/saved-scripts-1`.
+All figures are medians of 3 runs; tokens include cache reads.
+
+| Task | Kind | Tokens | Cost | Tool calls |
+|---|---|---|---|---|
+| altkey-zen-m | exact repeat | 1,165k → 120k (−90%) | $0.46 → $0.07 | 36 → 8 |
+| altkey-viewmode-j | similar | 315k → 140k (−56%) | $0.18 → $0.07 | 19 → 10 |
+| altkey-snap-u | similar | 213k → 180k (−15%) | $0.13 → $0.10 | 15 → 10 |
+| toggle-minimap | exact repeat | 787k → 312k (−60%) | $0.40 → $0.18 | 49 → 35 |
+| toggle-rulers | similar | 563k → 187k (−67%) | $0.32 → $0.16 | 45 → 24 |
+| toggle-presenter | similar | 673k → 221k (−67%) | $0.35 → $0.17 | 48 → 24 |
+
+- **Per-task medians:** tokens fell 75% on exact repeats and 61% on similar
+  tasks; cost fell 70% and 50%.
+- **saved-scripts** (`src/singularity/eval/saved_scripts.py`) works like
+  this:
+  - It keeps the cheapest successful run for each prompt. An entry holds the
+    prompt, the files changed, the source diff (snapshot files are listed,
+    not included) and the shell commands that succeeded.
+  - It retrieves the best match by cosine similarity of the prompts' words,
+    with a threshold of 0.35. Within a family prompts score 0.76–0.87; across
+    families they score 0.12–0.24.
+  - It injects about 0.7k tokens for zen mode and about 3k for minimap.
+  - The memory was built for free from the baselines' successful runs with
+    `learn`, and stored in `runs/excalidraw/memory/saved-scripts/`.
+- **This is the bar the graph has to clear.** Findings that matter for its
+  design:
+  - **Exact repeats have a floor.** The agent replays the saved diff one Edit
+    per hunk (minimap: 19 Edits plus tests, about 35 calls). Only a real
+    script (apply the patch in one command) would do better, so guidance
+    can't beat saved diffs on exact repeats. The graph has to win on similar
+    tasks.
+  - **Tool calls are a weak metric.** One saved-scripts run did presenter
+    mode in 3 calls by writing a single 4,000-character Python script. Use
+    tokens and cost as the headline metrics.
+  - **Similar tasks gain least when they're already cheap** (snap to objects,
+    −15% tokens). Showing a full diff from a different task also costs
+    tokens.
+  - **Wall time** barely moves, because the agent's own full-suite test runs
+    dominate it. The user was also running a game during the runs.
+- **CPU:** agents run `yarn test:app` / `yarn test:update` (the full suite on
+  all 16 cores), which lags the user's machine. vitest honours
+  `VITEST_MAX_FORKS` / `VITEST_MAX_THREADS`, and an `env` option on the
+  suite's agent config could cap it. That isn't done yet. Capping makes the
+  agent's test runs slower, so rerun the baselines with the same cap if wall
+  time matters.
+
 ## Facts verified about Claude Code 2.1.286 on this machine
 
 These come from inspecting real session logs and the CLI binary
@@ -312,21 +356,35 @@ These come from inspecting real session logs and the CLI binary
 
 ## Next steps
 
-1. **Commit suite v2** (ask first).
-2. **Baseline for toggle-action.** Run 9 no-memory runs (`--task toggle-minimap --task toggle-rulers --task toggle-presenter --reps 3`). If any task is still cheap (under about 20 calls), replace it again before building memory setups. Expect a higher cost per run than v1.
-3. **Saved-scripts baseline.** Build it as a `MemorySetup`. `after_run` saves successful runs as a script or skill, and `before_run` gives the agent the relevant ones.
-4. **Graph setup.**
-   - Turn traces into semantic steps by mapping tool calls to nodes with `command_patterns` (e.g. "run tests"). Build or extend a graph from successful traces.
-   - Pick the graph or subgraph for a new task (e.g. with embeddings of the task prompt). Inject it once at task start as plain text.
-   - Refiner loop: propose edits by comparing failed and successful traces, using a rewritten prompt (see the paper notes above). Validate each candidate with the harness on held-out tasks (reading with `at=<candidate>`), then `commit` or `reject` it.
-5. **Protocol.** Define which runs build memory and which measure it, exact repeats versus similar tasks, and the held-out validation tasks used for gating.
-6. **Later:** a graph database backend for `GraphStore`.
+1. **Graph setup: discuss the design with the user first.** Then build it
+   as a `MemorySetup`, with `learn` building the graph from recorded runs, so
+   no new runs are needed to build memory.
+   - Turn traces into semantic steps by mapping tool calls to nodes with
+     `command_patterns` (e.g. "run tests"). Edits made through Bash
+     (`shell_writes`) count too.
+   - Pick the graph or subgraph for a new task (for now, the same prompt
+     similarity saved-scripts uses). Inject it once at task start as plain
+     text.
+   - Refiner loop: propose edits by comparing failed and successful traces,
+     using a rewritten prompt (see the paper notes above). Validate each
+     candidate with the harness on held-out tasks (reading with
+     `at=<candidate>`), then `commit` or `reject` it.
+2. **Protocol.** Build memory from each family's seed run only. Measure with
+   frozen memory on all tasks, and compare by `run_kind` (exact repeat versus
+   similar task). Still to decide: held-out validation tasks for the
+   refiner's gating. That probably needs a third family.
+3. **Optional: a stronger script baseline.** Offer the saved patch as one
+   command for exact repeats.
+4. **Optional: the CPU cap** for agent test runs (see "Results so far").
+5. **Later:** a graph database backend for `GraphStore`.
 
 ## Open questions for the user
 
-- Approval to run the toggle-action baseline (9 runs).
-- Whether to add a curated mid-size repo later, with designed procedures and known correct answers. It would sit alongside excalidraw, not replace it. The user liked the idea of a "big enough, controlled" environment, and we agreed to make excalidraw controlled first.
-- Whether agents' own test runs should also be capped. They often run the full suite through `yarn test:update`, which loads all 16 cores. Capping it would change the agent's environment compared with baseline-1, though only in timing.
+- The graph design: what nodes are, what edges carry, what gets injected, and
+  how it's built and refined (under discussion).
+- Whether to cap agents' vitest workers (keeps the machine usable; makes runs
+  slower in wall time).
+- Whether to add a curated mid-size repo alongside excalidraw later.
 
 ## Working notes
 

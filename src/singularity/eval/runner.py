@@ -55,6 +55,8 @@ def run_suite(
     ws = Workspace(suite.repo, (workspaces or default_workspaces()) / suite.name, suite.keep)
     shas = {t.id: ws.resolve(t.base) for t in tasks}  # fail on bad refs before spending anything
 
+    # Absolute: paths under it are passed to the agent, which runs in the workspace.
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     version = run_process([*claude, "--version"], cwd=out_dir, timeout_s=60)
     meta = {
