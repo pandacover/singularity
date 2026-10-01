@@ -39,6 +39,27 @@ class Workspace:
             _git(self.path, "fetch", "--quiet", "--tags", str(self.source), "+refs/heads/*:refs/remotes/source/*")
         _git(self.path, "checkout", "--quiet", "--force", "--detach", sha)
         _git(self.path, "clean", "-ffdxq", *[arg for k in self.keep for arg in ("-e", k)])
+        self._hide_other_commits()
+
+    def _hide_other_commits(self) -> None:
+        """Drop every ref and reflog entry, leaving only the detached base commit.
+
+        Later commits in the source repo can hold the answer (hidden tests,
+        notes from earlier attempts), and `git log --all` or `git reflog`
+        would otherwise show them to the agent.
+        """
+        refs = _git(self.path, "for-each-ref", "--format=%(refname)").split()
+        if refs:
+            p = subprocess.run(
+                ["git", "-C", str(self.path), "update-ref", "--stdin"],
+                # Bytes, not text: on Windows text mode would send CRLF.
+                input="".join(f"delete {r}\n" for r in refs).encode(),
+                capture_output=True,
+            )
+            if p.returncode != 0:
+                err = p.stderr.decode(errors="replace").strip()
+                raise WorkspaceError(f"deleting refs in {self.path} failed: {err}")
+        _git(self.path, "reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all")
 
     def diff(self, sha: str) -> str:
         """Everything the agent changed since `sha`, including new files and commits."""

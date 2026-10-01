@@ -1,0 +1,49 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..6bd7ea79 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  U: "KeyU",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleObjectsSnapMode.tsx b/packages/excalidraw/actions/actionToggleObjectsSnapMode.tsx
+index ec87769c..020a5d26 100644
+--- a/packages/excalidraw/actions/actionToggleObjectsSnapMode.tsx
++++ b/packages/excalidraw/actions/actionToggleObjectsSnapMode.tsx
+@@ -30,5 +30,5 @@ export const actionToggleObjectsSnapMode = register({
+     return typeof appProps.objectsSnapModeEnabled === "undefined";
+   },
+   keyTest: (event) =>
+-    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.S,
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.U,
+ });
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..3ebe1041 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -93,7 +93,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   ungroup: [getShortcutKey("CtrlOrCmd+Shift+G")],
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+-  objectsSnapMode: [getShortcutKey("Alt+S")],
++  objectsSnapMode: [getShortcutKey("Alt+U")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..421d204f 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -297,7 +297,7 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+             />
+             <Shortcut
+               label={t("buttons.objectsSnapMode")}
+-              shortcuts={[getShortcutKey("Alt+S")]}
++              shortcuts={[getShortcutKey("Alt+U")]}
+             />
+             <Shortcut
+               label={t("labels.toggleGrid")}

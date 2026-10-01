@@ -112,6 +112,16 @@ def test_workspace_reset_and_diff(tmp_path, repo):
     assert (ws.path / "node_modules" / "dep.js").exists()
 
 
+def test_workspace_hides_later_commits(tmp_path, repo):
+    ws = Workspace(repo, tmp_path / "ws")
+    ws.reset(ws.resolve("HEAD~1"))
+    assert git(ws.path, "for-each-ref") == ""
+    assert "two" not in git(ws.path, "log", "--all", "--reflog", "--format=%s")
+    # The later commit is still there to reset to, without a fetch.
+    ws.reset(ws.resolve("HEAD"))
+    assert (ws.path / "app.txt").read_text() == "v2\n"
+
+
 def test_workspace_fetches_new_commits(tmp_path, repo):
     ws = Workspace(repo, tmp_path / "ws")
     ws.reset(ws.resolve("HEAD"))

@@ -1,0 +1,49 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..c4773e14 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  M: "KeyM",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleZenMode.tsx b/packages/excalidraw/actions/actionToggleZenMode.tsx
+index ad445f47..ad4cb5cf 100644
+--- a/packages/excalidraw/actions/actionToggleZenMode.tsx
++++ b/packages/excalidraw/actions/actionToggleZenMode.tsx
+@@ -32,5 +32,5 @@ export const actionToggleZenMode = register({
+     );
+   },
+   keyTest: (event) =>
+-    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.Z,
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.M,
+ });
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..a2138650 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -92,7 +92,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   group: [getShortcutKey("CtrlOrCmd+G")],
+   ungroup: [getShortcutKey("CtrlOrCmd+Shift+G")],
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+-  zenMode: [getShortcutKey("Alt+Z")],
++  zenMode: [getShortcutKey("Alt+M")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..e4ac5a4f 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -293,7 +293,7 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+             />
+             <Shortcut
+               label={t("buttons.zenMode")}
+-              shortcuts={[getShortcutKey("Alt+Z")]}
++              shortcuts={[getShortcutKey("Alt+M")]}
+             />
+             <Shortcut
+               label={t("buttons.objectsSnapMode")}

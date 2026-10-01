@@ -1,0 +1,143 @@
+# The evaluation suite: three task families against the user's excalidraw
+# clone, at the last upstream commit before their own `procedural/` notes.
+#
+# Each family has a seed task (the one memory is built from and that is later
+# repeated exactly) and two similar-but-different variants. Every task's hidden
+# test is copied in as packages/excalidraw/tests/hidden-check.test.tsx after the
+# agent finishes. Success means the whole test suite (which picks up the hidden
+# test) and the typecheck pass, so a change that breaks other tests or leaves
+# stale snapshots fails. MermaidToExcalidraw.test.tsx is excluded: its snapshot
+# depends on timing, and `yarn test:update` (which the repo's CLAUDE.md asks
+# agents to run) sometimes records a transient error state into it.
+#
+# Reference timings on this machine: first `yarn install` 2m44s (once per
+# workspace, node_modules is kept), full test suite 101 s, tsc 19 s.
+name = "excalidraw"
+repo = "../../../experiment/excalidraw"
+base = "84e3f5a4"
+setup = ["yarn install --frozen-lockfile --prefer-offline"]
+keep = ["node_modules"]
+command_timeout_s = 900
+
+[agent]
+model = "sonnet"
+effort = "medium"
+max_budget_usd = 3.0
+timeout_s = 1800
+
+# --- Family: tool letter shortcuts -------------------------------------------
+# Touches the key constants, the tool table, the help dialog, and tests that
+# press the old key (plus a regression snapshot named after it).
+
+[[tasks]]
+id = "shortcut-rectangle-m"
+family = "tool-shortcut"
+prompt = """
+Change the keyboard shortcut for the rectangle tool from R to M. The number
+shortcut (2) should keep working. Update everything that shows or tests the
+shortcut, and make sure the tests and the typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/shortcut-rectangle-m"
+
+[[tasks]]
+id = "shortcut-diamond-j"
+family = "tool-shortcut"
+prompt = """
+Change the keyboard shortcut for the diamond tool from D to J. The number
+shortcut (3) should keep working. Update everything that shows or tests the
+shortcut, and make sure the tests and the typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/shortcut-diamond-j"
+
+[[tasks]]
+id = "shortcut-ellipse-u"
+family = "tool-shortcut"
+prompt = """
+Change the keyboard shortcut for the ellipse tool from O to U. The number
+shortcut (4) should keep working. Update everything that shows or tests the
+shortcut, and make sure the tests and the typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/shortcut-ellipse-u"
+
+# --- Family: Alt+letter action shortcuts --------------------------------------
+# Touches the key-code constants, the action's keyTest, the shortcut name map,
+# and the help dialog, which spells the shortcut out separately.
+
+[[tasks]]
+id = "altkey-zen-m"
+family = "alt-shortcut"
+prompt = """
+Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything
+that shows or tests the shortcut, and make sure the tests and the typecheck
+pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/altkey-zen-m"
+
+[[tasks]]
+id = "altkey-viewmode-j"
+family = "alt-shortcut"
+prompt = """
+Change the view mode keyboard shortcut from Alt+R to Alt+J. Update everything
+that shows or tests the shortcut, and make sure the tests and the typecheck
+pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/altkey-viewmode-j"
+
+[[tasks]]
+id = "altkey-snap-u"
+family = "alt-shortcut"
+prompt = """
+Change the "snap to objects" keyboard shortcut from Alt+S to Alt+U. Update
+everything that shows or tests the shortcut, and make sure the tests and the
+typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/altkey-snap-u"
+
+# --- Family: new appState field -----------------------------------------------
+# Touches the AppState type, the defaults, the storage config, and six
+# snapshot files that dump the whole appState. Restore needs no change except
+# for the validation in the export-padding variant.
+
+[[tasks]]
+id = "appstate-minimap"
+family = "appstate-field"
+prompt = """
+Add a new boolean appState field `minimapEnabled`, default false. Nothing uses
+it yet; it's for an upcoming minimap feature. It should be saved to the
+browser's local storage, but not included in exported files or sent to the
+collaboration server. Make sure the tests and the typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/appstate-minimap"
+
+[[tasks]]
+id = "appstate-presenter"
+family = "appstate-field"
+prompt = """
+Add a new boolean appState field `presenterMode`, default false. Nothing uses
+it yet; it's for an upcoming presenter feature. It's session-only: don't save
+it to local storage, exported files, or the collaboration server. Make sure the
+tests and the typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/appstate-presenter"
+
+[[tasks]]
+id = "appstate-export-padding"
+family = "appstate-field"
+prompt = """
+Add a new numeric appState field `exportPadding`, default 10, for the padding
+around exported images (nothing uses it yet). It should be saved to the
+browser's local storage and included in exported files, but not sent to the
+collaboration server. When a scene is restored, an exportPadding that isn't a
+non-negative number should fall back to the default. Make sure the tests and
+the typecheck pass.
+"""
+checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+check_files = "hidden/appstate-export-padding"
