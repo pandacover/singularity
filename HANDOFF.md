@@ -6,13 +6,10 @@ README.md for commands.
 ## Status
 
 - Work is on branch `procedural-memory` (off `main`, not pushed). Remote:
-  github.com/pandacover/singularity.
-  - **Committed** (`017370d`): graph storage, `src/singularity/graph/`.
-  - **Not committed:** trace parser (`src/singularity/traces/`), eval harness
-    (`src/singularity/eval/`), `examples/toy/`, `tests/test_traces.py`,
-    `tests/test_eval.py`, `tests/fake_claude.py`, README.md, and `.gitignore`
-    (adds `runs/`). This file is untracked too. The user hasn't said whether to
-    commit these yet, so ask.
+  github.com/pandacover/singularity. Everything is committed:
+  - `017370d`: graph storage, `src/singularity/graph/`.
+  - `d95d508`: session-log parser, eval harness, toy suite and their tests.
+  - The commit after that: this file.
 - `python -m pytest -q`: 27 passed.
 - The eval harness works end to end. One real run so far: toy suite, task
   `delete-graph`, Haiku. The hidden test passed; the run cost $0.09, took 42 s,
@@ -100,7 +97,7 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 
 ## What's built
 
-### Graph storage: `src/singularity/graph/` (committed)
+### Graph storage: `src/singularity/graph/`
 
 - **`models.py`:**
   - `Node` has a type, a description, optional `command_patterns` (regexes used
@@ -130,7 +127,7 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
   - Edges are keyed by (source, target), so a pair of nodes can have only one
     edge.
 
-### Session-log parser: `src/singularity/traces/` (uncommitted)
+### Session-log parser: `src/singularity/traces/`
 
 - `parse_session(path)` returns a `Trace`: prompts, model responses with token
   usage, tool calls with results and errors, subagents, and Claude Code's
@@ -140,7 +137,7 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
   measure of wasted effort.
 - CLI: `python -m singularity.traces <session id or path> [--json]`.
 
-### Eval harness: `src/singularity/eval/` (uncommitted)
+### Eval harness: `src/singularity/eval/`
 
 - **`suite.py`:** the TOML suite format, documented in the module docstring
   (see `examples/toy/suite.toml`). Unknown keys are errors.
@@ -217,7 +214,6 @@ These come from inspecting real session logs and the CLI binary
 
 - The path to the excalidraw clone, and which parts of excalidraw to build tasks around.
 - Which model and effort to use for the real evaluation (the toy suite uses Haiku to keep costs low), and the budget per run and overall.
-- Whether to commit the uncommitted work listed under Status.
 - Whether to keep workspaces under the home folder (which loads the One CLI CLAUDE.md into every run) or move them.
 
 ## Working notes
