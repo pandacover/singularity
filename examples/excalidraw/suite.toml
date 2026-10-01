@@ -1,0 +1,151 @@
+# The evaluation suite: two task families against the user's excalidraw clone,
+# at the last upstream commit before their own `procedural/` notes.
+#
+# Each family has a seed task (the one memory is built from and that is later
+# repeated exactly) and two similar-but-different variants. Every task's hidden
+# test is copied in as packages/excalidraw/tests/hidden-check.test.tsx after the
+# agent finishes.
+#
+# Checks are scoped: the hidden test plus the test files the change can break
+# (found by applying the reference solution and running the full suite once),
+# plus files agents tend to add tests to, with vitest capped at 4 workers, then
+# tsc. About 15-40 s per run instead of the full suite's 100+ s on every core.
+# The full suite also has a timing-dependent snapshot (MermaidToExcalidraw)
+# that made correct runs fail at random.
+#
+# v1 of this suite (commit a5fdd53) also had tool-shortcut and appState-field
+# families. The no-memory baseline solved those in 6-24 tool calls, leaving
+# memory little to save, so they were replaced by the toggle-action family.
+# Changing checks doesn't change what the agent sees, so baseline-1's runs of
+# the alt-shortcut family remain valid.
+name = "excalidraw"
+repo = "../../../experiment/excalidraw"
+base = "84e3f5a4"
+setup = ["yarn install --frozen-lockfile --prefer-offline"]
+keep = ["node_modules"]
+command_timeout_s = 600
+# Cap vitest at 4 of the machine's 16 cores, for the agent's own test runs as
+# well as the checks, so the user can keep working during long evals. (All
+# processes also run below normal priority.) Runs before this cap was added
+# (baseline-1, baseline-2-toggle, saved-scripts-1) used every core, so their
+# wall times aren't comparable with later runs; tokens and cost are.
+env = { VITEST_MIN_FORKS = "1", VITEST_MAX_FORKS = "4", VITEST_MIN_THREADS = "1", VITEST_MAX_THREADS = "4" }
+
+[agent]
+model = "sonnet"
+effort = "medium"
+max_budget_usd = 3.0
+timeout_s = 1800
+
+# --- Family: Alt+letter action shortcuts --------------------------------------
+# Touches the key-code constants, the action's keyTest, the shortcut name map,
+# and the help dialog, which spells the shortcut out separately. The trap:
+# agents that add a keyboard test to a file rendering <Excalidraw /> without
+# handleKeyboardGlobally spend ~25 tool calls finding out why the key never
+# fires (2 of 3 zen-mode baseline runs).
+
+[[tasks]]
+id = "altkey-zen-m"
+family = "alt-shortcut"
+prompt = """
+Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything
+that shows or tests the shortcut, and make sure the tests and the typecheck
+pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/altkey-zen-m"
+
+[[tasks]]
+id = "altkey-viewmode-j"
+family = "alt-shortcut"
+prompt = """
+Change the view mode keyboard shortcut from Alt+R to Alt+J. Update everything
+that shows or tests the shortcut, and make sure the tests and the typecheck
+pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/altkey-viewmode-j"
+
+[[tasks]]
+id = "altkey-snap-u"
+family = "alt-shortcut"
+prompt = """
+Change the "snap to objects" keyboard shortcut from Alt+S to Alt+U. Update
+everything that shows or tests the shortcut, and make sure the tests and the
+typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/altkey-snap-u"
+
+# --- Family: new toggle setting, end to end -----------------------------------
+# An appState field plus everything a user-facing toggle needs: the field's
+# type, default and storage rules, an action (registered only if exported from
+# actions/index.ts), its name in the ActionName and ShortcutName unions, an
+# Alt+letter key code and keyTest, the shortcut map, an en.json label, the
+# canvas context menu in App.tsx (a separate list applies in view mode), the
+# help dialog, and a main menu preference in DefaultItems.tsx (component, the
+# Preferences list, and the static member). Snapshots change in contextmenu,
+# history, regressionTests and one export test.
+
+[[tasks]]
+id = "toggle-minimap"
+family = "toggle-action"
+prompt = """
+Add a "Minimap" toggle setting. Nothing draws a minimap yet; this is just the
+setting. Store it in a new appState field `minimapEnabled` (default false),
+saved to the browser's local storage but not to exported files or the
+collaboration server. Users should be able to toggle it with Alt+M, from the
+canvas right-click menu (also in view mode), and from Preferences in the main
+menu, and the help dialog should list the shortcut. Make sure the tests and the
+typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/toggle-minimap"
+
+[[tasks]]
+id = "toggle-rulers"
+family = "toggle-action"
+prompt = """
+Add a "Rulers" toggle setting. Nothing draws rulers yet; this is just the
+setting. Store it in a new appState field `rulersEnabled` (default false),
+saved to the browser's local storage and included in exported files, but not
+sent to the collaboration server. Users should be able to toggle it with
+Alt+U, from the canvas right-click menu (also in view mode), and from
+Preferences in the main menu, and the help dialog should list the shortcut.
+Make sure the tests and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/toggle-rulers"
+
+[[tasks]]
+id = "toggle-presenter"
+family = "toggle-action"
+prompt = """
+Add a "Presenter mode" toggle setting. Nothing uses it yet; this is just the
+setting. Store it in a new appState field `presenterModeEnabled` (default
+false) that isn't saved anywhere: not local storage, exported files, or the
+collaboration server. Users should be able to toggle it with Alt+J, from the
+canvas right-click menu (but not in view mode, where it shouldn't be offered),
+and from Preferences in the main menu, and the help dialog should list the
+shortcut. Make sure the tests and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/toggle-presenter"
