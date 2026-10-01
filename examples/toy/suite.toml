@@ -1,0 +1,37 @@
+# A small, cheap suite for checking the harness end to end. The tasks run
+# against this repo at the commit that added the graph store. The two tasks are
+# in one family: similar but not identical.
+name = "toy"
+repo = "../.."
+base = "017370d"
+
+[agent]
+model = "haiku"
+max_budget_usd = 0.5
+timeout_s = 600
+
+[[tasks]]
+id = "delete-graph"
+family = "graph-admin"
+prompt = """
+Add a `delete_graph(graph_id)` method to the `GraphStore` interface in
+src/singularity/graph/store.py and implement it in `JsonGraphStore`. It should
+remove the graph with all of its versions and candidates, and raise
+`GraphNotFound` if the graph doesn't exist. A deleted graph's id can be used
+again by `create_graph`. Run the test suite when you're done.
+"""
+checks = ["python -m pytest -q"]
+check_files = "hidden/delete_graph"
+
+[[tasks]]
+id = "rename-graph"
+family = "graph-admin"
+prompt = """
+Add a `rename_graph(graph_id, new_id)` method to the `GraphStore` interface in
+src/singularity/graph/store.py and implement it in `JsonGraphStore`. Raise
+`GraphNotFound` if `graph_id` doesn't exist and `GraphExists` if `new_id` is
+already taken. Versions and candidates carry over, and candidates report the
+new graph id. Run the test suite when you're done.
+"""
+checks = ["python -m pytest -q"]
+check_files = "hidden/rename_graph"
