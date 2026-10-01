@@ -1,32 +1,220 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..b65539a2 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  J: "KeyJ",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionTogglePresenterMode.tsx b/packages/excalidraw/actions/actionTogglePresenterMode.tsx
+new file mode 100644
+index 00000000..5bc12a66
+--- /dev/null
++++ b/packages/excalidraw/actions/actionTogglePresenterMode.tsx
+@@ -0,0 +1,27 @@
++import { CODES, KEYS } from "@excalidraw/common";
++
++import { CaptureUpdateAction } from "@excalidraw/element";
++
++import { register } from "./register";
++
++export const actionTogglePresenterMode = register({
++  name: "presenterMode",
++  label: "labels.presenterMode",
++  viewMode: false,
++  trackEvent: {
++    category: "canvas",
++    predicate: (appState) => !appState.presenterModeEnabled,
++  },
++  perform(elements, appState) {
++    return {
++      appState: {
++        ...appState,
++        presenterModeEnabled: !this.checked!(appState),
++      },
++      captureUpdate: CaptureUpdateAction.NEVER,
++    };
++  },
++  checked: (appState) => appState.presenterModeEnabled,
++  keyTest: (event) =>
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.J,
++});
+diff --git a/packages/excalidraw/actions/index.ts b/packages/excalidraw/actions/index.ts
+index 6d2321ba..9bc6d7ae 100644
+--- a/packages/excalidraw/actions/index.ts
++++ b/packages/excalidraw/actions/index.ts
+@@ -82,6 +82,7 @@ export { actionToggleZenMode } from "./actionToggleZenMode";
+ export { actionToggleObjectsSnapMode } from "./actionToggleObjectsSnapMode";
+ export { actionToggleArrowBinding } from "./actionToggleArrowBinding";
+ export { actionToggleMidpointSnapping } from "./actionToggleMidpointSnapping";
++export { actionTogglePresenterMode } from "./actionTogglePresenterMode";
+ 
+ export { actionToggleStats } from "./actionToggleStats";
+ export { actionUnbindText, actionBindText } from "./actionBoundText";
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..2965eead 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -31,6 +31,7 @@ export type ShortcutName =
+       | "gridMode"
+       | "zenMode"
+       | "objectsSnapMode"
++      | "presenterMode"
+       | "stats"
+       | "addToLibrary"
+       | "viewMode"
+@@ -94,6 +95,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
++  presenterMode: [getShortcutKey("Alt+J")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+diff --git a/packages/excalidraw/actions/types.ts b/packages/excalidraw/actions/types.ts
+index 4f7cbd37..e74ebe6b 100644
+--- a/packages/excalidraw/actions/types.ts
++++ b/packages/excalidraw/actions/types.ts
+@@ -61,6 +61,7 @@ export type ActionName =
+   | "objectsSnapMode"
+   | "arrowBinding"
+   | "midpointSnapping"
++  | "presenterMode"
+   | "stats"
+   | "changeStrokeColor"
+   | "changeBackgroundColor"
 diff --git a/packages/excalidraw/appState.ts b/packages/excalidraw/appState.ts
-index e4017c73..ad1a43fe 100644
+index e4017c73..44ee8b2b 100644
 --- a/packages/excalidraw/appState.ts
 +++ b/packages/excalidraw/appState.ts
-@@ -128,6 +128,7 @@ export const getDefaultAppState = (): Omit<
-       y: 0,
-     },
-     objectsSnapModeEnabled: false,
-+    presenterMode: false,
-     isCropping: false,
-     croppingElementId: null,
-     searchMatches: null,
-@@ -280,6 +281,7 @@ const APP_STATE_STORAGE_CONF = (<
-   snapLines: { browser: false, export: false, server: false },
-   originSnapOffset: { browser: false, export: false, server: false },
-   objectsSnapModeEnabled: { browser: true, export: false, server: false },
-+  presenterMode: { browser: false, export: false, server: false },
-   isCropping: { browser: false, export: false, server: false },
-   croppingElementId: { browser: false, export: false, server: false },
-   searchMatches: { browser: false, export: false, server: false },
+@@ -77,6 +77,7 @@ export const getDefaultAppState = (): Omit<
+     isBindingEnabled: true,
+     bindingPreference: "enabled",
+     isMidpointSnappingEnabled: true,
++    presenterModeEnabled: false,
+     showHints: true,
+     inputDevice: "auto",
+     defaultSidebarDockedPreference: false,
+@@ -226,6 +227,7 @@ const APP_STATE_STORAGE_CONF = (<
+   boxSelectionMode: { browser: true, export: false, server: false },
+   bindingPreference: { browser: true, export: false, server: false },
+   isMidpointSnappingEnabled: { browser: true, export: false, server: false },
++  presenterModeEnabled: { browser: false, export: false, server: false },
+   showHints: { browser: true, export: false, server: false },
+   inputDevice: { browser: true, export: false, server: false },
+   defaultSidebarDockedPreference: {
+diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
+index b4fdc3ee..991f010e 100644
+--- a/packages/excalidraw/components/App.tsx
++++ b/packages/excalidraw/components/App.tsx
+@@ -331,6 +331,7 @@ import {
+   actionToggleObjectsSnapMode,
+   actionToggleArrowBinding,
+   actionToggleMidpointSnapping,
++  actionTogglePresenterMode,
+   actionToggleCropEditor,
+ } from "../actions";
+ import { actionWrapTextInContainer } from "../actions/actionBoundText";
+@@ -13866,6 +13867,7 @@ class App extends React.Component<AppProps, AppState> {
+         actionToggleObjectsSnapMode,
+         actionToggleArrowBinding,
+         actionToggleMidpointSnapping,
++        actionTogglePresenterMode,
+         actionToggleZenMode,
+         actionToggleViewMode,
+         actionToggleStats,
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..b513ed6d 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -307,6 +307,10 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+               label={t("labels.viewMode")}
+               shortcuts={[getShortcutKey("Alt+R")]}
+             />
++            <Shortcut
++              label={t("labels.presenterMode")}
++              shortcuts={[getShortcutKey("Alt+J")]}
++            />
+             {actionManager.isActionEnabled(actionToggleTheme) && (
+               <Shortcut
+                 label={t("labels.toggleTheme")}
+diff --git a/packages/excalidraw/components/main-menu/DefaultItems.tsx b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+index 3b29b6cc..f907c9c8 100644
+--- a/packages/excalidraw/components/main-menu/DefaultItems.tsx
++++ b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+@@ -12,6 +12,7 @@ import {
+   actionToggleArrowBinding,
+   actionToggleGridMode,
+   actionToggleMidpointSnapping,
++  actionTogglePresenterMode,
+   actionToggleObjectsSnapMode,
+   actionToggleSearchMenu,
+   actionToggleStats,
+@@ -563,6 +564,23 @@ const PreferencesToggleMidpointSnappingItem = () => {
+   );
+ };
+ 
++const PreferencesTogglePresenterModeItem = () => {
++  const { t } = useI18n();
++  const actionManager = useExcalidrawActionManager();
++  const appState = useUIAppState();
++  return (
++    <DropdownMenuItemCheckbox
++      checked={appState.presenterModeEnabled}
++      onSelect={(event) => {
++        actionManager.executeAction(actionTogglePresenterMode);
++        event.preventDefault();
++      }}
++    >
++      {t("labels.presenterMode")}
++    </DropdownMenuItemCheckbox>
++  );
++};
++
+ const PreferencesToggleShowHintsItem = () => {
+   const { t } = useI18n();
+   const appState = useUIAppState();
+@@ -682,6 +700,7 @@ export const Preferences = ({
+             <PreferencesToggleElementPropertiesItem />
+             <PreferencesToggleArrowBindingItem />
+             <PreferencesToggleMidpointSnappingItem />
++            <PreferencesTogglePresenterModeItem />
+             <PreferencesToggleShowHintsItem />
+           </>
+         )}
+@@ -697,6 +716,7 @@ Preferences.InputDevice = PreferencesInputDeviceItem;
+ Preferences.ToggleSnapMode = PreferencesToggleSnapModeItem;
+ Preferences.ToggleArrowBinding = PreferencesToggleArrowBindingItem;
+ Preferences.ToggleMidpointSnapping = PreferencesToggleMidpointSnappingItem;
++Preferences.TogglePresenterMode = PreferencesTogglePresenterModeItem;
+ Preferences.ToggleShowHints = PreferencesToggleShowHintsItem;
+ Preferences.ToggleGridMode = PreferencesToggleGridModeItem;
+ Preferences.ToggleZenMode = PreferencesToggleZenModeItem;
+diff --git a/packages/excalidraw/locales/en.json b/packages/excalidraw/locales/en.json
+index 5ba1912e..9431165b 100644
+--- a/packages/excalidraw/locales/en.json
++++ b/packages/excalidraw/locales/en.json
+@@ -197,6 +197,7 @@
+     "boxSelectionOverlap": "Overlap",
+     "arrowBinding": "Arrow binding",
+     "midpointSnapping": "Snap to midpoints",
++    "presenterMode": "Presenter mode",
+     "showHints": "Show hints",
+     "inputDevice": "Input",
+     "inputDeviceTrackpad": "Trackpad",
 diff --git a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
-index 1321699b..539d5630 100644
+index 1321699b..a4617fca 100644
 --- a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
 +++ b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
 @@ -970,6 +970,7 @@ exports[`contextMenu element > right-clicking on a group should select whole gro
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -34,7 +222,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -42,7 +230,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -50,7 +238,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -58,7 +246,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -66,7 +254,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -74,7 +262,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -82,7 +270,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id3": true,
    },
@@ -90,7 +278,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -98,7 +286,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -106,7 +294,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -114,7 +302,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id3": true,
    },
@@ -122,7 +310,7 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -130,43 +318,62 @@ index 1321699b..539d5630 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
-@@ -8025,6 +8039,7 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+@@ -7784,6 +7798,18 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+         },
+         "viewMode": false,
+       },
++      {
++        "checked": [Function],
++        "keyTest": [Function],
++        "label": "labels.presenterMode",
++        "name": "presenterMode",
++        "perform": [Function],
++        "trackEvent": {
++          "category": "canvas",
++          "predicate": [Function],
++        },
++        "viewMode": false,
++      },
+       {
+         "checked": [Function],
+         "icon": <svg
+@@ -8025,6 +8051,7 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
-@@ -9035,6 +9050,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+@@ -9035,6 +9062,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
-@@ -10042,6 +10058,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+@@ -10042,6 +10070,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
 diff --git a/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
-index 9d628d37..d456fe0d 100644
+index 9d628d37..5a64e846 100644
 --- a/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
 +++ b/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
 @@ -92,6 +92,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id4": true,
    },
@@ -174,7 +381,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id4": true,
    },
@@ -182,7 +389,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -190,7 +397,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -198,7 +405,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -206,7 +413,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -214,7 +421,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -222,7 +429,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -230,7 +437,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -238,7 +445,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -246,7 +453,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -254,7 +461,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -262,7 +469,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -270,7 +477,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -278,7 +485,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -286,7 +493,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -294,7 +501,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -302,7 +509,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -310,7 +517,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id1": true,
    },
@@ -318,7 +525,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id8": true,
    },
@@ -326,7 +533,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id1": true,
    },
@@ -334,7 +541,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -342,7 +549,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -350,7 +557,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -358,7 +565,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -366,7 +573,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -374,7 +581,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -382,7 +589,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -390,7 +597,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -398,7 +605,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -406,7 +613,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -414,7 +621,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -422,7 +629,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -430,7 +637,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -438,7 +645,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -446,7 +653,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -454,7 +661,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -462,7 +669,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -470,7 +677,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -478,7 +685,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -486,7 +693,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -494,7 +701,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -502,7 +709,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -510,7 +717,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -518,7 +725,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -526,7 +733,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -534,7 +741,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -542,7 +749,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -550,7 +757,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -558,7 +765,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -566,7 +773,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -574,7 +781,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -582,7 +789,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -590,7 +797,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -598,7 +805,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -606,7 +813,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -614,7 +821,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -622,7 +829,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -630,7 +837,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -638,7 +845,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -646,7 +853,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id1": true,
    },
@@ -654,7 +861,7 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id3": true,
    },
@@ -662,19 +869,19 @@ index 9d628d37..d456fe0d 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
 diff --git a/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
-index b6d7b5ca..76ff3129 100644
+index b6d7b5ca..0886ecfe 100644
 --- a/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
 +++ b/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
 @@ -93,6 +93,7 @@ exports[`given element A and group of elements B and given both are selected whe
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -682,7 +889,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -690,7 +897,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -698,7 +905,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -706,7 +913,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -714,7 +921,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -722,7 +929,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -730,7 +937,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id6": true,
    },
@@ -738,7 +945,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -746,7 +953,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -754,7 +961,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -762,7 +969,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id3": true,
    },
@@ -770,7 +977,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id6": true,
    },
@@ -778,7 +985,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -786,7 +993,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -794,7 +1001,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -802,7 +1009,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -810,7 +1017,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -818,7 +1025,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -826,7 +1033,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -834,7 +1041,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -842,7 +1049,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id6": true,
@@ -850,7 +1057,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -858,7 +1065,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -866,7 +1073,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -874,7 +1081,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -882,7 +1089,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -890,7 +1097,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -898,7 +1105,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -906,7 +1113,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -914,7 +1121,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -922,7 +1129,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -930,7 +1137,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -938,7 +1145,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -946,7 +1153,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -954,7 +1161,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -962,7 +1169,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -970,7 +1177,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -978,7 +1185,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -986,7 +1193,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -994,7 +1201,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -1002,7 +1209,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -1010,7 +1217,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id3": true,
@@ -1018,7 +1225,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
      "id15": true,
@@ -1026,7 +1233,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -1034,7 +1241,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id0": true,
    },
@@ -1042,7 +1249,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id3": true,
      "id6": true,
@@ -1050,7 +1257,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {
      "id3": true,
    },
@@ -1058,7 +1265,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -1066,7 +1273,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -1074,7 +1281,7 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
@@ -1082,31 +1289,31 @@ index b6d7b5ca..76ff3129 100644
      "initialized": true,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,
 diff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts
-index 3a37d94e..867908d3 100644
+index 3a37d94e..fea815be 100644
 --- a/packages/excalidraw/types.ts
 +++ b/packages/excalidraw/types.ts
-@@ -545,6 +545,7 @@ export interface AppState {
-     y: number;
-   } | null;
-   objectsSnapModeEnabled: boolean;
-+  presenterMode: boolean;
- 
-   /** image cropping */
-   isCropping: boolean;
+@@ -367,6 +367,7 @@ export interface AppState {
+   bindingPreference: "enabled" | "disabled";
+   /** user preference whether arrow snap to midpoints while binding */
+   isMidpointSnappingEnabled: boolean;
++  presenterModeEnabled: boolean;
+   /** user preference whether to show contextual hints above the toolbar */
+   showHints: boolean;
+   /**
 diff --git a/packages/utils/tests/__snapshots__/export.test.ts.snap b/packages/utils/tests/__snapshots__/export.test.ts.snap
-index 618ac57a..746f3c17 100644
+index 618ac57a..c2bc39be 100644
 --- a/packages/utils/tests/__snapshots__/export.test.ts.snap
 +++ b/packages/utils/tests/__snapshots__/export.test.ts.snap
 @@ -94,6 +94,7 @@ exports[`exportToSvg > with default arguments 1`] = `
      "initialized": false,
      "type": "selection",
    },
-+  "presenterMode": false,
++  "presenterModeEnabled": false,
    "previousSelectedElementIds": {},
    "resizingElement": null,
    "scrollConstraints": null,

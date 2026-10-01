@@ -1,6 +1,9 @@
 import json
 
+import pytest
+
 from singularity.traces import TraceMetrics, Usage, find_transcript, parse_session
+from singularity.traces.metrics import SHELL_WRITE
 
 SID = "11111111-2222-3333-4444-555555555555"
 
@@ -109,3 +112,23 @@ def test_find_transcript(tmp_path):
     path = write_session(tmp_path)
     assert find_transcript(SID, home=tmp_path) == path
     assert find_transcript("nope", home=tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    "command, writes",
+    [
+        ("sed -i 's/R/M/' a.ts", True),
+        ("sed -n 1,10p a.ts", False),
+        ("perl -pi -e 's/a/b/' x", True),
+        ("echo hi > out.txt", True),
+        ("echo hi >> out.txt", True),
+        ("yarn test 2>&1 | tail", False),
+        ("yarn tsc > /dev/null", False),
+        ("ls | tee files.txt", True),
+        ("Set-Content -Path a.ts -Value x", True),
+        ("git diff --stat", False),
+        ("python -c \"open('a.ts', 'w').write('x')\"", True),
+    ],
+)
+def test_shell_write_heuristic(command, writes):
+    assert bool(SHELL_WRITE.search(command)) is writes

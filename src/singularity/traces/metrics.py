@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
@@ -13,6 +14,18 @@ READ_TOOLS = {"Read"}
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}
 SHELL_TOOLS = {"Bash", "PowerShell"}
 SEARCH_TOOLS = {"Glob", "Grep"}
+
+# Shell commands that probably write files: in-place sed/perl, redirection
+# into a file, tee, PowerShell's writers, and scripts that open files for
+# writing. A heuristic; the run's diff is the ground truth for what changed.
+SHELL_WRITE = re.compile(
+    r"\b(sed|perl)\s+(-\w+\s+)*-[a-zA-Z]*i"
+    r"|[^0-9&>]>>?\s*(?!&|/dev/null|\$null|nul\b)[\w./\\~\"'$-]"
+    r"|\btee\b"
+    r"|\b(Set-Content|Add-Content|Out-File)\b"
+    r"|\bwrite_text\(|\.writeFileSync\(|open\([^)]*['\"][wa]",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -25,9 +38,12 @@ class TraceMetrics:
     tool_errors: int
     tools: dict[str, int] = field(default_factory=dict)
     shell_commands: int = 0
+    # Shell commands that look like they write files (see SHELL_WRITE).
+    shell_writes: int = 0
     searches: int = 0
     reads: int = 0
     unique_files_read: int = 0
+    # Through edit tools only. Edits made in the shell show up in shell_writes.
     files_edited: list[str] = field(default_factory=list)
     subagents: int = 0
     api_errors: int = 0
@@ -50,6 +66,7 @@ class TraceMetrics:
             tool_errors=sum(c.is_error for c in calls),
             tools=dict(Counter(c.name for c in calls).most_common()),
             shell_commands=sum(c.name in SHELL_TOOLS for c in calls),
+            shell_writes=sum(c.name in SHELL_TOOLS and bool(SHELL_WRITE.search(str(c.input.get("command") or ""))) for c in calls),
             searches=sum(c.name in SEARCH_TOOLS for c in calls),
             reads=len(read_paths),
             unique_files_read=len(set(read_paths)),
@@ -67,6 +84,7 @@ class TraceMetrics:
             "tool_errors": self.tool_errors,
             "tools": self.tools,
             "shell_commands": self.shell_commands,
+            "shell_writes": self.shell_writes,
             "searches": self.searches,
             "reads": self.reads,
             "unique_files_read": self.unique_files_read,

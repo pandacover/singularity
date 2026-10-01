@@ -1,23 +1,29 @@
-# The evaluation suite: three task families against the user's excalidraw
-# clone, at the last upstream commit before their own `procedural/` notes.
+# The evaluation suite: two task families against the user's excalidraw clone,
+# at the last upstream commit before their own `procedural/` notes.
 #
 # Each family has a seed task (the one memory is built from and that is later
 # repeated exactly) and two similar-but-different variants. Every task's hidden
 # test is copied in as packages/excalidraw/tests/hidden-check.test.tsx after the
-# agent finishes. Success means the whole test suite (which picks up the hidden
-# test) and the typecheck pass, so a change that breaks other tests or leaves
-# stale snapshots fails. MermaidToExcalidraw.test.tsx is excluded: its snapshot
-# depends on timing, and `yarn test:update` (which the repo's CLAUDE.md asks
-# agents to run) sometimes records a transient error state into it.
+# agent finishes.
 #
-# Reference timings on this machine: first `yarn install` 2m44s (once per
-# workspace, node_modules is kept), full test suite 101 s, tsc 19 s.
+# Checks are scoped: the hidden test plus the test files the change can break
+# (found by applying the reference solution and running the full suite once),
+# plus files agents tend to add tests to, with vitest capped at 4 workers, then
+# tsc. About 15-40 s per run instead of the full suite's 100+ s on every core.
+# The full suite also has a timing-dependent snapshot (MermaidToExcalidraw)
+# that made correct runs fail at random.
+#
+# v1 of this suite (commit a5fdd53) also had tool-shortcut and appState-field
+# families. The no-memory baseline solved those in 6-24 tool calls, leaving
+# memory little to save, so they were replaced by the toggle-action family.
+# Changing checks doesn't change what the agent sees, so baseline-1's runs of
+# the alt-shortcut family remain valid.
 name = "excalidraw"
 repo = "../../../experiment/excalidraw"
 base = "84e3f5a4"
 setup = ["yarn install --frozen-lockfile --prefer-offline"]
 keep = ["node_modules"]
-command_timeout_s = 900
+command_timeout_s = 600
 
 [agent]
 model = "sonnet"
@@ -25,46 +31,12 @@ effort = "medium"
 max_budget_usd = 3.0
 timeout_s = 1800
 
-# --- Family: tool letter shortcuts -------------------------------------------
-# Touches the key constants, the tool table, the help dialog, and tests that
-# press the old key (plus a regression snapshot named after it).
-
-[[tasks]]
-id = "shortcut-rectangle-m"
-family = "tool-shortcut"
-prompt = """
-Change the keyboard shortcut for the rectangle tool from R to M. The number
-shortcut (2) should keep working. Update everything that shows or tests the
-shortcut, and make sure the tests and the typecheck pass.
-"""
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
-check_files = "hidden/shortcut-rectangle-m"
-
-[[tasks]]
-id = "shortcut-diamond-j"
-family = "tool-shortcut"
-prompt = """
-Change the keyboard shortcut for the diamond tool from D to J. The number
-shortcut (3) should keep working. Update everything that shows or tests the
-shortcut, and make sure the tests and the typecheck pass.
-"""
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
-check_files = "hidden/shortcut-diamond-j"
-
-[[tasks]]
-id = "shortcut-ellipse-u"
-family = "tool-shortcut"
-prompt = """
-Change the keyboard shortcut for the ellipse tool from O to U. The number
-shortcut (4) should keep working. Update everything that shows or tests the
-shortcut, and make sure the tests and the typecheck pass.
-"""
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
-check_files = "hidden/shortcut-ellipse-u"
-
 # --- Family: Alt+letter action shortcuts --------------------------------------
 # Touches the key-code constants, the action's keyTest, the shortcut name map,
-# and the help dialog, which spells the shortcut out separately.
+# and the help dialog, which spells the shortcut out separately. The trap:
+# agents that add a keyboard test to a file rendering <Excalidraw /> without
+# handleKeyboardGlobally spend ~25 tool calls finding out why the key never
+# fires (2 of 3 zen-mode baseline runs).
 
 [[tasks]]
 id = "altkey-zen-m"
@@ -74,7 +46,10 @@ Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything
 that shows or tests the shortcut, and make sure the tests and the typecheck
 pass.
 """
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
 check_files = "hidden/altkey-zen-m"
 
 [[tasks]]
@@ -85,7 +60,10 @@ Change the view mode keyboard shortcut from Alt+R to Alt+J. Update everything
 that shows or tests the shortcut, and make sure the tests and the typecheck
 pass.
 """
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
 check_files = "hidden/altkey-viewmode-j"
 
 [[tasks]]
@@ -96,48 +74,72 @@ Change the "snap to objects" keyboard shortcut from Alt+S to Alt+U. Update
 everything that shows or tests the shortcut, and make sure the tests and the
 typecheck pass.
 """
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
 check_files = "hidden/altkey-snap-u"
 
-# --- Family: new appState field -----------------------------------------------
-# Touches the AppState type, the defaults, the storage config, and six
-# snapshot files that dump the whole appState. Restore needs no change except
-# for the validation in the export-padding variant.
+# --- Family: new toggle setting, end to end -----------------------------------
+# An appState field plus everything a user-facing toggle needs: the field's
+# type, default and storage rules, an action (registered only if exported from
+# actions/index.ts), its name in the ActionName and ShortcutName unions, an
+# Alt+letter key code and keyTest, the shortcut map, an en.json label, the
+# canvas context menu in App.tsx (a separate list applies in view mode), the
+# help dialog, and a main menu preference in DefaultItems.tsx (component, the
+# Preferences list, and the static member). Snapshots change in contextmenu,
+# history, regressionTests and one export test.
 
 [[tasks]]
-id = "appstate-minimap"
-family = "appstate-field"
+id = "toggle-minimap"
+family = "toggle-action"
 prompt = """
-Add a new boolean appState field `minimapEnabled`, default false. Nothing uses
-it yet; it's for an upcoming minimap feature. It should be saved to the
-browser's local storage, but not included in exported files or sent to the
-collaboration server. Make sure the tests and the typecheck pass.
+Add a "Minimap" toggle setting. Nothing draws a minimap yet; this is just the
+setting. Store it in a new appState field `minimapEnabled` (default false),
+saved to the browser's local storage but not to exported files or the
+collaboration server. Users should be able to toggle it with Alt+M, from the
+canvas right-click menu (also in view mode), and from Preferences in the main
+menu, and the help dialog should list the shortcut. Make sure the tests and the
+typecheck pass.
 """
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
-check_files = "hidden/appstate-minimap"
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/toggle-minimap"
 
 [[tasks]]
-id = "appstate-presenter"
-family = "appstate-field"
+id = "toggle-rulers"
+family = "toggle-action"
 prompt = """
-Add a new boolean appState field `presenterMode`, default false. Nothing uses
-it yet; it's for an upcoming presenter feature. It's session-only: don't save
-it to local storage, exported files, or the collaboration server. Make sure the
-tests and the typecheck pass.
+Add a "Rulers" toggle setting. Nothing draws rulers yet; this is just the
+setting. Store it in a new appState field `rulersEnabled` (default false),
+saved to the browser's local storage and included in exported files, but not
+sent to the collaboration server. Users should be able to toggle it with
+Alt+U, from the canvas right-click menu (also in view mode), and from
+Preferences in the main menu, and the help dialog should list the shortcut.
+Make sure the tests and the typecheck pass.
 """
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
-check_files = "hidden/appstate-presenter"
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/toggle-rulers"
 
 [[tasks]]
-id = "appstate-export-padding"
-family = "appstate-field"
+id = "toggle-presenter"
+family = "toggle-action"
 prompt = """
-Add a new numeric appState field `exportPadding`, default 10, for the padding
-around exported images (nothing uses it yet). It should be saved to the
-browser's local storage and included in exported files, but not sent to the
-collaboration server. When a scene is restored, an exportPadding that isn't a
-non-negative number should fall back to the default. Make sure the tests and
-the typecheck pass.
+Add a "Presenter mode" toggle setting. Nothing uses it yet; this is just the
+setting. Store it in a new appState field `presenterModeEnabled` (default
+false) that isn't saved anywhere: not local storage, exported files, or the
+collaboration server. Users should be able to toggle it with Alt+J, from the
+canvas right-click menu (but not in view mode, where it shouldn't be offered),
+and from Preferences in the main menu, and the help dialog should list the
+shortcut. Make sure the tests and the typecheck pass.
 """
-checks = ['yarn vitest run --exclude "**/MermaidToExcalidraw.test.tsx"', "yarn tsc"]
-check_files = "hidden/appstate-export-padding"
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/toggle-presenter"

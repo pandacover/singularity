@@ -156,7 +156,17 @@ def run_task(
         ],
         "injection": injection.info,
         "diff_lines": sum(1 for line in diff.splitlines() if line[:1] in "+-" and line[:3] not in ("+++", "---")),
+        # From the diff, so it covers edits made through the shell too.
+        "files_changed": changed_files(diff),
     }
+
+
+def changed_files(diff: str) -> list[str]:
+    files = []
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            files.append(line.rsplit(" b/", 1)[-1])
+    return files
 
 
 def _status(agent: AgentRun) -> str:
