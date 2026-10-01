@@ -14,7 +14,15 @@
  */
 import { DateTime, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect"
 import { CandidateNotFound, Conflict, GraphExists, GraphNotFound, InvalidEdit, StoreError } from "./Errors.ts"
-import { type At, GraphStore, type NeighborhoodOptions, type ProposeOptions, type ReadOptions, type ScoreOptions } from "./GraphStore.ts"
+import {
+  type At,
+  GraphStore,
+  type NeighborhoodOptions,
+  type ProposeOptions,
+  type ReadOptions,
+  type ScoreOptions,
+  type SearchOptions
+} from "./GraphStore.ts"
 import { Candidate, type CandidateStatus, type EditSet, Graph, GraphInfo, GraphJson, type Node } from "./Models.ts"
 import * as Ops from "./Ops.ts"
 import { compareCodePoints, formatJson, isoformat, repr, zeroPad6 } from "./PythonCompat.ts"
@@ -190,6 +198,12 @@ export const make = Effect.fn("JsonGraphStore.make")(function*(root: string) {
     }
   )
 
+  const searchNodes = Effect.fn("JsonGraphStore.searchNodes")(
+    function*(graphId: string, text: string, options?: SearchOptions) {
+      return Ops.searchNodes(yield* resolve(graphId, options?.at), text, options?.limit, options?.minScore)
+    }
+  )
+
   const neighborhood = Effect.fn("JsonGraphStore.neighborhood")(
     function*(graphId: string, nodeIds: Iterable<string>, options?: NeighborhoodOptions) {
       const graph = yield* resolve(graphId, options?.at)
@@ -280,6 +294,7 @@ export const make = Effect.fn("JsonGraphStore.make")(function*(root: string) {
     head,
     getNodes,
     matchNodes,
+    searchNodes,
     neighborhood,
     snapshot,
     propose,

@@ -158,6 +158,28 @@ for (const backend of backends) {
     )
 
     test(
+      "search nodes by description",
+      Effect.gen(function*() {
+        const store = yield* seeded
+        const found = (text: string, options?: { limit?: number; minScore?: number }) =>
+          store.searchNodes("g", text, options).pipe(Effect.map((ms) => ms.map((m) => m.node.id)))
+        // "config file" matches two words of find_config, "run" one of run_tests.
+        assert.deepStrictEqual(yield* found("Run the suite after changing the config file"), [
+          "find_config",
+          "run_tests"
+        ])
+        assert.deepStrictEqual(yield* found("Run the suite after changing the config file", { limit: 1 }), [
+          "find_config"
+        ])
+        assert.deepStrictEqual(yield* found("Find the config", { minScore: 0.9 }), [])
+        assert.deepStrictEqual(yield* found("unrelated words"), [])
+        const [best] = yield* store.searchNodes("g", "find the config file")
+        assert.strictEqual(best?.node.id, "find_config")
+        assert.isAbove(best?.score ?? 0, 0)
+      })
+    )
+
+    test(
       "candidate view does not touch head",
       Effect.gen(function*() {
         const store = yield* seeded

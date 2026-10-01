@@ -2,16 +2,23 @@
  * Command line:
  *
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
- *     node src/cli.ts eval run SUITE.toml --setup saved-scripts --memory DIR [--frozen]
- *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts --memory DIR [--task ID ...]
- *     node src/cli.ts eval report RESULTS... [--compare]
+ *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
+ *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts|graph --memory DIR [--task ID ...]
+ *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
+ *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
+ *     node src/cli.ts graph show DIR [--graph ID] [--version N]
  *     node src/cli.ts traces SESSION [--json]
  */
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { GraphStore, JsonGraphStore } from "./graph/index.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
+import { DEFAULT_LEARNER_EFFORT, DEFAULT_LEARNER_MODEL } from "./eval/GraphLearner.ts"
+import { describeGraph, learnCost } from "./eval/GraphMemory.ts"
+import { DEFAULT_SELECTOR_MODEL } from "./eval/StepSelector.ts"
 import { learnFrom } from "./eval/Learn.ts"
+import type { SetupContext } from "./eval/Memory.ts"
 import { makeSetup } from "./eval/Memory.ts"
 import { lowerPriority } from "./eval/Proc.ts"
 import { pyFixed } from "./eval/PyFormat.ts"
@@ -37,6 +44,38 @@ const tasksFlag = Flag.String("task").pipe(
   Flag.withDescription("only this task (repeatable)")
 )
 
+const workspacesFlag = Flag.String("workspaces").pipe(
+  Flag.withDefault(defaultWorkspaces()),
+  Flag.withDescription("where repo clones live")
+)
+
+const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable"))
+
+const graphVersionFlag = Flag.Int("graph-version").pipe(
+  Flag.optional,
+  Flag.withDescription("graph setup: use this committed version, not the latest (read-only)")
+)
+
+/**
+ * What the graph setup needs besides its memory directory. Its model calls run
+ * outside the home folder, like the agent, so no CLAUDE.md gets loaded.
+ */
+const setupContext = (
+  suiteName: string,
+  claude: ReadonlyArray<string>,
+  workspaces: string,
+  path: Path.Path,
+  graphVersion: Option.Option<number> = Option.none()
+): SetupContext => {
+  const cwd = path.join(workspaces, "_learner")
+  return {
+    graphId: suiteName,
+    graphVersion: Option.getOrUndefined(graphVersion),
+    selector: { claude, cwd, model: DEFAULT_SELECTOR_MODEL },
+    learner: { claude, cwd, model: DEFAULT_LEARNER_MODEL, effort: DEFAULT_LEARNER_EFFORT }
+  }
+}
+
 const run = Command.make(
   "run",
   {
@@ -50,14 +89,16 @@ const run = Command.make(
       Flag.withDefault(false),
       Flag.withDescription("read memory but don't add to it (for measurement runs)")
     ),
+    graphVersion: graphVersionFlag,
     reps: Flag.Int("reps").pipe(Flag.withDefault(1), Flag.withDescription("runs per task")),
+    firstRep: Flag.Int("first-rep").pipe(
+      Flag.withDefault(0),
+      Flag.withDescription("number of the first pass, when adding passes to an existing --out dir")
+    ),
     tasks: tasksFlag,
     out: Flag.String("out").pipe(Flag.optional, Flag.withDescription("output dir (default runs/<suite>/<time>-<setup>)")),
-    workspaces: Flag.String("workspaces").pipe(
-      Flag.withDefault(defaultWorkspaces()),
-      Flag.withDescription("where repo clones live")
-    ),
-    claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
+    workspaces: workspacesFlag,
+    claude: claudeFlag,
     dryRun: Flag.Boolean("dry-run").pipe(
       Flag.withDefault(false),
       Flag.withDescription("resolve tasks and print the agent command without running")
@@ -68,7 +109,12 @@ const run = Command.make(
     const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-    const setup = yield* makeSetup(args.setup, Option.getOrUndefined(args.memory), args.frozen)
+    const setup = yield* makeSetup(
+      args.setup,
+      Option.getOrUndefined(args.memory),
+      args.frozen,
+      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion)
+    )
 
     if (args.dryRun) {
       const ws = makeWorkspace(suite.repo, path.join(args.workspaces, suite.name), suite.keep)
@@ -87,6 +133,7 @@ const run = Command.make(
     const records = yield* runSuite(suite, setup, out, claude, {
       workspaces: args.workspaces,
       reps: args.reps,
+      firstRep: args.firstRep,
       taskIds: args.tasks,
       onRecord: progress
     })
@@ -105,15 +152,63 @@ const learn = Command.make(
     ),
     setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to add to")),
-    tasks: tasksFlag
+    tasks: tasksFlag,
+    workspaces: workspacesFlag,
+    claude: claudeFlag
   },
   Effect.fn(function*(args) {
+    yield* lowerPriority
+    const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
-    const setup = yield* makeSetup(args.setup, args.memory)
-    const n = yield* learnFrom(setup, suite, args.results, args.tasks)
+    const claude = args.setup === "graph"
+      ? Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
+      : []
+    const setup = yield* makeSetup(args.setup, args.memory, false, setupContext(suite.name, claude, args.workspaces, path))
+    const n = yield* learnFrom(setup, suite, args.results, args.tasks, (outcome, i, total) =>
+      Console.error(`[${i}/${total}] learned from ${outcome.task.id} (${outcome.trace?.sessionId ?? "no transcript"})`))
     yield* Console.log(`fed ${n} runs into ${args.setup} memory at ${args.memory}`)
+    if (args.setup === "graph") {
+      const { calls, costUsd } = yield* learnCost(args.memory)
+      yield* Console.log(`learning so far: ${calls} LLM calls, $${pyFixed(costUsd, 2)}`)
+    }
   })
 ).pipe(Command.withDescription("feed finished runs into a memory setup"))
+
+const inject = Command.make(
+  "inject",
+  {
+    suite: Argument.String("suite").pipe(Argument.withDescription("suite TOML file")),
+    setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
+    memory: Flag.String("memory").pipe(Flag.withDescription("memory store to read")),
+    graphVersion: graphVersionFlag,
+    tasks: tasksFlag,
+    workspaces: workspacesFlag,
+    claude: claudeFlag
+  },
+  Effect.fn(function*(args) {
+    const path = yield* Path.Path
+    const suite = yield* loadSuite(args.suite)
+    // The graph setup calls a small model to pick steps, about $0.005 per task.
+    const claude = args.setup === "graph"
+      ? Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
+      : []
+    const setup = yield* makeSetup(
+      args.setup,
+      args.memory,
+      true,
+      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion)
+    )
+    const tasks = args.tasks.length ? yield* Effect.forEach(args.tasks, (id) => suiteTask(suite, id)) : suite.tasks
+    for (const task of tasks) {
+      const injection = yield* setup.beforeRun(task, path.join(args.workspaces, suite.name))
+      const text = injection.systemPrompt ?? ""
+      const spent = injection.spent === undefined ? "" : `, selection cost $${injection.spent.costUsd.toFixed(4)}`
+      yield* Console.log(`=== ${task.id}: ${text.length} chars (about ${Math.round(text.length / 4)} tokens)${spent}`)
+      yield* Console.log(JSON.stringify(injection.info))
+      if (text) yield* Console.log(`\n${text}`)
+    }
+  })
+).pipe(Command.withDescription("show what a setup would hand the agent for each task, without running it"))
 
 const report = Command.make(
   "report",
@@ -124,14 +219,18 @@ const report = Command.make(
     ),
     compare: Flag.Boolean("compare").pipe(
       Flag.withDefault(false),
-      Flag.withDescription("each memory setup against no-memory, split into exact repeats and similar tasks")
+      Flag.withDescription("each memory setup against a baseline, split into exact repeats and similar tasks")
+    ),
+    baseline: Flag.String("baseline").pipe(
+      Flag.withDefault("no-memory"),
+      Flag.withDescription("the setup --compare measures against")
     )
   },
   Effect.fn(function*(args) {
     const records = yield* loadRecords(args.results)
     const text = args.compare
       ? yield* Effect.try({
-        try: () => compare(records),
+        try: () => compare(records, args.baseline),
         catch: (e) => (e instanceof ReportError ? e : new ReportError({ message: String(e) }))
       })
       : summarize(records)
@@ -141,7 +240,31 @@ const report = Command.make(
 
 const evalCommand = Command.make("eval").pipe(
   Command.withDescription("evaluate memory setups on a task suite"),
-  Command.withSubcommands([run, learn, report])
+  Command.withSubcommands([run, learn, inject, report])
+)
+
+const show = Command.make(
+  "show",
+  {
+    root: Argument.String("dir").pipe(Argument.withDescription("graph store directory (a graph setup's --memory)")),
+    graph: Flag.String("graph").pipe(Flag.optional, Flag.withDescription("graph id (default: the only graph)")),
+    version: Flag.Int("version").pipe(Flag.optional, Flag.withDescription("a committed version (default: head)"))
+  },
+  Effect.fn(function*(args) {
+    const store = yield* GraphStore
+    const graphs = yield* store.listGraphs()
+    const id = Option.getOrUndefined(args.graph) ?? (graphs.length === 1 ? graphs[0].graph_id : undefined)
+    if (id === undefined) {
+      return yield* new ReportError({ message: `pick a graph with --graph: ${graphs.map((g) => g.graph_id).join(", ") || "none"}` })
+    }
+    const version = Option.getOrUndefined(args.version) ?? (yield* store.head(id))
+    yield* Console.log(describeGraph(yield* store.snapshot(id, { at: version }), id, version))
+  }, (effect, args) => Effect.provide(effect, JsonGraphStore.layer(args.root)))
+).pipe(Command.withDescription("print a graph's steps and transitions"))
+
+const graphCommand = Command.make("graph").pipe(
+  Command.withDescription("inspect procedural graphs"),
+  Command.withSubcommands([show])
 )
 
 const traces = Command.make(
@@ -231,7 +354,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([evalCommand, traces]),
+  Command.withSubcommands([evalCommand, graphCommand, traces]),
   Command.run({ version: "0.1.0" }),
   Effect.catchTags({
     SuiteError: reportError,
@@ -239,7 +362,11 @@ Command.make("singularity").pipe(
     MemoryError: reportError,
     ReportError: reportError,
     AgentError: reportError,
-    PlatformError: reportError
+    PlatformError: reportError,
+    StoreError: reportError,
+    GraphNotFound: reportError,
+    CandidateNotFound: reportError,
+    InvalidEdit: reportError
   }),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain

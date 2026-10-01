@@ -6,7 +6,8 @@
  */
 import type { FileSystem, Path } from "effect"
 import { Effect, Schema } from "effect"
-import type { Trace } from "../traces/index.ts"
+import type { ChildProcessSpawner } from "effect/process"
+import type { Trace, Usage } from "../traces/index.ts"
 import type { Task } from "./Suite.ts"
 
 export class MemoryError extends Schema.TaggedError<MemoryError>()("MemoryError", {
@@ -18,6 +19,11 @@ export interface Injection {
   readonly systemPrompt: string | undefined
   /** Recorded with the run, e.g. which memory was retrieved. */
   readonly info: Readonly<Record<string, unknown>>
+  /**
+   * What preparing the memory cost, if it called a model. The run's totals
+   * include it, so setups that spend tokens on retrieval are compared fairly.
+   */
+  readonly spent?: { readonly costUsd: number; readonly usage: Usage } | undefined
 }
 
 /** What a setup sees after a run, to learn from it. */
@@ -29,7 +35,8 @@ export interface Outcome {
   readonly diff: string
 }
 
-export type SetupServices = FileSystem.FileSystem | Path.Path
+/** Setups that learn with an LLM run `claude`, hence the process spawner. */
+export type SetupServices = FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 
 export interface MemorySetup {
   readonly name: string
@@ -45,5 +52,5 @@ export const NoMemory: MemorySetup = {
   afterRun: () => Effect.void
 }
 
-export const SETUPS = ["no-memory", "saved-scripts"] as const
+export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "graph"] as const
 export type SetupName = (typeof SETUPS)[number]

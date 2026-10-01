@@ -8,6 +8,7 @@ import { Equal, Result } from "effect"
 import { InvalidEdit, NodeNotFound } from "./Errors.ts"
 import { type EdgeKey, edgeKey, EditSet, Graph, type Node } from "./Models.ts"
 import { compareCodePoints, repr } from "./PythonCompat.ts"
+import { cosine, words } from "./Similarity.ts"
 
 export type Direction = "out" | "in" | "both"
 
@@ -121,6 +122,26 @@ export const neighborhood = (
       )
     })
   )
+}
+
+/** A node and how well its description matched a search. */
+export interface NodeMatch {
+  readonly node: Node
+  /** Between 0 and 1; higher is better. */
+  readonly score: number
+}
+
+/**
+ * Nodes whose descriptions share words with `text`, best first (by id on
+ * ties), at most `limit`, none scoring below `minScore`.
+ */
+export const searchNodes = (graph: Graph, text: string, limit = 5, minScore = 0): Array<NodeMatch> => {
+  const query = words(text)
+  return graph.sortedNodes()
+    .map((node) => ({ node, score: cosine(query, words(node.description)) }))
+    .filter((m) => m.score > 0 && m.score >= minScore)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
 }
 
 /** Nodes whose command patterns match `command`, sorted by id. Patterns that don't compile never match. */
