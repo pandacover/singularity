@@ -32,6 +32,12 @@ Record = dict[str, Any]
 
 def default_workspaces() -> Path:
     # Outside the repo (and OneDrive): workspaces can hold large dependency trees.
+    # Also outside the home folder, so runs don't pick up a CLAUDE.md that sits
+    # there (Claude Code loads every CLAUDE.md from the cwd up to the root).
+    if env := os.environ.get("SINGULARITY_WORKSPACES"):
+        return Path(env)
+    if os.name == "nt":
+        return Path(Path.home().anchor) / "singularity-workspaces"
     return Path.home() / ".singularity" / "workspaces"
 
 

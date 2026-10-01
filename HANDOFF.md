@@ -1,22 +1,25 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-01, end of the second session. Start here, then see
+Last updated 2026-10-01, during the third session. Start here, then see
 README.md for commands.
 
 ## Status
 
 - Work is on branch `procedural-memory` (off `main`, not pushed). Remote:
-  github.com/pandacover/singularity. Everything is committed:
+  github.com/pandacover/singularity.
   - `017370d`: graph storage, `src/singularity/graph/`.
   - `d95d508`: session-log parser, eval harness, toy suite and their tests.
-  - The commit after that: this file.
-- `python -m pytest -q`: 27 passed.
+  - Third session (not yet committed): the excalidraw suite, workspaces moved
+    out of the home folder, workspaces hide later commits.
+- `python -m pytest -q`: 28 passed.
 - The eval harness works end to end. One real run so far: toy suite, task
   `delete-graph`, Haiku. The hidden test passed; the run cost $0.09, took 42 s,
   and made 14 tool calls (8 file reads, of only 4 distinct files). Output is in
   `runs/toy/smoke-1/` (gitignored).
-- **Waiting on the user:** the path to their local excalidraw clone, which is
-  the evaluation repo.
+- **The excalidraw suite is written and validated, with no agent runs yet.**
+  See "Excalidraw suite" below.
+- **Waiting on the user:** approval to spend on the calibration run and the
+  baseline. Recommended: Sonnet 5.5 at medium effort, $3 cap per run.
 
 ## Goal
 
@@ -89,8 +92,16 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
     the versions it is valid for. A commit ends replaced items and adds new ones
     in one transaction, and a candidate is a stored edit set applied at read
     time.
-- **Evaluation repo (decided by the user):** their local excalidraw clone. They
-  said they'd give the path once something worked, and it now does, so ask.
+- **Evaluation repo (decided by the user):** their local excalidraw clone at
+  `C:\Users\luvma\OneDrive\Desktop\singularity\experiment\excalidraw`. They
+  left the choice of task areas, the model and the workspace location to us.
+- **Workspaces** live at `C:\singularity-workspaces` (outside the home folder,
+  so the One CLI `CLAUDE.md` isn't loaded into runs). Override with
+  `SINGULARITY_WORKSPACES` or `--workspaces`.
+- **Model (recommended, the user asked for a recommendation):** Sonnet 5.5 at
+  `medium` effort. Haiku would likely fail often on excalidraw, which makes
+  success rates noisy. Opus costs twice as much ($4/$20 per million tokens,
+  versus $2/$10) and leaves less headroom for memory to show savings.
 - **Success:** a task succeeds when its check commands (tests) pass. Hidden tests
   are copied in after the agent finishes (`check_files`). (Proposed and built;
   the user didn't object.)
@@ -172,6 +183,59 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 - **`examples/toy/`:** two similar tasks, `delete-graph` and `rename-graph`,
   against this repo at `017370d`, each with hidden tests. Only `delete-graph`
   has been run for real.
+- **Workspace isolation:** after each reset the workspace deletes every ref and
+  reflog entry, leaving only the detached base commit. Without that, an agent
+  could run `git log --all` and see later commits. That includes the toy
+  suite's own hidden tests and the user's hand-written excalidraw maps.
+
+### Excalidraw suite: `examples/excalidraw/`
+
+- **Base commit:** `84e3f5a4`, the last upstream commit before the user's own
+  `procedural` commits (`f1ab362c`, `d813fc7a`, `b1dff4fe`). Those commits hold
+  the user's manual experiment with this same idea: a v1 Markdown map, v2/v3
+  JSON "procedure records" and a replay script for rectangle r→m. They're
+  useful prior art for the graph setup.
+  - One fact in their v1 map is wrong: it lists `actionProperties.tsx` as a
+    hidden coupling for the rectangle key, but the `keyBinding: "r"` there is
+    the arrowhead picker's hotkey. Memory can record false facts, so the
+    refiner needs a way to drop them.
+- **Three families, three tasks each.** The first task in each family is the
+  seed (memory is built from it, then it's repeated exactly), and the other
+  two are variants.
+  - `tool-shortcut`: rectangle R→M, diamond D→J, ellipse O→U. Touches the
+    `KEYS` constants, `Tools.tsx`, `HelpDialog.tsx`, `regressionTests.test.tsx`
+    (plus a snapshot named after the key) and, for rectangle only,
+    `tool.test.tsx`.
+  - `alt-shortcut`: zen mode Alt+Z→Alt+M, view mode Alt+R→Alt+J, snap to
+    objects Alt+S→Alt+U. Touches `CODES` in keys.ts, the action's `keyTest`,
+    `actions/shortcuts.ts` and `HelpDialog.tsx`, which spells the shortcut out
+    separately.
+  - `appstate-field`: `minimapEnabled` (kept in local storage only),
+    `presenterMode` (never stored) and `exportPadding` (a number, kept in local
+    storage and exports, validated on restore). Touches `types.ts`,
+    `appState.ts` (the defaults and `APP_STATE_STORAGE_CONF`) and six snapshot
+    files that dump the whole appState. `exportPadding` also needs a change to
+    `restore.ts`.
+- **Checks:**
+  - The full vitest suite (101 s; the hidden test is copied in as
+    `packages/excalidraw/tests/hidden-check.test.tsx`) plus `yarn tsc` (19 s).
+    The checks don't count toward the agent's time.
+  - `MermaidToExcalidraw.test.tsx` is excluded because its snapshot depends on
+    timing. `vitest -u` sometimes records a transient error state into it,
+    which would fail a correct agent that followed the repo's "run
+    `yarn test:update`" instruction.
+  - Checks run without `CI=true`, so a snapshot that doesn't exist yet is
+    written and passes. An agent that leaves an obsolete
+    "key r selects rectangle" snapshot isn't penalized for it.
+- **Validation:**
+  - Every hidden test fails at the base commit.
+  - The full checks pass on a reference solution. The reference patches are in
+    `examples/excalidraw/reference/` and include the regenerated snapshots.
+  - The scripts that generated the tests and references were scratch files and
+    aren't in the repo. The tests are short enough to edit by hand.
+- **Setup:** `yarn install --frozen-lockfile --prefer-offline`, keeping
+  `node_modules`. The first install in a fresh workspace takes about 3
+  minutes; after that it takes about a second.
 - **`tests/fake_claude.py`:** stands in for `claude`, so `tests/test_eval.py`
   covers the whole pipeline at no cost.
 
@@ -191,17 +255,14 @@ These come from inspecting real session logs and the CLI binary
   - Useful listed flags: `--session-id`, `--max-budget-usd`, `--effort`, `--permission-prompts none` and `--strict-mcp-config`.
   - `--bare` would give the cleanest runs (no CLAUDE.md, hooks, plugins or auto-memory). But it only accepts `ANTHROPIC_API_KEY`, not the user's subscription login.
 - **Parent-session variables:** a parent Claude Code session sets `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, a messaging socket and token, `CLAUDE_EFFORT=max`, and more. The harness removes them (the list is in `agent.py`). Otherwise runs started from inside a session would inherit max effort.
-- **Home-folder CLAUDE.md:** runs in workspaces under the home folder load `C:\Users\luvma\CLAUDE.md` (the One CLI instructions) as project instructions. This is confirmed in the test run's log. It's the same for every setup, but it adds tokens. Pointing `--workspaces` outside the home folder would avoid it.
+- **Home-folder CLAUDE.md:** runs in workspaces under the home folder load `C:\Users\luvma\CLAUDE.md` (the One CLI instructions) as project instructions. This is confirmed in the toy run's log, and it's why workspaces now default to `C:\singularity-workspaces`. Excalidraw's own `CLAUDE.md`/`AGENTS.md` are part of the repo and are still loaded, which is realistic.
 - **Result JSON:** the harness reads these fields from `--output-format json`: `subtype`, `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd`, `modelUsage` and `permission_denials`.
 - **Log cleanup:** Claude Code deletes old session logs after a while, so the harness keeps a copy of each run's log.
 
 ## Next steps
 
-1. **Excalidraw suite.** Ask the user for the excalidraw path, then write its suite.
-   - Read its package.json for the install and test commands. Probably `setup = ["yarn install --frozen-lockfile"]` and `keep = ["node_modules"]`.
-   - Design 2–3 task families. Each needs an exact repeat and some similar-but-different variants, with tests that decide success. Use hidden tests via `check_files` where possible.
-   - Pin `model` and `effort` in the suite.
-2. **Baseline.** Run the no-memory baseline with at least 3 runs per task. Measure how large run-to-run variation is before comparing setups.
+1. **Calibration run (needs the user's go-ahead).** Run one task, e.g. `--task shortcut-rectangle-m --reps 1`, to measure real cost and time, then set the overall budget from that.
+2. **Baseline.** Run the no-memory baseline with at least 3 runs per task (27 runs). Measure how large run-to-run variation is before comparing setups.
 3. **Saved-scripts baseline.** Build it as a `MemorySetup`. `after_run` saves successful runs as a script or skill, and `before_run` gives the agent the relevant ones.
 4. **Graph setup.**
    - Turn traces into semantic steps by mapping tool calls to nodes with `command_patterns` (e.g. "run tests"). Build or extend a graph from successful traces.
@@ -212,9 +273,7 @@ These come from inspecting real session logs and the CLI binary
 
 ## Open questions for the user
 
-- The path to the excalidraw clone, and which parts of excalidraw to build tasks around.
-- Which model and effort to use for the real evaluation (the toy suite uses Haiku to keep costs low), and the budget per run and overall.
-- Whether to keep workspaces under the home folder (which loads the One CLI CLAUDE.md into every run) or move them.
+- Approval of the recommended model (Sonnet 5.5, medium effort) and the per-run cap ($3), and an overall budget once the calibration run gives a real cost per run.
 
 ## Working notes
 
