@@ -1,28 +1,45 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-01, during the third session. Start here, then see
-README.md for commands.
+Last updated 2026-10-01, end of the third session. Start here, then see
+README.md for commands and CLAUDE.md for how the code is written.
 
 ## Status
 
-- Work is on branch `procedural-memory` (off `main`, not pushed). Remote:
-  github.com/pandacover/singularity.
-  - `017370d`: graph storage, `src/singularity/graph/`.
-  - `d95d508`: session-log parser, eval harness, toy suite and their tests.
-  - `a5fdd53`: excalidraw suite v1, workspaces moved out of the home folder,
+- Work is on branch `procedural-memory`, pushed, with PR
+  https://github.com/pandacover/singularity/pull/1 open against `main`.
+  - `017370d`, `d95d508`: graph storage, session-log parser, eval harness,
+    toy suite (all in Python then).
+  - `a5fdd53`: excalidraw suite v1, workspaces outside the home folder,
     workspaces hide later commits.
-  - `ede0ae0`: suite v2 (scoped checks, toggle-action family),
+  - `ede0ae0`: suite v2 (scoped checks, toggle-action family), the
     `files_changed` and `shell_writes` metrics.
-  - The commit after that: saved-scripts setup, `learn` and
-    `report --compare`, absolute output dirs.
-- `python -m pytest -q`: 48 passed.
-- **First memory comparison is done.** It covers suite v2's 6 tasks: the
-  no-memory baselines (baseline-1 for the alt family, baseline-2-toggle for
-  the toggle family) against saved-scripts with frozen memory
-  (`runs/excalidraw/saved-scripts-1/`, 18 runs, $2.24). Every run passed in
-  both setups. See "Results so far" below.
-- **Next:** design and build the graph setup. The user wants to discuss the
-  design first.
+  - `cff66e7`: saved-scripts setup, `learn`, `report --compare`.
+  - `53dacd2`: vitest worker cap and below-normal priority for eval runs.
+  - Branch `ts-effect-port` (from `procedural-memory` at `53dacd2`): the port
+    to TypeScript + Effect 4 (below), which removes the Python code. It was
+    pushed to its own branch at the user's request; `procedural-memory` and
+    PR #1 still hold the Python version.
+- **The codebase is now TypeScript 7 + Effect 4.0**, run directly by Node 24.
+  `npm test`: 59 passed. `npm run typecheck`: clean.
+  - The port was checked against the Python version before Python was
+    deleted:
+    - identical metrics on 120 real transcripts (2,880 tool calls, 169M
+      tokens);
+    - byte-identical `report` and `report --compare` output;
+    - identical CLI output (dry run, trace summary and JSON);
+    - a graph store that reads the Python-written store identically and
+      writes byte-identical files;
+    - a saved-scripts memory rebuilt identically from the baselines,
+      injected notes included.
+  - Two real smoke runs through the new harness passed, in
+    `runs/*/ts-smoke-1/`. Their records have the same keys as the Python
+    ones.
+    - toy `delete-graph`: Haiku, $0.10.
+    - excalidraw `altkey-viewmode-j`: Sonnet, $0.17, 17 tool calls.
+- **Results so far:** saved-scripts clearly beats no memory; see "Results so
+  far" below. That's the bar the graph has to clear.
+- **Next:** the graph setup. The user is rereading the proposed claim (see
+  "Next steps"); the rest of the plan is agreed.
 
 ## Goal
 
@@ -108,94 +125,129 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 - **Success:** a task succeeds when its check commands (tests) pass. Hidden tests
   are copied in after the agent finishes (`check_files`). (Proposed and built;
   the user didn't object.)
+- **Stack (decided by the user):** TypeScript + Effect 4, replacing Python.
+  - The user doesn't write the code and only wants to follow the concepts,
+    so the choice weighs agent experience over their own familiarity with
+    Effect.
+  - Effect 4.0.0 was released on the day of the port. Its package ships agent
+    docs (`node_modules/effect/AGENTS.md`, `ai-docs/`), and CLAUDE.md tells
+    agents to use them rather than remembered Effect 3 APIs.
+- **Eval checks must be controlled (from the user):** scoped test files and a
+  capped number of workers, never a repo's full suite on every core. The user
+  needs their machine during runs.
+- **Graph setup, agreed so far:**
+  - An LLM builds the graph from recorded runs ("the accuracy is worth some
+    pennies").
+  - One graph per repo for now.
+  - The refiner loop comes after the first static-graph measurement.
+  - 5 runs per new task is fine (about $15–20 for the measurement).
 
 ## What's built
 
-### Graph storage: `src/singularity/graph/`
+All code is TypeScript + Effect 4 under `src/`, with tests under `test/`.
+Run things with `node src/cli.ts ...` (see README.md).
 
-- **`models.py`:**
-  - `Node` has a type, a description, optional `command_patterns` (regexes used
-    to tell which node the agent is at), and an optional `script`.
+### Graph storage: `src/graph/`
+
+- **`Models.ts`:**
+  - `Node` has a type, a description, optional `command_patterns`
+    (JavaScript regexes used to tell which node the agent is at), and an
+    optional `script`.
   - `Edge` has a relation, condition/guidance/pitfalls, and `facts` keyed by
     repo (paths, commands, dead ends).
   - `EditSet` is the paper's four arrays. Adding an item that already exists
     replaces it.
-  - Also `Candidate` and `Graph`.
-- **`store.py`** defines the `GraphStore` interface.
-  - Reads: `get_nodes`, `match_nodes(command)`, `neighborhood(nodes, hops,
-    direction)` and `snapshot`.
-  - Every read takes `at=`: None for the current version, an int for a past
-    version, or a candidate id. Validation runs can therefore use a candidate
-    before it is committed.
-  - Evolution: `propose` (validates the edits), `commit` (raises `Conflict` if
-    someone else committed first), `reject(reason)` (kept as rejection memory),
-    `candidates(status)` and `diff`.
-- **`json_store.py`:** one directory per graph, with a snapshot file per
-  version and one file per candidate. There is no file locking.
-- **`ops.py`:** apply, diff, neighborhood and matching for graphs held in
-  memory.
-- **Tests:** `tests/test_store.py` is written against the interface. To test a
-  future database backend, add it to the `store` fixture.
+  - Also `Candidate`, `GraphInfo` and `Graph`.
+- **`GraphStore.ts`** is the interface, a `Context.Service`.
+  - Reads: `getNodes`, `matchNodes(command)`, `neighborhood(nodes, {hops,
+    direction})` and `snapshot`.
+  - Every read takes `{at}`: undefined for the current version, a number for
+    a past version, or a candidate id. Validation runs can therefore use a
+    candidate before it is committed.
+  - Evolution: `propose` (validates the edits), `commit` (fails with
+    `Conflict` if someone else committed first), `reject(reason)` (kept as
+    rejection memory), `candidates(status)` and `diff`.
+- **`JsonGraphStore.ts`:** `JsonGraphStore.layer(root)`.
+  - One directory per graph, a snapshot file per version, one file per
+    candidate.
+  - Writes within one store run one at a time (a semaphore). There's no
+    locking across processes.
+- **`Ops.ts`:** apply, diff, neighborhood and matching for graphs in memory.
+- **Tests:** `test/graph/store.test.ts` is a contract suite run once per
+  backend in its `backends` list. A graph database backend gets added there.
+  The suite also reads a store written by the old Python version
+  (`test/graph/fixtures/`) and checks the results match.
 - **Not done:**
   - The paper's check that every node can reach an END node.
   - Edges are keyed by (source, target), so a pair of nodes can have only one
     edge.
 
-### Session-log parser: `src/singularity/traces/`
+### Session-log parser: `src/traces/`
 
-- `parse_session(path)` returns a `Trace`: prompts, model responses with token
+- `parseSession(path)` returns a `Trace`: prompts, model responses with token
   usage, tool calls with results and errors, subagents, and Claude Code's
   `cost-state` totals.
-- `TraceMetrics` counts tool calls, failed calls, shell commands, searches,
+  - Parsing is lenient: a field of an unexpected shape counts as missing, and
+    only non-JSON lines are skipped.
+- `traceMetrics` counts tool calls, failed calls, shell commands, searches,
   files edited, and reads versus distinct files read. Repeat reads are a rough
   measure of wasted effort.
   - `files_edited` covers only the edit tools. Agents often edit through Bash
     (`sed -i`, heredocs), which `shell_writes` counts with a regex heuristic.
   - The run record's `files_changed`, taken from the diff, is the ground truth
     for which files changed.
-- CLI: `python -m singularity.traces <session id or path> [--json]`.
+- CLI: `node src/cli.ts traces <session id or path> [--json]`.
 
-### Eval harness: `src/singularity/eval/`
+### Eval harness: `src/eval/`
 
-- **`suite.py`:** the TOML suite format, documented in the module docstring
-  (see `examples/toy/suite.toml`). Unknown keys are errors.
-- **`workspace.py`:**
-  - A clone of the source repo at `~/.singularity/workspaces/<suite>`, with no
-    remote.
+- **`Suite.ts`:** the TOML suite format, documented in the module comment.
+  Unknown keys are errors (Schema with `onExcessProperty: "error"`).
+- **`Workspace.ts`:**
+  - A clone of the source repo at `<workspaces>/<suite>`, with no remote.
   - Before each run it is reset to the task's base commit, and `git clean`
-    deletes everything except the `keep` paths.
-  - `keep` paths must be gitignored, or the diff capture will stage them.
-- **`agent.py`:** builds the `claude -p` command. It removes the parent
+    deletes everything except the `keep` paths. `keep` paths must be
+    gitignored, or the diff capture will stage them.
+  - After each reset it deletes every ref and reflog entry, leaving only the
+    detached base commit. Without that, an agent could run `git log --all`
+    and see later commits, including the toy suite's hidden tests and the
+    user's hand-written excalidraw maps.
+- **`Agent.ts`:** builds the `claude -p` command. It removes the parent
   session's environment variables, turns auto-memory off, and passes the prompt
   on stdin.
-- **`proc.py`:** runs a subprocess with a timeout. On timeout or Ctrl+C it kills
-  the whole process tree.
-- **`setups.py`:** the `MemorySetup` interface.
-  - `before_run(task, workspace)` returns an `Injection(system_prompt, info)`;
-    the text is passed with `--append-system-prompt-file`.
-  - `after_run(Outcome)` is where a setup learns from the run.
-  - Only `NoMemory` exists. Register new setups in `SETUPS`.
-- **`runner.py`:**
+- **`Proc.ts`:** runs a process with a timeout via `effect/process`.
+  - On timeout or interruption, Effect's Node spawner kills the whole process
+    tree (`taskkill /T` on Windows). Checked: no leftover processes.
+  - The CLI lowers its own priority at startup, and Windows passes that down
+    to everything it starts.
+- **`Setups.ts`, `Memory.ts`:** the `MemorySetup` interface, `NoMemory`, and
+  `makeSetup(name, memoryDir, frozen)`.
+  - `beforeRun(task, workspace)` returns an `Injection`, which is passed to
+    Claude with `--append-system-prompt-file`.
+  - `afterRun(outcome)` is where a setup learns.
+- **`SavedScripts.ts`:** the simple baseline (see "Results so far").
+- **`Learn.ts`:** feeds recorded runs into a setup (`eval learn`), so memory
+  can be built from baselines without new agent runs.
+- **`Runner.ts`:**
   - Each run: reset the workspace, run setup commands (not timed),
-    `before_run`, the agent, copy the session log, save the diff, copy in
-    `check_files`, run the checks, then `after_run`.
+    `beforeRun`, the agent, copy the session log, save the diff, copy in
+    `check_files`, run the checks, then `afterRun`.
   - Output: `results.jsonl` plus a `runs/<id>/` directory per run with the
     session log, diff, agent output and command logs.
   - Order: each pass runs every task once before the next pass starts.
   - Token and cost figures come from the CLI's result JSON, which includes side
     calls. If that's missing, they fall back to `cost-state`, then to the
     session log.
-- **`report.py`:** median (min–max) for each setup and task, plus totals per
-  setup.
+- **`Report.ts`:**
+  - `report` gives median (min–max) per setup and task.
+  - `report --compare` sets each memory setup against no-memory, split into
+    exact repeats and similar tasks.
+  - `PyFormat.ts` keeps the number formatting identical to the Python
+    version's.
 - **`examples/toy/`:** two similar tasks, `delete-graph` and `rename-graph`,
-  against this repo at `017370d`, each with hidden tests. Only `delete-graph`
-  has been run for real.
-- **`tests/fake_claude.py`:** stands in for `claude`, so `tests/test_eval.py`
-  covers the whole pipeline at no cost.
-- **Workspace isolation:** after each reset the workspace deletes every ref and
-  reflog entry, leaving only the detached base commit. Without that, an agent
-  could run `git log --all` and see later commits. That includes the toy
-  suite's own hidden tests and the user's hand-written excalidraw maps.
+  against this repo at `017370d` (when it was Python), with hidden pytest
+  tests. They still work, because each run checks out that old commit.
+- **`test/eval/fixtures/fake-claude.ts`:** stands in for `claude`, so the tests
+  cover the whole pipeline at no cost.
 
 ### Excalidraw suite: `examples/excalidraw/`
 
@@ -247,7 +299,7 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
     (`MermaidToExcalidraw.test.tsx`).
   - Checks run without `CI=true`, so a snapshot that doesn't exist yet is
     written and passes.
-- **Validation (`validate3.py`, a scratch script):** the hidden test fails at
+- **Validation (a scratch script, not kept):** the hidden test fails at
   the base commit, and the suite's own checks pass on a reference solution.
   The reference patches, including regenerated snapshots, are in
   `examples/excalidraw/reference/`.
@@ -286,7 +338,7 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 
 ## Results so far
 
-Run `python -m singularity.eval report --compare runs/excalidraw/baseline-1
+Run `node src/cli.ts eval report --compare runs/excalidraw/baseline-1
 runs/excalidraw/baseline-2-toggle runs/excalidraw/saved-scripts-1`.
 All figures are medians of 3 runs; tokens include cache reads.
 
@@ -301,8 +353,7 @@ All figures are medians of 3 runs; tokens include cache reads.
 
 - **Per-task medians:** tokens fell 75% on exact repeats and 61% on similar
   tasks; cost fell 70% and 50%.
-- **saved-scripts** (`src/singularity/eval/saved_scripts.py`) works like
-  this:
+- **saved-scripts** (`src/eval/SavedScripts.ts`) works like this:
   - It keeps the cheapest successful run for each prompt. An entry holds the
     prompt, the files changed, the source diff (snapshot files are listed,
     not included) and the shell commands that succeeded.
@@ -352,45 +403,67 @@ These come from inspecting real session logs and the CLI binary
   - Two flags that work but aren't in `--help`: `--append-system-prompt-file <file>` and `--max-turns <n>`.
   - Useful listed flags: `--session-id`, `--max-budget-usd`, `--effort`, `--permission-prompts none` and `--strict-mcp-config`.
   - `--bare` would give the cleanest runs (no CLAUDE.md, hooks, plugins or auto-memory). But it only accepts `ANTHROPIC_API_KEY`, not the user's subscription login.
-- **Parent-session variables:** a parent Claude Code session sets `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, a messaging socket and token, `CLAUDE_EFFORT=max`, and more. The harness removes them (the list is in `agent.py`). Otherwise runs started from inside a session would inherit max effort.
+- **Parent-session variables:** a parent Claude Code session sets `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, a messaging socket and token, `CLAUDE_EFFORT=max`, and more. The harness removes them (the list is in `src/eval/Agent.ts`). Otherwise runs started from inside a session would inherit max effort.
 - **Home-folder CLAUDE.md:** runs in workspaces under the home folder load `C:\Users\luvma\CLAUDE.md` (the One CLI instructions) as project instructions. This is confirmed in the toy run's log, and it's why workspaces now default to `C:\singularity-workspaces`. Excalidraw's own `CLAUDE.md`/`AGENTS.md` are part of the repo and are still loaded, which is realistic.
 - **Result JSON:** the harness reads these fields from `--output-format json`: `subtype`, `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd`, `modelUsage` and `permission_denials`.
 - **Log cleanup:** Claude Code deletes old session logs after a while, so the harness keeps a copy of each run's log.
 
 ## Next steps
 
-1. **Graph setup: discuss the design with the user first.** Then build it
-   as a `MemorySetup`, with `learn` building the graph from recorded runs, so
-   no new runs are needed to build memory.
-   - Turn traces into semantic steps by mapping tool calls to nodes with
-     `command_patterns` (e.g. "run tests"). Edits made through Bash
-     (`shell_writes`) count too.
-   - Pick the graph or subgraph for a new task (for now, the same prompt
-     similarity saved-scripts uses). Inject it once at task start as plain
-     text.
-   - Refiner loop: propose edits by comparing failed and successful traces,
-     using a rewritten prompt (see the paper notes above). Validate each
-     candidate with the harness on held-out tasks (reading with
-     `at=<candidate>`), then `commit` or `reject` it.
-2. **Protocol.** Build memory from each family's seed run only. Measure with
-   frozen memory on all tasks, and compare by `run_kind` (exact repeat versus
-   similar task). Still to decide: held-out validation tasks for the
-   refiner's gating. That probably needs a third family.
-3. **Optional: a stronger script baseline.** Offer the saved patch as one
-   command for exact repeats.
-4. **Optional: the CPU cap** for agent test runs (see "Results so far").
-5. **Later:** a graph database backend for `GraphStore`.
+1. **The graph setup.**
+   - **The claim to test (proposed; the user is rereading it).**
+     - Saved-scripts remembers whole tasks; the graph remembers steps.
+     - On exact repeats and close variants a saved diff is near optimal. So
+       the graph must win where tasks reuse *parts* of past work, or where
+       *mistakes* from past runs matter.
+     - This revises the plan's "clearly better on similar tasks".
+     - Proposed thresholds, at the same success rate:
+       - within about 15% of saved-scripts' tokens on the 6 existing tasks;
+       - at least about 25% fewer tokens than the better saved-scripts
+         variant on most of the new kinds of task.
+   - **New kinds of task**, 5 runs each. Write, validate and commit them
+     *before* the graph is built, so they can't be picked to suit it.
+     - Recombined: give the existing "Snap to midpoints" setting an Alt+N
+       shortcut. Its prompt similarity is 0.38 to zen mode and 0.37 to
+       minimap, so saved-scripts only gets an incomplete example.
+     - Subset: a "Show page breaks" setting in Preferences only. Similarity to
+       minimap is 0.64, and half of minimap's diff is work to skip.
+     - Lesson from failures: change the stats shortcut and add a test in
+       `excalidraw.test.tsx`. Similarity to zen mode is 0.42, but the saved
+       zen run never hit the `handleKeyboardGlobally` trap.
+     - Partial overlap, with no new tasks: memory from zen mode only, measured
+       on the toggle tasks.
+     - Also add a stronger saved-scripts variant that injects the top 2
+       matches.
+   - **Building:**
+     - An LLM (Sonnet via `claude -p --json-schema`, which works with the
+       user's login) reads each recorded run's diff and transcript plus the
+       current graph, and proposes an `EditSet`.
+     - Ask it for JavaScript regexes in `command_patterns`.
+     - Build from all runs of the seed tasks, so detours become pitfalls.
+   - **Retrieval and delivery:** match the prompt against node descriptions,
+     take the 2-hop neighbourhood, render a short checklist (about 1k
+     tokens), and inject it once at task start.
+   - **Refiner loop:** later, after the static graph is measured.
+2. **Optional: a stronger script baseline** for exact repeats: offer the saved
+   patch as one command.
+3. **Later:** a graph database backend for `GraphStore`.
 
 ## Open questions for the user
 
-- The graph design: what nodes are, what edges carry, what gets injected, and
-  how it's built and refined (under discussion).
-- Whether to port the harness to TypeScript + Effect before building the graph
-  (under discussion).
+- Whether they agree with the revised claim and thresholds above. They're
+  rereading the explanation.
 - Whether to add a curated mid-size repo alongside excalidraw later.
 
 ## Working notes
 
 - Commit only when the user asks, and work on `procedural-memory`, not `main`.
-- Runs cost real money on the user's account. Use `--dry-run` first, and set `max_budget_usd` in suites.
-- Keep anything heavy (workspaces, node_modules) out of this repo folder, because it is synced by OneDrive.
+- Runs cost real money on the user's account. Use `--dry-run` first, and set
+  `max_budget_usd` in suites.
+- Keep heavy folders (workspaces, target repos' node_modules) out of this repo
+  folder.
+  - This repo's own `node_modules` is inside it.
+  - OneDrive wasn't running on this machine (checked 2026-10-01). If it
+    starts syncing the folder, move the repo out of OneDrive.
+- The user needs their computer during runs: keep the vitest cap and the
+  below-normal priority.
