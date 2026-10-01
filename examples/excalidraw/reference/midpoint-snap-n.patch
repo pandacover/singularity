@@ -1,0 +1,76 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..82af13c6 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  N: "KeyN",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleMidpointSnapping.tsx b/packages/excalidraw/actions/actionToggleMidpointSnapping.tsx
+index eca9df7e..26f4bad9 100644
+--- a/packages/excalidraw/actions/actionToggleMidpointSnapping.tsx
++++ b/packages/excalidraw/actions/actionToggleMidpointSnapping.tsx
+@@ -1,3 +1,5 @@
++import { CODES, KEYS } from "@excalidraw/common";
++
+ import { CaptureUpdateAction } from "@excalidraw/element";
+ 
+ import { register } from "./register";
+@@ -20,4 +22,6 @@ export const actionToggleMidpointSnapping = register({
+     };
+   },
+   checked: (appState) => appState.isMidpointSnappingEnabled,
++  keyTest: (event) =>
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.N,
+ });
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..522477d2 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -31,6 +31,7 @@ export type ShortcutName =
+       | "gridMode"
+       | "zenMode"
+       | "objectsSnapMode"
++      | "midpointSnapping"
+       | "stats"
+       | "addToLibrary"
+       | "viewMode"
+@@ -94,6 +95,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
++  midpointSnapping: [getShortcutKey("Alt+N")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..55fb075f 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -299,6 +299,10 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+               label={t("buttons.objectsSnapMode")}
+               shortcuts={[getShortcutKey("Alt+S")]}
+             />
++            <Shortcut
++              label={t("labels.midpointSnapping")}
++              shortcuts={[getShortcutKey("Alt+N")]}
++            />
+             <Shortcut
+               label={t("labels.toggleGrid")}
+               shortcuts={[getShortcutKey("CtrlOrCmd+'")]}
+diff --git a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
+index 1321699b..f45481c7 100644
+--- a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
+@@ -7775,6 +7775,7 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+       },
+       {
+         "checked": [Function],
++        "keyTest": [Function],
+         "label": "labels.midpointSnapping",
+         "name": "midpointSnapping",
+         "perform": [Function],

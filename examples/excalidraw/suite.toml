@@ -1,5 +1,6 @@
 # The evaluation suite: two task families against the user's excalidraw clone,
-# at the last upstream commit before their own `procedural/` notes.
+# at the last upstream commit before their own `procedural/` notes, plus three
+# tasks of new kinds for the graph setup (see PREREGISTRATION.md).
 #
 # Each family has a seed task (the one memory is built from and that is later
 # repeated exactly) and two similar-but-different variants. Every task's hidden
@@ -149,3 +150,68 @@ checks = [
   "yarn tsc",
 ]
 check_files = "hidden/toggle-presenter"
+
+# --- New kinds of task, for the graph setup --------------------------------------
+# Written and validated before any graph was built (see PREREGISTRATION.md).
+# Memory is built only from the two seed tasks (altkey-zen-m, toggle-minimap), and
+# each of these needs something a single saved run doesn't give:
+#
+# - midpoint-snap-n (recombined): add a shortcut to an existing action. Zen mode
+#   only changed a shortcut; adding one (a new shortcut-name entry, a new help
+#   dialog row) is what the minimap run did. Adding a keyTest also changes the
+#   contextmenu snapshot, which neither seed run had to deal with for this action.
+# - page-breaks (subset): a setting in Preferences only. The minimap run has all
+#   of it, plus about half its diff (action, shortcut, both context menus, help
+#   dialog) that this task must leave out. Snapshots change as for minimap.
+# - stats-shortcut-k (lesson from failures): the zen-mode procedure plus a test in
+#   excalidraw.test.tsx, which renders <Excalidraw /> without
+#   handleKeyboardGlobally, so a key event sent to the document never arrives.
+#   2 of 3 zen-mode baseline runs lost about 20 tool calls finding that out; the
+#   saved (cheapest) zen run wrote no test, so it can't warn about it.
+
+[[tasks]]
+id = "midpoint-snap-n"
+family = "recombined"
+prompt = """
+Add a keyboard shortcut for the existing "Snap to midpoints" setting: Alt+N
+should toggle it. The help dialog should list the shortcut. Make sure the tests
+and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/midpoint-snap-n"
+
+[[tasks]]
+id = "page-breaks"
+family = "subset"
+prompt = """
+Add a "Show page breaks" setting. Nothing draws page breaks yet; this is just
+the setting. Store it in a new appState field `pageBreaksEnabled` (default
+false), saved to the browser's local storage but not to exported files or the
+collaboration server. Users should be able to toggle it from Preferences in the
+main menu. Don't add a keyboard shortcut or a right-click menu entry for it.
+Make sure the tests and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/page-breaks"
+
+[[tasks]]
+id = "stats-shortcut-k"
+family = "failure-lesson"
+prompt = """
+Change the keyboard shortcut for the "Canvas & Shape properties" (stats) panel
+from Alt+/ to Alt+K. Update everything that shows the shortcut, and add a test
+to packages/excalidraw/tests/excalidraw.test.tsx that checks Alt+K toggles the
+panel and Alt+/ no longer does. Make sure the tests and the typecheck pass.
+"""
+checks = [
+  "node hidden-check-agent-test.mjs",
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check.test.tsx packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx packages/excalidraw/tests/contextmenu.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/stats-shortcut-k"
