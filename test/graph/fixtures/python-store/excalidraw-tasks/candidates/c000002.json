@@ -1,0 +1,19 @@
+{
+  "id": "c000002",
+  "graph_id": "excalidraw-tasks",
+  "base_version": 1,
+  "edits": {
+    "add_nodes": [],
+    "delete_nodes": [
+      "think"
+    ],
+    "add_edges": [],
+    "delete_edges": []
+  },
+  "rationale": "seems unused",
+  "status": "rejected",
+  "score": 0.6,
+  "reason": "validation score dropped 0.8 -> 0.6",
+  "committed_version": null,
+  "created_at": "2026-10-01T12:00:01.250000+00:00"
+}

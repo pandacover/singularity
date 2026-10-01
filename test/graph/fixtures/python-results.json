@@ -1,0 +1,2151 @@
+{
+  "list_graphs": [
+    {
+      "graph_id": "empty",
+      "description": "",
+      "head": 0
+    },
+    {
+      "graph_id": "excalidraw-tasks",
+      "description": "Procedures for excalidraw tasks",
+      "head": 3
+    }
+  ],
+  "head": 3,
+  "snapshots": {
+    "0": {
+      "nodes": [],
+      "edges": []
+    },
+    "1": {
+      "nodes": [
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "find_config",
+          "type": "action",
+          "description": "Find the config file",
+          "command_patterns": [
+            "\\b(rg|grep|find)\\b.*config"
+          ],
+          "script": null
+        },
+        {
+          "id": "run_tests",
+          "type": "action",
+          "description": "Run the test suite",
+          "command_patterns": [
+            "\\b(pytest|yarn test|npm test)\\b",
+            "^vitest\\s"
+          ],
+          "script": "scripts/run-tests.sh"
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "think",
+          "type": "reasoning",
+          "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+          "command_patterns": [],
+          "script": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "find_config",
+          "target": "run_tests",
+          "relation": "triggers",
+          "condition": "Config change made",
+          "guidance": null,
+          "pitfalls": "Don't run the full suite first",
+          "facts": {
+            "-dash": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": [
+                "ü"
+              ]
+            },
+            "10": {
+              "paths": [],
+              "commands": [
+                "make test"
+              ],
+              "dead_ends": []
+            },
+            "9": {
+              "paths": [
+                "Makefile"
+              ],
+              "commands": [],
+              "dead_ends": []
+            },
+            "Zeta": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": []
+            },
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw/vitest.config.mts"
+              ],
+              "commands": [
+                "yarn test:app --watch=false"
+              ],
+              "dead_ends": [
+                "jest.config.js does not exist"
+              ]
+            }
+          }
+        },
+        {
+          "source": "find_config",
+          "target": "think",
+          "relation": "provides_input_for",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "run_tests",
+          "target": "end",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "start",
+          "target": "find_config",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Locate config before editing",
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "think",
+          "target": "run_tests",
+          "relation": "converges_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        }
+      ]
+    },
+    "2": {
+      "nodes": [
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "find_config",
+          "type": "action",
+          "description": "Find the config file",
+          "command_patterns": [
+            "\\b(rg|grep|find)\\b.*config"
+          ],
+          "script": null
+        },
+        {
+          "id": "lint",
+          "type": "action",
+          "description": "Run linter",
+          "command_patterns": [
+            "\\b(eslint|yarn lint)\\b"
+          ],
+          "script": null
+        },
+        {
+          "id": "run_tests",
+          "type": "action",
+          "description": "Run the test suite",
+          "command_patterns": [
+            "\\b(pytest|yarn test|npm test)\\b",
+            "^vitest\\s"
+          ],
+          "script": "scripts/run-tests.sh"
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "think",
+          "type": "reasoning",
+          "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+          "command_patterns": [],
+          "script": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "find_config",
+          "target": "run_tests",
+          "relation": "triggers",
+          "condition": "Config change made",
+          "guidance": null,
+          "pitfalls": "Don't run the full suite first",
+          "facts": {
+            "-dash": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": [
+                "ü"
+              ]
+            },
+            "10": {
+              "paths": [],
+              "commands": [
+                "make test"
+              ],
+              "dead_ends": []
+            },
+            "9": {
+              "paths": [
+                "Makefile"
+              ],
+              "commands": [],
+              "dead_ends": []
+            },
+            "Zeta": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": []
+            },
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw/vitest.config.mts"
+              ],
+              "commands": [
+                "yarn test:app --watch=false"
+              ],
+              "dead_ends": [
+                "jest.config.js does not exist"
+              ]
+            }
+          }
+        },
+        {
+          "source": "find_config",
+          "target": "think",
+          "relation": "provides_input_for",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "lint",
+          "target": "end",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "run_tests",
+          "target": "lint",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Lint after tests pass",
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "start",
+          "target": "find_config",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Locate config before editing",
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "think",
+          "target": "run_tests",
+          "relation": "converges_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        }
+      ]
+    },
+    "3": {
+      "nodes": [
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "find_config",
+          "type": "action",
+          "description": "Find the config file",
+          "command_patterns": [
+            "\\b(rg|grep|find)\\b.*config"
+          ],
+          "script": null
+        },
+        {
+          "id": "lint",
+          "type": "action",
+          "description": "Run linter",
+          "command_patterns": [
+            "\\b(eslint|yarn lint)\\b"
+          ],
+          "script": null
+        },
+        {
+          "id": "run_tests",
+          "type": "action",
+          "description": "Run the test suite",
+          "command_patterns": [
+            "\\b(pytest|yarn test|npm test)\\b",
+            "^vitest\\s"
+          ],
+          "script": "scripts/run-tests.sh"
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "find_config",
+          "target": "run_tests",
+          "relation": "triggers",
+          "condition": "Config change made",
+          "guidance": null,
+          "pitfalls": "Don't run the full suite first",
+          "facts": {
+            "-dash": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": [
+                "ü"
+              ]
+            },
+            "10": {
+              "paths": [],
+              "commands": [
+                "make test"
+              ],
+              "dead_ends": []
+            },
+            "9": {
+              "paths": [
+                "Makefile"
+              ],
+              "commands": [],
+              "dead_ends": []
+            },
+            "Zeta": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": []
+            },
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw/vitest.config.mts"
+              ],
+              "commands": [
+                "yarn test:app --watch=false"
+              ],
+              "dead_ends": [
+                "jest.config.js does not exist"
+              ]
+            }
+          }
+        },
+        {
+          "source": "lint",
+          "target": "end",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "run_tests",
+          "target": "lint",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Lint after tests pass",
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "start",
+          "target": "find_config",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Locate config before editing",
+          "pitfalls": null,
+          "facts": {}
+        }
+      ]
+    }
+  },
+  "candidate_views": {
+    "c000002": {
+      "nodes": [
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "find_config",
+          "type": "action",
+          "description": "Find the config file",
+          "command_patterns": [
+            "\\b(rg|grep|find)\\b.*config"
+          ],
+          "script": null
+        },
+        {
+          "id": "run_tests",
+          "type": "action",
+          "description": "Run the test suite",
+          "command_patterns": [
+            "\\b(pytest|yarn test|npm test)\\b",
+            "^vitest\\s"
+          ],
+          "script": "scripts/run-tests.sh"
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "find_config",
+          "target": "run_tests",
+          "relation": "triggers",
+          "condition": "Config change made",
+          "guidance": null,
+          "pitfalls": "Don't run the full suite first",
+          "facts": {
+            "-dash": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": [
+                "ü"
+              ]
+            },
+            "10": {
+              "paths": [],
+              "commands": [
+                "make test"
+              ],
+              "dead_ends": []
+            },
+            "9": {
+              "paths": [
+                "Makefile"
+              ],
+              "commands": [],
+              "dead_ends": []
+            },
+            "Zeta": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": []
+            },
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw/vitest.config.mts"
+              ],
+              "commands": [
+                "yarn test:app --watch=false"
+              ],
+              "dead_ends": [
+                "jest.config.js does not exist"
+              ]
+            }
+          }
+        },
+        {
+          "source": "run_tests",
+          "target": "end",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "start",
+          "target": "find_config",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Locate config before editing",
+          "pitfalls": null,
+          "facts": {}
+        }
+      ]
+    },
+    "c000004": {
+      "nodes": [
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "find_config",
+          "type": "action",
+          "description": "Find the config file",
+          "command_patterns": [
+            "\\b(rg|grep|find)\\b.*config"
+          ],
+          "script": null
+        },
+        {
+          "id": "run_tests",
+          "type": "action",
+          "description": "Run the test suite",
+          "command_patterns": [
+            "\\b(pytest|yarn test|npm test)\\b",
+            "^vitest\\s"
+          ],
+          "script": "scripts/run-tests.sh"
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "think",
+          "type": "reasoning",
+          "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "x",
+          "type": "state",
+          "description": "pending state",
+          "command_patterns": [],
+          "script": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "find_config",
+          "target": "run_tests",
+          "relation": "triggers",
+          "condition": "Config change made",
+          "guidance": null,
+          "pitfalls": "Don't run the full suite first",
+          "facts": {
+            "-dash": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": [
+                "ü"
+              ]
+            },
+            "10": {
+              "paths": [],
+              "commands": [
+                "make test"
+              ],
+              "dead_ends": []
+            },
+            "9": {
+              "paths": [
+                "Makefile"
+              ],
+              "commands": [],
+              "dead_ends": []
+            },
+            "Zeta": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": []
+            },
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw/vitest.config.mts"
+              ],
+              "commands": [
+                "yarn test:app --watch=false"
+              ],
+              "dead_ends": [
+                "jest.config.js does not exist"
+              ]
+            }
+          }
+        },
+        {
+          "source": "find_config",
+          "target": "think",
+          "relation": "provides_input_for",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "run_tests",
+          "target": "end",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "start",
+          "target": "find_config",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Locate config before editing",
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "think",
+          "target": "run_tests",
+          "relation": "converges_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        }
+      ]
+    },
+    "c000006": {
+      "nodes": [
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "find_config",
+          "type": "action",
+          "description": "Find the config file",
+          "command_patterns": [
+            "\\b(rg|grep|find)\\b.*config"
+          ],
+          "script": null
+        },
+        {
+          "id": "lint",
+          "type": "action",
+          "description": "Run linter",
+          "command_patterns": [
+            "\\b(eslint|yarn lint)\\b"
+          ],
+          "script": null
+        },
+        {
+          "id": "run_tests",
+          "type": "action",
+          "description": "Run the test suite",
+          "command_patterns": [
+            "\\b(pytest|yarn test|npm test)\\b",
+            "^vitest\\s"
+          ],
+          "script": "scripts/run-tests.sh"
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins (revised)",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "think",
+          "type": "reasoning",
+          "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+          "command_patterns": [],
+          "script": null
+        }
+      ],
+      "edges": [
+        {
+          "source": "find_config",
+          "target": "run_tests",
+          "relation": "triggers",
+          "condition": "Config change made",
+          "guidance": null,
+          "pitfalls": "Don't run the full suite first",
+          "facts": {
+            "-dash": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": [
+                "ü"
+              ]
+            },
+            "10": {
+              "paths": [],
+              "commands": [
+                "make test"
+              ],
+              "dead_ends": []
+            },
+            "9": {
+              "paths": [
+                "Makefile"
+              ],
+              "commands": [],
+              "dead_ends": []
+            },
+            "Zeta": {
+              "paths": [],
+              "commands": [],
+              "dead_ends": []
+            },
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw/vitest.config.mts"
+              ],
+              "commands": [
+                "yarn test:app --watch=false"
+              ],
+              "dead_ends": [
+                "jest.config.js does not exist"
+              ]
+            }
+          }
+        },
+        {
+          "source": "find_config",
+          "target": "think",
+          "relation": "provides_input_for",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "lint",
+          "target": "end",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "run_tests",
+          "target": "lint",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Lint after tests pass",
+          "pitfalls": null,
+          "facts": {}
+        },
+        {
+          "source": "start",
+          "target": "find_config",
+          "relation": "leads_to",
+          "condition": null,
+          "guidance": "Check packages/excalidraw first",
+          "pitfalls": null,
+          "facts": {
+            "excalidraw": {
+              "paths": [
+                "packages/excalidraw"
+              ],
+              "commands": [],
+              "dead_ends": []
+            }
+          }
+        },
+        {
+          "source": "think",
+          "target": "run_tests",
+          "relation": "converges_to",
+          "condition": null,
+          "guidance": null,
+          "pitfalls": null,
+          "facts": {}
+        }
+      ]
+    }
+  },
+  "candidates": [
+    {
+      "id": "c000001",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 0,
+      "edits": {
+        "add_nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "description": "Task begins",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "find_config",
+            "type": "action",
+            "description": "Find the config file",
+            "command_patterns": [
+              "\\b(rg|grep|find)\\b.*config"
+            ],
+            "script": null
+          },
+          {
+            "id": "run_tests",
+            "type": "action",
+            "description": "Run the test suite",
+            "command_patterns": [
+              "\\b(pytest|yarn test|npm test)\\b",
+              "^vitest\\s"
+            ],
+            "script": "scripts/run-tests.sh"
+          },
+          {
+            "id": "think",
+            "type": "reasoning",
+            "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "end",
+            "type": "end",
+            "description": "Task done",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "delete_nodes": [],
+        "add_edges": [
+          {
+            "source": "start",
+            "target": "find_config",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Locate config before editing",
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "find_config",
+            "target": "run_tests",
+            "relation": "triggers",
+            "condition": "Config change made",
+            "guidance": null,
+            "pitfalls": "Don't run the full suite first",
+            "facts": {
+              "-dash": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": [
+                  "ü"
+                ]
+              },
+              "10": {
+                "paths": [],
+                "commands": [
+                  "make test"
+                ],
+                "dead_ends": []
+              },
+              "9": {
+                "paths": [
+                  "Makefile"
+                ],
+                "commands": [],
+                "dead_ends": []
+              },
+              "Zeta": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": []
+              },
+              "excalidraw": {
+                "paths": [
+                  "packages/excalidraw/vitest.config.mts"
+                ],
+                "commands": [
+                  "yarn test:app --watch=false"
+                ],
+                "dead_ends": [
+                  "jest.config.js does not exist"
+                ]
+              }
+            }
+          },
+          {
+            "source": "find_config",
+            "target": "think",
+            "relation": "provides_input_for",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "think",
+            "target": "run_tests",
+            "relation": "converges_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "run_tests",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ],
+        "delete_edges": []
+      },
+      "rationale": "initial procedure",
+      "status": "committed",
+      "score": 1.0,
+      "reason": "",
+      "committed_version": 1,
+      "created_at": "2026-10-01T12:00:00+00:00"
+    },
+    {
+      "id": "c000002",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 1,
+      "edits": {
+        "add_nodes": [],
+        "delete_nodes": [
+          "think"
+        ],
+        "add_edges": [],
+        "delete_edges": []
+      },
+      "rationale": "seems unused",
+      "status": "rejected",
+      "score": 0.6,
+      "reason": "validation score dropped 0.8 -> 0.6",
+      "committed_version": null,
+      "created_at": "2026-10-01T12:00:01.250000+00:00"
+    },
+    {
+      "id": "c000003",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 1,
+      "edits": {
+        "add_nodes": [
+          {
+            "id": "lint",
+            "type": "action",
+            "description": "Run linter",
+            "command_patterns": [
+              "\\b(eslint|yarn lint)\\b"
+            ],
+            "script": null
+          }
+        ],
+        "delete_nodes": [],
+        "add_edges": [
+          {
+            "source": "run_tests",
+            "target": "lint",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Lint after tests pass",
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "lint",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ],
+        "delete_edges": [
+          {
+            "source": "run_tests",
+            "target": "end"
+          }
+        ]
+      },
+      "rationale": "lint before finishing",
+      "status": "committed",
+      "score": 0.30000000000000004,
+      "reason": "",
+      "committed_version": 2,
+      "created_at": "2026-10-01T12:01:01.001000+00:00"
+    },
+    {
+      "id": "c000004",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 1,
+      "edits": {
+        "add_nodes": [
+          {
+            "id": "x",
+            "type": "state",
+            "description": "pending state",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "delete_nodes": [],
+        "add_edges": [],
+        "delete_edges": []
+      },
+      "rationale": "stale base",
+      "status": "pending",
+      "score": null,
+      "reason": "",
+      "committed_version": null,
+      "created_at": "2026-10-01T13:00:00+00:00"
+    },
+    {
+      "id": "c000005",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 2,
+      "edits": {
+        "add_nodes": [],
+        "delete_nodes": [],
+        "add_edges": [
+          {
+            "source": "start",
+            "target": "run_tests",
+            "relation": "leads_to",
+            "condition": "Config already known",
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ],
+        "delete_edges": []
+      },
+      "rationale": "",
+      "status": "rejected",
+      "score": 2.5e-05,
+      "reason": "",
+      "committed_version": null,
+      "created_at": "2026-10-01T13:00:00.999000+00:00"
+    },
+    {
+      "id": "c000006",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 2,
+      "edits": {
+        "add_nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "description": "Task begins (revised)",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "delete_nodes": [],
+        "add_edges": [
+          {
+            "source": "start",
+            "target": "find_config",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Check packages/excalidraw first",
+            "pitfalls": null,
+            "facts": {
+              "excalidraw": {
+                "paths": [
+                  "packages/excalidraw"
+                ],
+                "commands": [],
+                "dead_ends": []
+              }
+            }
+          }
+        ],
+        "delete_edges": []
+      },
+      "rationale": "revise start",
+      "status": "pending",
+      "score": null,
+      "reason": "",
+      "committed_version": null,
+      "created_at": "2026-10-01T14:00:00.500000+00:00"
+    },
+    {
+      "id": "c000007",
+      "graph_id": "excalidraw-tasks",
+      "base_version": 2,
+      "edits": {
+        "add_nodes": [],
+        "delete_nodes": [
+          "think"
+        ],
+        "add_edges": [],
+        "delete_edges": [
+          {
+            "source": "find_config",
+            "target": "think"
+          }
+        ]
+      },
+      "rationale": "",
+      "status": "committed",
+      "score": null,
+      "reason": "",
+      "committed_version": 3,
+      "created_at": "2026-10-02T12:00:00+00:00"
+    }
+  ],
+  "candidate_ids_by_status": {
+    "pending": [
+      "c000004",
+      "c000006"
+    ],
+    "committed": [
+      "c000001",
+      "c000003",
+      "c000007"
+    ],
+    "rejected": [
+      "c000002",
+      "c000005"
+    ]
+  },
+  "neighborhoods": [
+    {
+      "node_ids": [
+        "start"
+      ],
+      "hops": 2,
+      "direction": "out",
+      "at": null,
+      "result": {
+        "nodes": [
+          {
+            "id": "find_config",
+            "type": "action",
+            "description": "Find the config file",
+            "command_patterns": [
+              "\\b(rg|grep|find)\\b.*config"
+            ],
+            "script": null
+          },
+          {
+            "id": "run_tests",
+            "type": "action",
+            "description": "Run the test suite",
+            "command_patterns": [
+              "\\b(pytest|yarn test|npm test)\\b",
+              "^vitest\\s"
+            ],
+            "script": "scripts/run-tests.sh"
+          },
+          {
+            "id": "start",
+            "type": "start",
+            "description": "Task begins",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "edges": [
+          {
+            "source": "find_config",
+            "target": "run_tests",
+            "relation": "triggers",
+            "condition": "Config change made",
+            "guidance": null,
+            "pitfalls": "Don't run the full suite first",
+            "facts": {
+              "-dash": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": [
+                  "ü"
+                ]
+              },
+              "10": {
+                "paths": [],
+                "commands": [
+                  "make test"
+                ],
+                "dead_ends": []
+              },
+              "9": {
+                "paths": [
+                  "Makefile"
+                ],
+                "commands": [],
+                "dead_ends": []
+              },
+              "Zeta": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": []
+              },
+              "excalidraw": {
+                "paths": [
+                  "packages/excalidraw/vitest.config.mts"
+                ],
+                "commands": [
+                  "yarn test:app --watch=false"
+                ],
+                "dead_ends": [
+                  "jest.config.js does not exist"
+                ]
+              }
+            }
+          },
+          {
+            "source": "start",
+            "target": "find_config",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Locate config before editing",
+            "pitfalls": null,
+            "facts": {}
+          }
+        ]
+      }
+    },
+    {
+      "node_ids": [
+        "end"
+      ],
+      "hops": 1,
+      "direction": "out",
+      "at": null,
+      "result": {
+        "nodes": [
+          {
+            "id": "end",
+            "type": "end",
+            "description": "Task done",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "edges": []
+      }
+    },
+    {
+      "node_ids": [
+        "end"
+      ],
+      "hops": 1,
+      "direction": "in",
+      "at": null,
+      "result": {
+        "nodes": [
+          {
+            "id": "end",
+            "type": "end",
+            "description": "Task done",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "lint",
+            "type": "action",
+            "description": "Run linter",
+            "command_patterns": [
+              "\\b(eslint|yarn lint)\\b"
+            ],
+            "script": null
+          }
+        ],
+        "edges": [
+          {
+            "source": "lint",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ]
+      }
+    },
+    {
+      "node_ids": [
+        "think"
+      ],
+      "hops": 1,
+      "direction": "both",
+      "at": 1,
+      "result": {
+        "nodes": [
+          {
+            "id": "find_config",
+            "type": "action",
+            "description": "Find the config file",
+            "command_patterns": [
+              "\\b(rg|grep|find)\\b.*config"
+            ],
+            "script": null
+          },
+          {
+            "id": "run_tests",
+            "type": "action",
+            "description": "Run the test suite",
+            "command_patterns": [
+              "\\b(pytest|yarn test|npm test)\\b",
+              "^vitest\\s"
+            ],
+            "script": "scripts/run-tests.sh"
+          },
+          {
+            "id": "think",
+            "type": "reasoning",
+            "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "edges": [
+          {
+            "source": "find_config",
+            "target": "run_tests",
+            "relation": "triggers",
+            "condition": "Config change made",
+            "guidance": null,
+            "pitfalls": "Don't run the full suite first",
+            "facts": {
+              "-dash": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": [
+                  "ü"
+                ]
+              },
+              "10": {
+                "paths": [],
+                "commands": [
+                  "make test"
+                ],
+                "dead_ends": []
+              },
+              "9": {
+                "paths": [
+                  "Makefile"
+                ],
+                "commands": [],
+                "dead_ends": []
+              },
+              "Zeta": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": []
+              },
+              "excalidraw": {
+                "paths": [
+                  "packages/excalidraw/vitest.config.mts"
+                ],
+                "commands": [
+                  "yarn test:app --watch=false"
+                ],
+                "dead_ends": [
+                  "jest.config.js does not exist"
+                ]
+              }
+            }
+          },
+          {
+            "source": "find_config",
+            "target": "think",
+            "relation": "provides_input_for",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "think",
+            "target": "run_tests",
+            "relation": "converges_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ]
+      }
+    },
+    {
+      "node_ids": [
+        "start"
+      ],
+      "hops": 0,
+      "direction": "out",
+      "at": null,
+      "result": {
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start",
+            "description": "Task begins",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "edges": []
+      }
+    },
+    {
+      "node_ids": [
+        "run_tests"
+      ],
+      "hops": 1,
+      "direction": "out",
+      "at": "c000004",
+      "result": {
+        "nodes": [
+          {
+            "id": "end",
+            "type": "end",
+            "description": "Task done",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "run_tests",
+            "type": "action",
+            "description": "Run the test suite",
+            "command_patterns": [
+              "\\b(pytest|yarn test|npm test)\\b",
+              "^vitest\\s"
+            ],
+            "script": "scripts/run-tests.sh"
+          }
+        ],
+        "edges": [
+          {
+            "source": "run_tests",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ]
+      }
+    },
+    {
+      "node_ids": [
+        "find_config",
+        "lint"
+      ],
+      "hops": 5,
+      "direction": "both",
+      "at": 2,
+      "result": {
+        "nodes": [
+          {
+            "id": "end",
+            "type": "end",
+            "description": "Task done",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "find_config",
+            "type": "action",
+            "description": "Find the config file",
+            "command_patterns": [
+              "\\b(rg|grep|find)\\b.*config"
+            ],
+            "script": null
+          },
+          {
+            "id": "lint",
+            "type": "action",
+            "description": "Run linter",
+            "command_patterns": [
+              "\\b(eslint|yarn lint)\\b"
+            ],
+            "script": null
+          },
+          {
+            "id": "run_tests",
+            "type": "action",
+            "description": "Run the test suite",
+            "command_patterns": [
+              "\\b(pytest|yarn test|npm test)\\b",
+              "^vitest\\s"
+            ],
+            "script": "scripts/run-tests.sh"
+          },
+          {
+            "id": "start",
+            "type": "start",
+            "description": "Task begins",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "think",
+            "type": "reasoning",
+            "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "edges": [
+          {
+            "source": "find_config",
+            "target": "run_tests",
+            "relation": "triggers",
+            "condition": "Config change made",
+            "guidance": null,
+            "pitfalls": "Don't run the full suite first",
+            "facts": {
+              "-dash": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": [
+                  "ü"
+                ]
+              },
+              "10": {
+                "paths": [],
+                "commands": [
+                  "make test"
+                ],
+                "dead_ends": []
+              },
+              "9": {
+                "paths": [
+                  "Makefile"
+                ],
+                "commands": [],
+                "dead_ends": []
+              },
+              "Zeta": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": []
+              },
+              "excalidraw": {
+                "paths": [
+                  "packages/excalidraw/vitest.config.mts"
+                ],
+                "commands": [
+                  "yarn test:app --watch=false"
+                ],
+                "dead_ends": [
+                  "jest.config.js does not exist"
+                ]
+              }
+            }
+          },
+          {
+            "source": "find_config",
+            "target": "think",
+            "relation": "provides_input_for",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "lint",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "run_tests",
+            "target": "lint",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Lint after tests pass",
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "start",
+            "target": "find_config",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Locate config before editing",
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "think",
+            "target": "run_tests",
+            "relation": "converges_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ]
+      }
+    }
+  ],
+  "match_nodes": [
+    {
+      "command": "yarn test --watch=false",
+      "at": null,
+      "result": [
+        "run_tests"
+      ]
+    },
+    {
+      "command": "rg -n config packages/",
+      "at": null,
+      "result": [
+        "find_config"
+      ]
+    },
+    {
+      "command": "ls",
+      "at": null,
+      "result": []
+    },
+    {
+      "command": "vitest run",
+      "at": null,
+      "result": [
+        "run_tests"
+      ]
+    },
+    {
+      "command": "yarn lint",
+      "at": 2,
+      "result": [
+        "lint"
+      ]
+    },
+    {
+      "command": "yarn lint",
+      "at": 1,
+      "result": []
+    },
+    {
+      "command": "npm test && yarn lint",
+      "at": null,
+      "result": [
+        "lint",
+        "run_tests"
+      ]
+    }
+  ],
+  "get_nodes": [
+    {
+      "node_ids": [
+        "start",
+        "missing",
+        "end"
+      ],
+      "at": null,
+      "result": [
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "description": "Task done",
+          "command_patterns": [],
+          "script": null
+        }
+      ]
+    },
+    {
+      "node_ids": [
+        "think"
+      ],
+      "at": 1,
+      "result": [
+        {
+          "id": "think",
+          "type": "reasoning",
+          "description": "Décider quoi faire — \"quoted\" \\ back\\slash\nnew line\ttab 🚀",
+          "command_patterns": [],
+          "script": null
+        }
+      ]
+    },
+    {
+      "node_ids": [
+        "x",
+        "start"
+      ],
+      "at": "c000004",
+      "result": [
+        {
+          "id": "x",
+          "type": "state",
+          "description": "pending state",
+          "command_patterns": [],
+          "script": null
+        },
+        {
+          "id": "start",
+          "type": "start",
+          "description": "Task begins",
+          "command_patterns": [],
+          "script": null
+        }
+      ]
+    }
+  ],
+  "diffs": [
+    {
+      "from": 1,
+      "to": 2,
+      "result": {
+        "add_nodes": [
+          {
+            "id": "lint",
+            "type": "action",
+            "description": "Run linter",
+            "command_patterns": [
+              "\\b(eslint|yarn lint)\\b"
+            ],
+            "script": null
+          }
+        ],
+        "delete_nodes": [],
+        "add_edges": [
+          {
+            "source": "lint",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "run_tests",
+            "target": "lint",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Lint after tests pass",
+            "pitfalls": null,
+            "facts": {}
+          }
+        ],
+        "delete_edges": [
+          {
+            "source": "run_tests",
+            "target": "end"
+          }
+        ]
+      }
+    },
+    {
+      "from": 2,
+      "to": 1,
+      "result": {
+        "add_nodes": [],
+        "delete_nodes": [
+          "lint"
+        ],
+        "add_edges": [
+          {
+            "source": "run_tests",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          }
+        ],
+        "delete_edges": [
+          {
+            "source": "lint",
+            "target": "end"
+          },
+          {
+            "source": "run_tests",
+            "target": "lint"
+          }
+        ]
+      }
+    },
+    {
+      "from": 0,
+      "to": 3,
+      "result": {
+        "add_nodes": [
+          {
+            "id": "end",
+            "type": "end",
+            "description": "Task done",
+            "command_patterns": [],
+            "script": null
+          },
+          {
+            "id": "find_config",
+            "type": "action",
+            "description": "Find the config file",
+            "command_patterns": [
+              "\\b(rg|grep|find)\\b.*config"
+            ],
+            "script": null
+          },
+          {
+            "id": "lint",
+            "type": "action",
+            "description": "Run linter",
+            "command_patterns": [
+              "\\b(eslint|yarn lint)\\b"
+            ],
+            "script": null
+          },
+          {
+            "id": "run_tests",
+            "type": "action",
+            "description": "Run the test suite",
+            "command_patterns": [
+              "\\b(pytest|yarn test|npm test)\\b",
+              "^vitest\\s"
+            ],
+            "script": "scripts/run-tests.sh"
+          },
+          {
+            "id": "start",
+            "type": "start",
+            "description": "Task begins",
+            "command_patterns": [],
+            "script": null
+          }
+        ],
+        "delete_nodes": [],
+        "add_edges": [
+          {
+            "source": "find_config",
+            "target": "run_tests",
+            "relation": "triggers",
+            "condition": "Config change made",
+            "guidance": null,
+            "pitfalls": "Don't run the full suite first",
+            "facts": {
+              "-dash": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": [
+                  "ü"
+                ]
+              },
+              "10": {
+                "paths": [],
+                "commands": [
+                  "make test"
+                ],
+                "dead_ends": []
+              },
+              "9": {
+                "paths": [
+                  "Makefile"
+                ],
+                "commands": [],
+                "dead_ends": []
+              },
+              "Zeta": {
+                "paths": [],
+                "commands": [],
+                "dead_ends": []
+              },
+              "excalidraw": {
+                "paths": [
+                  "packages/excalidraw/vitest.config.mts"
+                ],
+                "commands": [
+                  "yarn test:app --watch=false"
+                ],
+                "dead_ends": [
+                  "jest.config.js does not exist"
+                ]
+              }
+            }
+          },
+          {
+            "source": "lint",
+            "target": "end",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": null,
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "run_tests",
+            "target": "lint",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Lint after tests pass",
+            "pitfalls": null,
+            "facts": {}
+          },
+          {
+            "source": "start",
+            "target": "find_config",
+            "relation": "leads_to",
+            "condition": null,
+            "guidance": "Locate config before editing",
+            "pitfalls": null,
+            "facts": {}
+          }
+        ],
+        "delete_edges": []
+      }
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "result": {
+        "add_nodes": [],
+        "delete_nodes": [
+          "think"
+        ],
+        "add_edges": [],
+        "delete_edges": [
+          {
+            "source": "find_config",
+            "target": "think"
+          },
+          {
+            "source": "think",
+            "target": "run_tests"
+          }
+        ]
+      }
+    },
+    {
+      "from": 3,
+      "to": 3,
+      "result": {
+        "add_nodes": [],
+        "delete_nodes": [],
+        "add_edges": [],
+        "delete_edges": []
+      }
+    }
+  ],
+  "errors": [
+    {
+      "op": "head",
+      "args": {
+        "graph_id": "missing"
+      },
+      "error": "GraphNotFound",
+      "message": "missing"
+    },
+    {
+      "op": "create_graph",
+      "args": {
+        "graph_id": "excalidraw-tasks"
+      },
+      "error": "GraphExists",
+      "message": "excalidraw-tasks"
+    },
+    {
+      "op": "create_graph",
+      "args": {
+        "graph_id": "bad id"
+      },
+      "error": "StoreError",
+      "message": "invalid graph id 'bad id'"
+    },
+    {
+      "op": "get_candidate",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "candidate_id": "c000099"
+      },
+      "error": "CandidateNotFound",
+      "message": "excalidraw-tasks/c000099"
+    },
+    {
+      "op": "get_candidate",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "candidate_id": "../graph"
+      },
+      "error": "CandidateNotFound",
+      "message": "excalidraw-tasks/../graph"
+    },
+    {
+      "op": "snapshot",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "at": 99
+      },
+      "error": "StoreError",
+      "message": "excalidraw-tasks has no version 99"
+    },
+    {
+      "op": "snapshot",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "at": "c000099"
+      },
+      "error": "CandidateNotFound",
+      "message": "excalidraw-tasks/c000099"
+    },
+    {
+      "op": "neighborhood",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "node_ids": [
+          "nope",
+          "start",
+          "gone"
+        ]
+      },
+      "error": "NodeNotFound",
+      "message": "no such node(s): nope, gone"
+    },
+    {
+      "op": "commit",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "candidate_id": "c000006"
+      },
+      "error": "Conflict",
+      "message": "candidate c000006 is based on version 2, but head is 3"
+    },
+    {
+      "op": "reject",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "candidate_id": "c000002",
+        "reason": "again"
+      },
+      "error": "Conflict",
+      "message": "candidate c000002 is already rejected"
+    },
+    {
+      "op": "propose",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "edits": {
+          "add_nodes": [],
+          "delete_nodes": [],
+          "add_edges": [],
+          "delete_edges": []
+        }
+      },
+      "error": "InvalidEdit",
+      "message": "edit set is empty"
+    },
+    {
+      "op": "propose",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "edits": {
+          "add_nodes": [],
+          "delete_nodes": [
+            "nope"
+          ],
+          "add_edges": [
+            {
+              "source": "start",
+              "target": "ghost",
+              "relation": "leads_to",
+              "condition": null,
+              "guidance": null,
+              "pitfalls": null,
+              "facts": {}
+            }
+          ],
+          "delete_edges": []
+        }
+      },
+      "error": "InvalidEdit",
+      "message": "delete_nodes: no node nope; add_edges: start -> ghost references missing node(s) ghost"
+    },
+    {
+      "op": "propose",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "edits": {
+          "add_nodes": [],
+          "delete_nodes": [
+            "start"
+          ],
+          "add_edges": [],
+          "delete_edges": []
+        },
+        "base_version": 99
+      },
+      "error": "StoreError",
+      "message": "excalidraw-tasks has no version 99"
+    },
+    {
+      "op": "diff",
+      "args": {
+        "graph_id": "excalidraw-tasks",
+        "from_version": 0,
+        "to_version": 7
+      },
+      "error": "StoreError",
+      "message": "excalidraw-tasks has no version 7"
+    }
+  ]
+}
