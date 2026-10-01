@@ -1,0 +1,1327 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..c4773e14 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  M: "KeyM",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleMinimap.tsx b/packages/excalidraw/actions/actionToggleMinimap.tsx
+new file mode 100644
+index 00000000..80a47543
+--- /dev/null
++++ b/packages/excalidraw/actions/actionToggleMinimap.tsx
+@@ -0,0 +1,27 @@
++import { CODES, KEYS } from "@excalidraw/common";
++
++import { CaptureUpdateAction } from "@excalidraw/element";
++
++import { register } from "./register";
++
++export const actionToggleMinimap = register({
++  name: "minimap",
++  label: "labels.minimap",
++  viewMode: true,
++  trackEvent: {
++    category: "canvas",
++    predicate: (appState) => !appState.minimapEnabled,
++  },
++  perform(elements, appState) {
++    return {
++      appState: {
++        ...appState,
++        minimapEnabled: !this.checked!(appState),
++      },
++      captureUpdate: CaptureUpdateAction.NEVER,
++    };
++  },
++  checked: (appState) => appState.minimapEnabled,
++  keyTest: (event) =>
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.M,
++});
+diff --git a/packages/excalidraw/actions/index.ts b/packages/excalidraw/actions/index.ts
+index 6d2321ba..36ab252d 100644
+--- a/packages/excalidraw/actions/index.ts
++++ b/packages/excalidraw/actions/index.ts
+@@ -82,6 +82,7 @@ export { actionToggleZenMode } from "./actionToggleZenMode";
+ export { actionToggleObjectsSnapMode } from "./actionToggleObjectsSnapMode";
+ export { actionToggleArrowBinding } from "./actionToggleArrowBinding";
+ export { actionToggleMidpointSnapping } from "./actionToggleMidpointSnapping";
++export { actionToggleMinimap } from "./actionToggleMinimap";
+ 
+ export { actionToggleStats } from "./actionToggleStats";
+ export { actionUnbindText, actionBindText } from "./actionBoundText";
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..1c4f7e18 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -31,6 +31,7 @@ export type ShortcutName =
+       | "gridMode"
+       | "zenMode"
+       | "objectsSnapMode"
++      | "minimap"
+       | "stats"
+       | "addToLibrary"
+       | "viewMode"
+@@ -94,6 +95,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
++  minimap: [getShortcutKey("Alt+M")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+diff --git a/packages/excalidraw/actions/types.ts b/packages/excalidraw/actions/types.ts
+index 4f7cbd37..81d23ad4 100644
+--- a/packages/excalidraw/actions/types.ts
++++ b/packages/excalidraw/actions/types.ts
+@@ -61,6 +61,7 @@ export type ActionName =
+   | "objectsSnapMode"
+   | "arrowBinding"
+   | "midpointSnapping"
++  | "minimap"
+   | "stats"
+   | "changeStrokeColor"
+   | "changeBackgroundColor"
+diff --git a/packages/excalidraw/appState.ts b/packages/excalidraw/appState.ts
+index e4017c73..6bebc22b 100644
+--- a/packages/excalidraw/appState.ts
++++ b/packages/excalidraw/appState.ts
+@@ -77,6 +77,7 @@ export const getDefaultAppState = (): Omit<
+     isBindingEnabled: true,
+     bindingPreference: "enabled",
+     isMidpointSnappingEnabled: true,
++    minimapEnabled: false,
+     showHints: true,
+     inputDevice: "auto",
+     defaultSidebarDockedPreference: false,
+@@ -226,6 +227,7 @@ const APP_STATE_STORAGE_CONF = (<
+   boxSelectionMode: { browser: true, export: false, server: false },
+   bindingPreference: { browser: true, export: false, server: false },
+   isMidpointSnappingEnabled: { browser: true, export: false, server: false },
++  minimapEnabled: { browser: true, export: false, server: false },
+   showHints: { browser: true, export: false, server: false },
+   inputDevice: { browser: true, export: false, server: false },
+   defaultSidebarDockedPreference: {
+diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
+index b4fdc3ee..aa30b419 100644
+--- a/packages/excalidraw/components/App.tsx
++++ b/packages/excalidraw/components/App.tsx
+@@ -331,6 +331,7 @@ import {
+   actionToggleObjectsSnapMode,
+   actionToggleArrowBinding,
+   actionToggleMidpointSnapping,
++  actionToggleMinimap,
+   actionToggleCropEditor,
+ } from "../actions";
+ import { actionWrapTextInContainer } from "../actions/actionBoundText";
+@@ -13849,6 +13850,7 @@ class App extends React.Component<AppProps, AppState> {
+           actionToggleZenMode,
+           actionToggleViewMode,
+           actionToggleStats,
++          actionToggleMinimap,
+         ];
+       }
+ 
+@@ -13866,6 +13868,7 @@ class App extends React.Component<AppProps, AppState> {
+         actionToggleObjectsSnapMode,
+         actionToggleArrowBinding,
+         actionToggleMidpointSnapping,
++        actionToggleMinimap,
+         actionToggleZenMode,
+         actionToggleViewMode,
+         actionToggleStats,
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..f3916597 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -307,6 +307,10 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+               label={t("labels.viewMode")}
+               shortcuts={[getShortcutKey("Alt+R")]}
+             />
++            <Shortcut
++              label={t("labels.minimap")}
++              shortcuts={[getShortcutKey("Alt+M")]}
++            />
+             {actionManager.isActionEnabled(actionToggleTheme) && (
+               <Shortcut
+                 label={t("labels.toggleTheme")}
+diff --git a/packages/excalidraw/components/main-menu/DefaultItems.tsx b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+index 3b29b6cc..9e7597e1 100644
+--- a/packages/excalidraw/components/main-menu/DefaultItems.tsx
++++ b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+@@ -12,6 +12,7 @@ import {
+   actionToggleArrowBinding,
+   actionToggleGridMode,
+   actionToggleMidpointSnapping,
++  actionToggleMinimap,
+   actionToggleObjectsSnapMode,
+   actionToggleSearchMenu,
+   actionToggleStats,
+@@ -563,6 +564,23 @@ const PreferencesToggleMidpointSnappingItem = () => {
+   );
+ };
+ 
++const PreferencesToggleMinimapItem = () => {
++  const { t } = useI18n();
++  const actionManager = useExcalidrawActionManager();
++  const appState = useUIAppState();
++  return (
++    <DropdownMenuItemCheckbox
++      checked={appState.minimapEnabled}
++      onSelect={(event) => {
++        actionManager.executeAction(actionToggleMinimap);
++        event.preventDefault();
++      }}
++    >
++      {t("labels.minimap")}
++    </DropdownMenuItemCheckbox>
++  );
++};
++
+ const PreferencesToggleShowHintsItem = () => {
+   const { t } = useI18n();
+   const appState = useUIAppState();
+@@ -682,6 +700,7 @@ export const Preferences = ({
+             <PreferencesToggleElementPropertiesItem />
+             <PreferencesToggleArrowBindingItem />
+             <PreferencesToggleMidpointSnappingItem />
++            <PreferencesToggleMinimapItem />
+             <PreferencesToggleShowHintsItem />
+           </>
+         )}
+@@ -697,6 +716,7 @@ Preferences.InputDevice = PreferencesInputDeviceItem;
+ Preferences.ToggleSnapMode = PreferencesToggleSnapModeItem;
+ Preferences.ToggleArrowBinding = PreferencesToggleArrowBindingItem;
+ Preferences.ToggleMidpointSnapping = PreferencesToggleMidpointSnappingItem;
++Preferences.ToggleMinimap = PreferencesToggleMinimapItem;
+ Preferences.ToggleShowHints = PreferencesToggleShowHintsItem;
+ Preferences.ToggleGridMode = PreferencesToggleGridModeItem;
+ Preferences.ToggleZenMode = PreferencesToggleZenModeItem;
+diff --git a/packages/excalidraw/locales/en.json b/packages/excalidraw/locales/en.json
+index 5ba1912e..5a9cc2d9 100644
+--- a/packages/excalidraw/locales/en.json
++++ b/packages/excalidraw/locales/en.json
+@@ -197,6 +197,7 @@
+     "boxSelectionOverlap": "Overlap",
+     "arrowBinding": "Arrow binding",
+     "midpointSnapping": "Snap to midpoints",
++    "minimap": "Minimap",
+     "showHints": "Show hints",
+     "inputDevice": "Input",
+     "inputDeviceTrackpad": "Trackpad",
+diff --git a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
+index 1321699b..969ad1ef 100644
+--- a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
+@@ -950,6 +950,7 @@ exports[`contextMenu element > right-clicking on a group should select whole gro
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -1164,6 +1165,7 @@ exports[`contextMenu element > selecting 'Add to library' in context menu adds e
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -1393,6 +1395,7 @@ exports[`contextMenu element > selecting 'Bring forward' in context menu brings
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -1741,6 +1744,7 @@ exports[`contextMenu element > selecting 'Bring to front' in context menu brings
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2089,6 +2093,7 @@ exports[`contextMenu element > selecting 'Copy styles' in context menu copies st
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2318,6 +2323,7 @@ exports[`contextMenu element > selecting 'Delete' in context menu deletes elemen
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2574,6 +2580,7 @@ exports[`contextMenu element > selecting 'Duplicate' in context menu duplicates
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2889,6 +2896,7 @@ exports[`contextMenu element > selecting 'Group selection' in context menu group
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -3278,6 +3286,7 @@ exports[`contextMenu element > selecting 'Paste styles' in context menu pastes s
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -3815,6 +3824,7 @@ exports[`contextMenu element > selecting 'Send backward' in context menu sends e
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -4155,6 +4165,7 @@ exports[`contextMenu element > selecting 'Send to back' in context menu sends el
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -4495,6 +4506,7 @@ exports[`contextMenu element > selecting 'Ungroup selection' in context menu ung
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -5797,6 +5809,7 @@ exports[`contextMenu element > shows 'Group selection' in context menu for multi
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -7031,6 +7044,7 @@ exports[`contextMenu element > shows 'Ungroup selection' in context menu for gro
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -7784,6 +7798,18 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+         },
+         "viewMode": false,
+       },
++      {
++        "checked": [Function],
++        "keyTest": [Function],
++        "label": "labels.minimap",
++        "name": "minimap",
++        "perform": [Function],
++        "trackEvent": {
++          "category": "canvas",
++          "predicate": [Function],
++        },
++        "viewMode": true,
++      },
+       {
+         "checked": [Function],
+         "icon": <svg
+@@ -8005,6 +8031,7 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -9018,6 +9045,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -10022,6 +10050,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+diff --git a/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
+index 9d628d37..eca720e7 100644
+--- a/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
+@@ -76,6 +76,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -729,6 +730,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -1309,6 +1311,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -1687,6 +1690,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -2066,6 +2070,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -2346,6 +2351,7 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -2818,6 +2824,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -3142,6 +3149,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -3484,6 +3492,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -3798,6 +3807,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -4102,6 +4112,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -4354,6 +4365,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -4629,6 +4641,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -4920,6 +4933,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -5166,6 +5180,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -5412,6 +5427,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -5677,6 +5693,7 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -5953,6 +5970,7 @@ exports[`history > multiplayer undo/redo > conflicts in frames and their childre
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -6227,6 +6245,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -6573,6 +6592,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -7019,6 +7039,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -7412,6 +7433,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -7741,6 +7763,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -8048,6 +8071,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -8293,6 +8317,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -8664,6 +8689,7 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -9035,6 +9061,7 @@ exports[`history > multiplayer undo/redo > should not let remote changes to inte
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -9459,6 +9486,7 @@ exports[`history > multiplayer undo/redo > should not let remote changes to inte
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -9762,6 +9790,7 @@ exports[`history > multiplayer undo/redo > should not let remote changes to inte
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -10042,6 +10071,7 @@ exports[`history > multiplayer undo/redo > should not override remote changes on
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -10323,6 +10353,7 @@ exports[`history > multiplayer undo/redo > should not override remote changes on
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -10570,6 +10601,7 @@ exports[`history > multiplayer undo/redo > should override remotely added groups
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -10884,6 +10916,7 @@ exports[`history > multiplayer undo/redo > should override remotely added points
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -11216,6 +11249,7 @@ exports[`history > multiplayer undo/redo > should redistribute deltas when eleme
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -11467,6 +11501,7 @@ exports[`history > multiplayer undo/redo > should redraw arrows on undo > [end o
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -12411,6 +12446,7 @@ exports[`history > multiplayer undo/redo > should update history entries after r
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -12686,6 +12722,7 @@ exports[`history > singleplayer undo/redo > remounting undo/redo buttons should
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -12937,6 +12974,7 @@ exports[`history > singleplayer undo/redo > should clear the redo stack on eleme
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -13190,6 +13228,7 @@ exports[`history > singleplayer undo/redo > should create entry when selecting f
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -13611,6 +13650,7 @@ exports[`history > singleplayer undo/redo > should create new history entry on e
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -13836,6 +13876,7 @@ exports[`history > singleplayer undo/redo > should create new history entry on e
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -14058,6 +14099,7 @@ exports[`history > singleplayer undo/redo > should create new history entry on i
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -14376,6 +14418,7 @@ exports[`history > singleplayer undo/redo > should create new history entry on i
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -14691,6 +14734,7 @@ exports[`history > singleplayer undo/redo > should create new history entry on s
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -14956,6 +15000,7 @@ exports[`history > singleplayer undo/redo > should disable undo/redo buttons whe
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -15209,6 +15254,7 @@ exports[`history > singleplayer undo/redo > should end up with no history entry
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -15462,6 +15508,7 @@ exports[`history > singleplayer undo/redo > should iterate through the history w
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -15724,6 +15771,7 @@ exports[`history > singleplayer undo/redo > should not clear the redo stack on s
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -16072,6 +16120,7 @@ exports[`history > singleplayer undo/redo > should not collapse when applying co
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -16256,6 +16305,7 @@ exports[`history > singleplayer undo/redo > should not end up with history entry
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -16557,6 +16607,7 @@ exports[`history > singleplayer undo/redo > should not end up with history entry
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -16837,6 +16888,7 @@ exports[`history > singleplayer undo/redo > should not modify anything on unrela
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -17004,6 +17056,7 @@ exports[`history > singleplayer undo/redo > should not override appstate changes
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -17301,6 +17354,7 @@ exports[`history > singleplayer undo/redo > should support appstate name or view
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -17476,6 +17530,7 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -18249,6 +18304,7 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -18920,6 +18976,7 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -19591,6 +19648,7 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -20365,6 +20423,7 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -21158,6 +21217,7 @@ exports[`history > singleplayer undo/redo > should support changes in elements'
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -21657,6 +21717,7 @@ exports[`history > singleplayer undo/redo > should support duplication of groups
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -22191,6 +22252,7 @@ exports[`history > singleplayer undo/redo > should support element creation, del
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+@@ -22669,6 +22731,7 @@ exports[`history > singleplayer undo/redo > should support linear element creati
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "newElement": null,
+   "objectsSnapModeEnabled": false,
+diff --git a/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
+index b6d7b5ca..967509c6 100644
+--- a/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
+@@ -76,6 +76,7 @@ exports[`given element A and group of elements B and given both are selected whe
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -518,6 +519,7 @@ exports[`given element A and group of elements B and given both are selected whe
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -950,6 +952,7 @@ exports[`regression tests > Cmd/Ctrl-click exclusively select element under poin
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -1532,6 +1535,7 @@ exports[`regression tests > Drags selected element when hitting only bounding bo
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -1753,6 +1757,7 @@ exports[`regression tests > adjusts z order when grouping > [end of test] appSta
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2153,6 +2158,7 @@ exports[`regression tests > alt-drag duplicates an element > [end of test] appSt
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2413,6 +2419,7 @@ exports[`regression tests > arrow keys > [end of test] appState 1`] = `
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2607,6 +2614,7 @@ exports[`regression tests > can drag element that covers another element, while
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -2948,6 +2956,7 @@ exports[`regression tests > change the properties of a shape > [end of test] app
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -3217,6 +3226,7 @@ exports[`regression tests > click on an element and drag it > [dragged] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -3473,6 +3483,7 @@ exports[`regression tests > click on an element and drag it > [end of test] appS
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -3723,6 +3734,7 @@ exports[`regression tests > click to select a shape > [end of test] appState 1`]
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -3996,6 +4008,7 @@ exports[`regression tests > click-drag to select a group > [end of test] appStat
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -4326,6 +4339,7 @@ exports[`regression tests > deleting last but one element in editing group shoul
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -4777,6 +4791,7 @@ exports[`regression tests > deselects group of selected elements on pointer down
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -5076,6 +5091,7 @@ exports[`regression tests > deselects group of selected elements on pointer up w
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -5367,6 +5383,7 @@ exports[`regression tests > deselects selected element on pointer down when poin
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -5590,6 +5607,7 @@ exports[`regression tests > deselects selected element, on pointer up, when clic
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -5804,6 +5822,7 @@ exports[`regression tests > double click to edit a group > [end of test] appStat
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -6213,6 +6232,7 @@ exports[`regression tests > drags selected elements from point inside common bou
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -6525,6 +6545,7 @@ exports[`regression tests > draw every type of shape > [end of test] appState 1`
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -7338,6 +7359,7 @@ exports[`regression tests > given a group of selected elements with an element t
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -7688,6 +7710,7 @@ exports[`regression tests > given a selected element A and a not selected elemen
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -7982,6 +8005,7 @@ exports[`regression tests > given selected element A with lower z-index than uns
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -8232,6 +8256,7 @@ exports[`regression tests > given selected element A with lower z-index than uns
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -8487,6 +8512,7 @@ exports[`regression tests > key 2 selects rectangle tool > [end of test] appStat
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -8681,6 +8707,7 @@ exports[`regression tests > key 3 selects diamond tool > [end of test] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -8875,6 +8902,7 @@ exports[`regression tests > key 4 selects ellipse tool > [end of test] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -9069,6 +9097,7 @@ exports[`regression tests > key 5 selects arrow tool > [end of test] appState 1`
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -9316,6 +9345,7 @@ exports[`regression tests > key 6 selects line tool > [end of test] appState 1`]
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -9561,6 +9591,7 @@ exports[`regression tests > key 7 selects freedraw tool > [end of test] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -9771,6 +9802,7 @@ exports[`regression tests > key a selects arrow tool > [end of test] appState 1`
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -10018,6 +10050,7 @@ exports[`regression tests > key d selects diamond tool > [end of test] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -10212,6 +10245,7 @@ exports[`regression tests > key l selects line tool > [end of test] appState 1`]
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -10457,6 +10491,7 @@ exports[`regression tests > key o selects ellipse tool > [end of test] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -10651,6 +10686,7 @@ exports[`regression tests > key p selects freedraw tool > [end of test] appState
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -10861,6 +10897,7 @@ exports[`regression tests > key r selects rectangle tool > [end of test] appStat
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -11055,6 +11092,7 @@ exports[`regression tests > make a group and duplicate it > [end of test] appSta
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -11605,6 +11643,7 @@ exports[`regression tests > noop interaction after undo shouldn't create history
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -11900,6 +11939,7 @@ exports[`regression tests > pinch-to-zoom works > [end of test] appState 1`] = `
+   "isRotating": false,
+   "lastPointerDownWith": "touch",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -12036,6 +12076,7 @@ exports[`regression tests > shift click on selected element should deselect it o
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -12250,6 +12291,7 @@ exports[`regression tests > shift-click to multiselect, then drag > [end of test
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -12584,6 +12626,7 @@ exports[`regression tests > should group elements and ungroup them > [end of tes
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -13029,6 +13072,7 @@ exports[`regression tests > single-clicking on a subgroup of a selected group sh
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -13686,6 +13730,7 @@ exports[`regression tests > spacebar + drag scrolls the canvas > [end of test] a
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -13825,6 +13870,7 @@ exports[`regression tests > supports nested groups > [end of test] appState 1`]
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -14472,6 +14518,7 @@ exports[`regression tests > switches from group of selected elements to another
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -14828,6 +14875,7 @@ exports[`regression tests > switches selected element on pointer down > [end of
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -15108,6 +15156,7 @@ exports[`regression tests > two-finger scroll works > [end of test] appState 1`]
+   "isRotating": false,
+   "lastPointerDownWith": "touch",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -15244,6 +15293,7 @@ exports[`regression tests > undo/redo drawing an element > [end of test] appStat
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -15624,6 +15674,7 @@ exports[`regression tests > updates fontSize & fontFamily appState > [end of tes
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+@@ -15760,6 +15811,7 @@ exports[`regression tests > zoom hotkeys > [end of test] appState 1`] = `
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "Untitled-201933152653",
+   "newElement": null,
+diff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts
+index 3a37d94e..972b3e1c 100644
+--- a/packages/excalidraw/types.ts
++++ b/packages/excalidraw/types.ts
+@@ -367,6 +367,7 @@ export interface AppState {
+   bindingPreference: "enabled" | "disabled";
+   /** user preference whether arrow snap to midpoints while binding */
+   isMidpointSnappingEnabled: boolean;
++  minimapEnabled: boolean;
+   /** user preference whether to show contextual hints above the toolbar */
+   showHints: boolean;
+   /**
+diff --git a/packages/utils/tests/__snapshots__/export.test.ts.snap b/packages/utils/tests/__snapshots__/export.test.ts.snap
+index 618ac57a..34a0aeea 100644
+--- a/packages/utils/tests/__snapshots__/export.test.ts.snap
++++ b/packages/utils/tests/__snapshots__/export.test.ts.snap
+@@ -76,6 +76,7 @@ exports[`exportToSvg > with default arguments 1`] = `
+   "isRotating": false,
+   "lastPointerDownWith": "mouse",
+   "lockedMultiSelections": {},
++  "minimapEnabled": false,
+   "multiElement": null,
+   "name": "name",
+   "newElement": null,

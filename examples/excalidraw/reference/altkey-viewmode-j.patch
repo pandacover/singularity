@@ -1,0 +1,49 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..b65539a2 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  J: "KeyJ",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleViewMode.tsx b/packages/excalidraw/actions/actionToggleViewMode.tsx
+index 1cfbdc55..2949776c 100644
+--- a/packages/excalidraw/actions/actionToggleViewMode.tsx
++++ b/packages/excalidraw/actions/actionToggleViewMode.tsx
+@@ -32,5 +32,5 @@ export const actionToggleViewMode = register({
+     );
+   },
+   keyTest: (event) =>
+-    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.R,
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.J,
+ });
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..5f6d1533 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -98,7 +98,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+   flipVertical: [getShortcutKey("Shift+V")],
+-  viewMode: [getShortcutKey("Alt+R")],
++  viewMode: [getShortcutKey("Alt+J")],
+   hyperlink: [getShortcutKey("CtrlOrCmd+K")],
+   toggleElementLock: [getShortcutKey("CtrlOrCmd+Shift+L")],
+   resetZoom: [getShortcutKey("CtrlOrCmd+0")],
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..ca833d6a 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -305,7 +305,7 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+             />
+             <Shortcut
+               label={t("labels.viewMode")}
+-              shortcuts={[getShortcutKey("Alt+R")]}
++              shortcuts={[getShortcutKey("Alt+J")]}
+             />
+             {actionManager.isActionEnabled(actionToggleTheme) && (
+               <Shortcut
