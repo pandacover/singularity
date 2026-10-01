@@ -1,7 +1,9 @@
 """Evaluate memory setups on a task suite.
 
     python -m singularity.eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
-    python -m singularity.eval report RESULTS [RESULTS ...]
+    python -m singularity.eval run SUITE.toml --setup saved-scripts --memory DIR [--frozen]
+    python -m singularity.eval learn SUITE.toml RESULTS [RESULTS ...] --setup saved-scripts --memory DIR [--task ID ...]
+    python -m singularity.eval report RESULTS [RESULTS ...] [--compare]
 """
 
 from __future__ import annotations
@@ -12,9 +14,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .agent import build_command, default_claude
-from .report import load_records, summarize
+from .learn import learn
+from .report import compare, load_records, summarize
 from .runner import Record, default_workspaces, run_suite
-from .setups import SETUPS
+from .setups import SETUPS, make_setup
 from .suite import SuiteError, load_suite
 from .workspace import Workspace, WorkspaceError
 
@@ -25,7 +28,9 @@ def main(argv: list[str] | None = None) -> int:
 
     run = sub.add_parser("run", help="run a suite")
     run.add_argument("suite", type=Path)
-    run.add_argument("--setup", default="no-memory", choices=sorted(SETUPS))
+    run.add_argument("--setup", default="no-memory", choices=SETUPS)
+    run.add_argument("--memory", type=Path, help="memory store for setups that learn (e.g. saved-scripts)")
+    run.add_argument("--frozen", action="store_true", help="read memory but don't add to it (for measurement runs)")
     run.add_argument("--reps", type=int, default=1, help="runs per task (default 1)")
     run.add_argument("--task", action="append", dest="tasks", metavar="ID", help="only this task (repeatable)")
     run.add_argument("--out", type=Path, help="output dir (default runs/<suite>/<time>-<setup>)")
@@ -33,26 +38,43 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--claude", help="path to the claude executable (default: from PATH)")
     run.add_argument("--dry-run", action="store_true", help="resolve tasks and print the agent command without running")
 
+    lrn = sub.add_parser("learn", help="feed finished runs into a memory setup")
+    lrn.add_argument("suite", type=Path)
+    lrn.add_argument("results", type=Path, nargs="+", help="results.jsonl files or run output dirs")
+    lrn.add_argument("--setup", required=True, choices=[s for s in SETUPS if s != "no-memory"])
+    lrn.add_argument("--memory", type=Path, required=True, help="memory store to add to")
+    lrn.add_argument("--task", action="append", dest="tasks", metavar="ID", help="only runs of this task (repeatable)")
+
     rep = sub.add_parser("report", help="summarize results")
     rep.add_argument("results", type=Path, nargs="+", help="results.jsonl files or run output dirs")
+    rep.add_argument("--compare", action="store_true", help="each memory setup against no-memory, split into exact repeats and similar tasks")
 
     args = ap.parse_args(argv)
     try:
-        return _run(args) if args.cmd == "run" else _report(args)
-    except (SuiteError, WorkspaceError, FileNotFoundError) as e:
+        return {"run": _run, "learn": _learn, "report": _report}[args.cmd](args)
+    except (SuiteError, WorkspaceError, FileNotFoundError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
 
 def _report(args: argparse.Namespace) -> int:
-    print(summarize(load_records(args.results)))
+    records = load_records(args.results)
+    print(compare(records) if args.compare else summarize(records))
+    return 0
+
+
+def _learn(args: argparse.Namespace) -> int:
+    suite = load_suite(args.suite)
+    setup = make_setup(args.setup, args.memory)
+    n = learn(setup, suite, args.results, args.tasks)
+    print(f"fed {n} runs into {args.setup} memory at {args.memory}")
     return 0
 
 
 def _run(args: argparse.Namespace) -> int:
     suite = load_suite(args.suite)
     claude = [args.claude] if args.claude else default_claude()
-    setup = SETUPS[args.setup]()
+    setup = make_setup(args.setup, args.memory, args.frozen)
 
     if args.dry_run:
         ws = Workspace(suite.repo, args.workspaces / suite.name, suite.keep)

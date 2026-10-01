@@ -211,3 +211,25 @@ def test_summarize_groups_and_totals():
     assert lines[2].startswith("| a     | x       | 2    | 1/2     | 0.20 (0.10-0.30)")
     assert "1 timeout" in lines[2]
     assert any(line.startswith("| a     | **all**") and "2/3" in line for line in lines)
+
+
+def test_compare_splits_repeats_and_similar_tasks():
+    from singularity.eval import compare
+
+    def rec(setup, task, calls, retrieved=None):
+        injection = {"retrieved": {"task_id": retrieved}} if retrieved else {}
+        return {"setup": setup, "task_id": task, "success": True, "cost_usd": calls / 100,
+                "tokens": {"total": calls * 1000}, "wall_time_s": calls, "trace": {"tool_calls": calls},
+                "injection": injection, "status": "completed"}
+
+    records = [rec("no-memory", "a", 40), rec("no-memory", "a", 50), rec("no-memory", "b", 40),
+               rec("saved", "a", 10, retrieved="a"), rec("saved", "b", 30, retrieved="a")]
+    out = compare(records)
+    rows = {tuple(c.strip() for c in line.split("|")[1:4]) for line in out.splitlines() if line.startswith("| saved")}
+    assert ("saved", "a", "exact repeat") in rows and ("saved", "b", "similar task") in rows
+    assert "45 -> 10 (-78%)" in out  # median 45 against 10
+    assert "40 -> 30 (-25%)" in out
+    assert "**exact repeat**" in out and "**similar task**" in out
+    assert "| -78% " in out.replace("  ", " ")  # one task per group: its own change
+    with pytest.raises(ValueError):
+        compare(records[:3])

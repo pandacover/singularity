@@ -51,4 +51,17 @@ class NoMemory(MemorySetup):
         return Injection()
 
 
-SETUPS: dict[str, type[MemorySetup]] = {NoMemory.name: NoMemory}
+def make_setup(name: str, memory_dir: Path | None = None, frozen: bool = False) -> MemorySetup:
+    """Build a setup by name. Setups that learn need `memory_dir`."""
+    if name == NoMemory.name:
+        return NoMemory()
+    if name == "saved-scripts":
+        from .saved_scripts import SavedScripts
+
+        if memory_dir is None:
+            raise ValueError("saved-scripts needs a memory directory (--memory)")
+        return SavedScripts(memory_dir, frozen=frozen)
+    raise ValueError(f"unknown setup {name!r}")
+
+
+SETUPS = ["no-memory", "saved-scripts"]
