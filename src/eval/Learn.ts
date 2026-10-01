@@ -51,9 +51,13 @@ export const learnFrom = Effect.fn("learnFrom")(function*(
   setup: MemorySetup,
   suite: Suite,
   results: ReadonlyArray<string>,
-  taskIds?: ReadonlyArray<string>
+  taskIds?: ReadonlyArray<string>,
+  onLearned?: (outcome: Outcome, done: number, total: number) => Effect.Effect<void>
 ) {
   const outcomes = yield* recordedOutcomes(suite, results, taskIds)
-  for (const outcome of outcomes) yield* setup.afterRun(outcome)
+  for (const [i, outcome] of outcomes.entries()) {
+    yield* setup.afterRun(outcome)
+    if (onLearned) yield* onLearned(outcome, i + 1, outcomes.length)
+  }
   return outcomes.length
 })

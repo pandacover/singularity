@@ -1,9 +1,29 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-01, end of the third session. Start here, then see
+Last updated 2026-10-02, in the fourth session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
 
-## Status
+## Status (fourth session)
+
+- **Branch `graph-setup`** (from `ts-effect-port`, which was merged into
+  `main` as PR #2 on 2026-10-01), with a PR against `main`.
+  - `2e74208` pre-registers three new task kinds and the win thresholds
+    (`examples/excalidraw/PREREGISTRATION.md`), committed before any graph
+    existed. The user had reread the claim and said to move on to the graph.
+  - The next commit adds the graph setup's code (below), the
+    pre-registration's amendments, the measurement script and docs, freezing
+    the design before any measurement run.
+  - `npm test`: 72 passed. `npm run typecheck`: clean.
+- **The graph is built:** `runs/excalidraw/memory/graph`, version 6, 13 steps
+  and 22 transitions, learned from the 6 seed runs for $0.53. Inspect it with
+  `node src/cli.ts graph show runs/excalidraw/memory/graph`.
+- **Next: the measurement** (77 runs, about $15 and 5 hours), waiting for the
+  user's go-ahead after seeing the graph. Run it with
+  `bash examples/excalidraw/run-graph-measurement.sh new 0 4`, then
+  `... existing 0 2`. Then compare with `report --compare` (against
+  no-memory) and `report --compare --baseline saved-scripts`.
+
+## Status (end of the third session)
 
 - PR #1 (`procedural-memory`, the Python version up to `53dacd2`) was merged
   into `main` on 2026-10-01 (merge commit `7244ca8`). The TypeScript port is
@@ -17,8 +37,8 @@ README.md for commands and CLAUDE.md for how the code is written.
   - `cff66e7`: saved-scripts setup, `learn`, `report --compare`.
   - `53dacd2`: vitest worker cap and below-normal priority for eval runs.
   - Branch `ts-effect-port` (from `53dacd2`): the port to TypeScript +
-    Effect 4 (below), which removes the Python code. `main` holds the Python
-    version until this branch is merged.
+    Effect 4 (below), which removes the Python code. Merged into `main` as
+    PR #2 (merge commit `4954db1`).
 - **The codebase is now TypeScript 7 + Effect 4.0**, run directly by Node 24.
   `npm test`: 59 passed. `npm run typecheck`: clean.
   - The port was checked against the Python version before Python was
@@ -141,6 +161,20 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
   - One graph per repo for now.
   - The refiner loop comes after the first static-graph measurement.
   - 5 runs per new task is fine (about $15–20 for the measurement).
+  - The claim and thresholds: the user reread them and moved on (2026-10-02);
+    they're fixed in `examples/excalidraw/PREREGISTRATION.md`.
+- **Graph setup, decided in the fourth session (by Claude, from the existing
+  tasks only, before any measurement):**
+  - Learner: Sonnet at high effort, one recorded run per call, through
+    `claude -p --json-schema` with no tools and our own system prompt. About
+    $0.05–0.12 per run.
+  - Retrieval: word overlap finds entry steps; Sonnet with thinking off
+    decides which nearby steps apply, reading their conditions (about $0.01
+    per run, added to the run's cost and tokens). Word overlap alone gave the
+    alt-shortcut tasks the toggle-setting steps too. Haiku was cheaper but
+    dropped needed steps, or thought for 8k tokens with thinking on.
+  - The zen-only graph for the partial-overlap test is version 3 of the same
+    store (after the zen runs, before minimap), not a separate build.
 
 ## What's built
 
@@ -181,6 +215,45 @@ Run things with `node src/cli.ts ...` (see README.md).
   - The paper's check that every node can reach an END node.
   - Edges are keyed by (source, target), so a pair of nodes can have only one
     edge.
+
+### Graph setup: `src/eval/Graph*.ts`, `src/eval/StepSelector.ts`
+
+- **`GraphLearner.ts`:** turns one recorded run into graph edits. Claude sees
+  the current graph (this repo's facts only), the task, the outcome, the
+  source diff and a condensed transcript (`src/traces/Condense.ts`), and
+  answers in the paper's edit format plus a rationale. Edits go through
+  `propose` and `commit`; if the store refuses them, Claude gets the errors and
+  one retry. General advice goes in condition/guidance/pitfalls, file paths
+  and commands in per-repo `facts`.
+- **`GraphMemory.ts`:** the `graph` setup.
+  - `beforeRun`: `searchNodes` (word overlap; start and end don't count) finds
+    up to 6 entry steps; the candidates are everything within 2 steps of them
+    and of the start, in either direction; `StepSelector` picks the steps that
+    apply; the agent gets them as a numbered checklist in graph order.
+  - A step shows the advice on edges from chosen steps into it, and its
+    conditions only if every such edge has one.
+  - If the selector call fails, every candidate is handed over and the error
+    is recorded.
+  - `afterRun` learns unless frozen. It logs each call to `learn-log.jsonl`
+    and saves each prompt in `learn-prompts/`.
+  - Records carry `injection.sources` (tasks learned from) and
+    `injection.nodes` (steps handed over), which `report --compare` uses to
+    tell exact repeats from similar tasks.
+- **`Llm.ts`:** one-shot structured calls through `claude -p --json-schema`.
+  The JSON Schema comes from the Effect schema that decodes the answer.
+  Thinking can be turned off with
+  `--settings '{"alwaysThinkingEnabled":false}'`.
+- **`Injection.spent`:** what preparing memory cost. The runner adds it to
+  the run's `cost_usd` and `tokens` and records it as `memory_spent`.
+- **Store:** `GraphStore.searchNodes(text)` ranks nodes by description (a
+  database would use a full-text index). Word similarity moved to
+  `src/graph/Similarity.ts`.
+- **CLI:** `eval inject` shows what a setup hands over for each task without
+  running it; `graph show` prints a graph; `report --compare --baseline X`;
+  `eval run --first-rep N` adds passes to an existing output dir;
+  `--graph-version N` reads an earlier graph version.
+- **`saved-scripts-top2`:** up to the two best saved runs, each above 0.35.
+  Its notes differ from top-1's only for `midpoint-snap-n`.
 
 ### Session-log parser: `src/traces/`
 
@@ -410,8 +483,11 @@ These come from inspecting real session logs and the CLI binary
 
 ## Next steps
 
-1. **The graph setup.**
-   - **The claim to test (proposed; the user is rereading it).**
+0. **Run the measurement** (see Status) once the user agrees, then report
+   every task against the pre-registered thresholds, including losses.
+1. **The graph setup** (the plan as of the third session; done except the
+   measurement).
+   - **The claim to test (the user reread it and moved on).**
      - Saved-scripts remembers whole tasks; the graph remembers steps.
      - On exact repeats and close variants a saved diff is near optimal. So
        the graph must win where tasks reuse *parts* of past work, or where
@@ -451,8 +527,7 @@ These come from inspecting real session logs and the CLI binary
 
 ## Open questions for the user
 
-- Whether they agree with the revised claim and thresholds above. They're
-  rereading the explanation.
+- Go-ahead for the measurement runs.
 - Whether to add a curated mid-size repo alongside excalidraw later.
 
 ## Working notes

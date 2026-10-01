@@ -82,3 +82,26 @@ single 4,000-character script, and wall time was inflated by other load.
 
 Medians come with their min–max range. A win where the graph's median falls
 inside the other setup's range is reported as within run-to-run noise.
+
+## Amendments before measurement
+
+Made after the graph was built and before any measurement run, from what it
+gave the six existing tasks only. The tasks, runs and thresholds above are
+unchanged.
+
+- **The graph (2026-10-02).** Built from the 6 seed runs as planned: 13 steps,
+  22 transitions, $0.53 for 6 Sonnet calls (`runs/excalidraw/memory/graph`,
+  version 6). The zen-only graph is the same store at version 3, the state
+  after the three zen runs and before any minimap run, read with
+  `--graph-version 3`.
+- **Step selection.** Word overlap alone handed the alt-shortcut tasks the
+  toggle-setting steps as well: they sit downstream of the shortcut steps, and
+  overlap can't read a step's condition ("when the toggle needs a keyboard
+  shortcut"). So Sonnet, with thinking off, now reads the task and the
+  candidate steps with their conditions and decides for each whether it
+  applies. That costs about $0.005–0.013 per run, and the run's cost and
+  tokens include it (`memory_spent` in the record). Haiku was tried first and
+  rejected: with thinking on it spent about 8k tokens per answer, and with
+  thinking off it dropped a needed step in 1 of 2 tries.
+- **Rendering.** A step shows the advice on the edges from the chosen steps
+  into it, and its conditions only when every such edge has one.
