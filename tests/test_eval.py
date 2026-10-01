@@ -168,6 +168,7 @@ def test_run_suite_end_to_end(tmp_path, repo, monkeypatch):
     assert r["trace"]["tool_calls"] == 1 and r["trace"]["usage"]["total"] == 2 * 175
     assert r["models"] == ["claude-fake"]
     assert r["agent"]["num_turns"] == 2 and r["diff_lines"] == 1
+    assert r["files_changed"] == ["answer.txt"]
 
     run_dir = out / "runs" / r["run_id"]
     assert (run_dir / "transcript" / f"{r['session_id']}.jsonl").is_file()

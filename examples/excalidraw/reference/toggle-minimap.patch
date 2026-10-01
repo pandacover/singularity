@@ -1,25 +1,221 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..c4773e14 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  M: "KeyM",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleMinimap.tsx b/packages/excalidraw/actions/actionToggleMinimap.tsx
+new file mode 100644
+index 00000000..80a47543
+--- /dev/null
++++ b/packages/excalidraw/actions/actionToggleMinimap.tsx
+@@ -0,0 +1,27 @@
++import { CODES, KEYS } from "@excalidraw/common";
++
++import { CaptureUpdateAction } from "@excalidraw/element";
++
++import { register } from "./register";
++
++export const actionToggleMinimap = register({
++  name: "minimap",
++  label: "labels.minimap",
++  viewMode: true,
++  trackEvent: {
++    category: "canvas",
++    predicate: (appState) => !appState.minimapEnabled,
++  },
++  perform(elements, appState) {
++    return {
++      appState: {
++        ...appState,
++        minimapEnabled: !this.checked!(appState),
++      },
++      captureUpdate: CaptureUpdateAction.NEVER,
++    };
++  },
++  checked: (appState) => appState.minimapEnabled,
++  keyTest: (event) =>
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.M,
++});
+diff --git a/packages/excalidraw/actions/index.ts b/packages/excalidraw/actions/index.ts
+index 6d2321ba..36ab252d 100644
+--- a/packages/excalidraw/actions/index.ts
++++ b/packages/excalidraw/actions/index.ts
+@@ -82,6 +82,7 @@ export { actionToggleZenMode } from "./actionToggleZenMode";
+ export { actionToggleObjectsSnapMode } from "./actionToggleObjectsSnapMode";
+ export { actionToggleArrowBinding } from "./actionToggleArrowBinding";
+ export { actionToggleMidpointSnapping } from "./actionToggleMidpointSnapping";
++export { actionToggleMinimap } from "./actionToggleMinimap";
+ 
+ export { actionToggleStats } from "./actionToggleStats";
+ export { actionUnbindText, actionBindText } from "./actionBoundText";
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..1c4f7e18 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -31,6 +31,7 @@ export type ShortcutName =
+       | "gridMode"
+       | "zenMode"
+       | "objectsSnapMode"
++      | "minimap"
+       | "stats"
+       | "addToLibrary"
+       | "viewMode"
+@@ -94,6 +95,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
++  minimap: [getShortcutKey("Alt+M")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+diff --git a/packages/excalidraw/actions/types.ts b/packages/excalidraw/actions/types.ts
+index 4f7cbd37..81d23ad4 100644
+--- a/packages/excalidraw/actions/types.ts
++++ b/packages/excalidraw/actions/types.ts
+@@ -61,6 +61,7 @@ export type ActionName =
+   | "objectsSnapMode"
+   | "arrowBinding"
+   | "midpointSnapping"
++  | "minimap"
+   | "stats"
+   | "changeStrokeColor"
+   | "changeBackgroundColor"
 diff --git a/packages/excalidraw/appState.ts b/packages/excalidraw/appState.ts
-index e4017c73..af390e75 100644
+index e4017c73..6bebc22b 100644
 --- a/packages/excalidraw/appState.ts
 +++ b/packages/excalidraw/appState.ts
-@@ -128,6 +128,7 @@ export const getDefaultAppState = (): Omit<
-       y: 0,
-     },
-     objectsSnapModeEnabled: false,
+@@ -77,6 +77,7 @@ export const getDefaultAppState = (): Omit<
+     isBindingEnabled: true,
+     bindingPreference: "enabled",
+     isMidpointSnappingEnabled: true,
 +    minimapEnabled: false,
-     isCropping: false,
-     croppingElementId: null,
-     searchMatches: null,
-@@ -280,6 +281,7 @@ const APP_STATE_STORAGE_CONF = (<
-   snapLines: { browser: false, export: false, server: false },
-   originSnapOffset: { browser: false, export: false, server: false },
-   objectsSnapModeEnabled: { browser: true, export: false, server: false },
+     showHints: true,
+     inputDevice: "auto",
+     defaultSidebarDockedPreference: false,
+@@ -226,6 +227,7 @@ const APP_STATE_STORAGE_CONF = (<
+   boxSelectionMode: { browser: true, export: false, server: false },
+   bindingPreference: { browser: true, export: false, server: false },
+   isMidpointSnappingEnabled: { browser: true, export: false, server: false },
 +  minimapEnabled: { browser: true, export: false, server: false },
-   isCropping: { browser: false, export: false, server: false },
-   croppingElementId: { browser: false, export: false, server: false },
-   searchMatches: { browser: false, export: false, server: false },
+   showHints: { browser: true, export: false, server: false },
+   inputDevice: { browser: true, export: false, server: false },
+   defaultSidebarDockedPreference: {
+diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
+index b4fdc3ee..aa30b419 100644
+--- a/packages/excalidraw/components/App.tsx
++++ b/packages/excalidraw/components/App.tsx
+@@ -331,6 +331,7 @@ import {
+   actionToggleObjectsSnapMode,
+   actionToggleArrowBinding,
+   actionToggleMidpointSnapping,
++  actionToggleMinimap,
+   actionToggleCropEditor,
+ } from "../actions";
+ import { actionWrapTextInContainer } from "../actions/actionBoundText";
+@@ -13849,6 +13850,7 @@ class App extends React.Component<AppProps, AppState> {
+           actionToggleZenMode,
+           actionToggleViewMode,
+           actionToggleStats,
++          actionToggleMinimap,
+         ];
+       }
+ 
+@@ -13866,6 +13868,7 @@ class App extends React.Component<AppProps, AppState> {
+         actionToggleObjectsSnapMode,
+         actionToggleArrowBinding,
+         actionToggleMidpointSnapping,
++        actionToggleMinimap,
+         actionToggleZenMode,
+         actionToggleViewMode,
+         actionToggleStats,
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..f3916597 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -307,6 +307,10 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+               label={t("labels.viewMode")}
+               shortcuts={[getShortcutKey("Alt+R")]}
+             />
++            <Shortcut
++              label={t("labels.minimap")}
++              shortcuts={[getShortcutKey("Alt+M")]}
++            />
+             {actionManager.isActionEnabled(actionToggleTheme) && (
+               <Shortcut
+                 label={t("labels.toggleTheme")}
+diff --git a/packages/excalidraw/components/main-menu/DefaultItems.tsx b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+index 3b29b6cc..9e7597e1 100644
+--- a/packages/excalidraw/components/main-menu/DefaultItems.tsx
++++ b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+@@ -12,6 +12,7 @@ import {
+   actionToggleArrowBinding,
+   actionToggleGridMode,
+   actionToggleMidpointSnapping,
++  actionToggleMinimap,
+   actionToggleObjectsSnapMode,
+   actionToggleSearchMenu,
+   actionToggleStats,
+@@ -563,6 +564,23 @@ const PreferencesToggleMidpointSnappingItem = () => {
+   );
+ };
+ 
++const PreferencesToggleMinimapItem = () => {
++  const { t } = useI18n();
++  const actionManager = useExcalidrawActionManager();
++  const appState = useUIAppState();
++  return (
++    <DropdownMenuItemCheckbox
++      checked={appState.minimapEnabled}
++      onSelect={(event) => {
++        actionManager.executeAction(actionToggleMinimap);
++        event.preventDefault();
++      }}
++    >
++      {t("labels.minimap")}
++    </DropdownMenuItemCheckbox>
++  );
++};
++
+ const PreferencesToggleShowHintsItem = () => {
+   const { t } = useI18n();
+   const appState = useUIAppState();
+@@ -682,6 +700,7 @@ export const Preferences = ({
+             <PreferencesToggleElementPropertiesItem />
+             <PreferencesToggleArrowBindingItem />
+             <PreferencesToggleMidpointSnappingItem />
++            <PreferencesToggleMinimapItem />
+             <PreferencesToggleShowHintsItem />
+           </>
+         )}
+@@ -697,6 +716,7 @@ Preferences.InputDevice = PreferencesInputDeviceItem;
+ Preferences.ToggleSnapMode = PreferencesToggleSnapModeItem;
+ Preferences.ToggleArrowBinding = PreferencesToggleArrowBindingItem;
+ Preferences.ToggleMidpointSnapping = PreferencesToggleMidpointSnappingItem;
++Preferences.ToggleMinimap = PreferencesToggleMinimapItem;
+ Preferences.ToggleShowHints = PreferencesToggleShowHintsItem;
+ Preferences.ToggleGridMode = PreferencesToggleGridModeItem;
+ Preferences.ToggleZenMode = PreferencesToggleZenModeItem;
+diff --git a/packages/excalidraw/locales/en.json b/packages/excalidraw/locales/en.json
+index 5ba1912e..5a9cc2d9 100644
+--- a/packages/excalidraw/locales/en.json
++++ b/packages/excalidraw/locales/en.json
+@@ -197,6 +197,7 @@
+     "boxSelectionOverlap": "Overlap",
+     "arrowBinding": "Arrow binding",
+     "midpointSnapping": "Snap to midpoints",
++    "minimap": "Minimap",
+     "showHints": "Show hints",
+     "inputDevice": "Input",
+     "inputDeviceTrackpad": "Trackpad",
 diff --git a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
-index 1321699b..5c9472bb 100644
+index 1321699b..969ad1ef 100644
 --- a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
 +++ b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
 @@ -950,6 +950,7 @@ exports[`contextMenu element > right-clicking on a group should select whole gro
@@ -134,7 +330,26 @@ index 1321699b..5c9472bb 100644
    "multiElement": null,
    "name": "Untitled-201933152653",
    "newElement": null,
-@@ -8005,6 +8019,7 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+@@ -7784,6 +7798,18 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+         },
+         "viewMode": false,
+       },
++      {
++        "checked": [Function],
++        "keyTest": [Function],
++        "label": "labels.minimap",
++        "name": "minimap",
++        "perform": [Function],
++        "trackEvent": {
++          "category": "canvas",
++          "predicate": [Function],
++        },
++        "viewMode": true,
++      },
+       {
+         "checked": [Function],
+         "icon": <svg
+@@ -8005,6 +8031,7 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
    "isRotating": false,
    "lastPointerDownWith": "mouse",
    "lockedMultiSelections": {},
@@ -142,7 +357,7 @@ index 1321699b..5c9472bb 100644
    "multiElement": null,
    "name": "Untitled-201933152653",
    "newElement": null,
-@@ -9018,6 +9033,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+@@ -9018,6 +9045,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
    "isRotating": false,
    "lastPointerDownWith": "mouse",
    "lockedMultiSelections": {},
@@ -150,7 +365,7 @@ index 1321699b..5c9472bb 100644
    "multiElement": null,
    "name": "Untitled-201933152653",
    "newElement": null,
-@@ -10022,6 +10038,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+@@ -10022,6 +10050,7 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
    "isRotating": false,
    "lastPointerDownWith": "mouse",
    "lockedMultiSelections": {},
@@ -1087,17 +1302,17 @@ index b6d7b5ca..967509c6 100644
    "name": "Untitled-201933152653",
    "newElement": null,
 diff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts
-index 3a37d94e..c483ca58 100644
+index 3a37d94e..972b3e1c 100644
 --- a/packages/excalidraw/types.ts
 +++ b/packages/excalidraw/types.ts
-@@ -545,6 +545,7 @@ export interface AppState {
-     y: number;
-   } | null;
-   objectsSnapModeEnabled: boolean;
+@@ -367,6 +367,7 @@ export interface AppState {
+   bindingPreference: "enabled" | "disabled";
+   /** user preference whether arrow snap to midpoints while binding */
+   isMidpointSnappingEnabled: boolean;
 +  minimapEnabled: boolean;
- 
-   /** image cropping */
-   isCropping: boolean;
+   /** user preference whether to show contextual hints above the toolbar */
+   showHints: boolean;
+   /**
 diff --git a/packages/utils/tests/__snapshots__/export.test.ts.snap b/packages/utils/tests/__snapshots__/export.test.ts.snap
 index 618ac57a..34a0aeea 100644
 --- a/packages/utils/tests/__snapshots__/export.test.ts.snap

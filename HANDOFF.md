@@ -9,17 +9,26 @@ README.md for commands.
   github.com/pandacover/singularity.
   - `017370d`: graph storage, `src/singularity/graph/`.
   - `d95d508`: session-log parser, eval harness, toy suite and their tests.
-  - Third session (not yet committed): the excalidraw suite, workspaces moved
-    out of the home folder, workspaces hide later commits.
-- `python -m pytest -q`: 28 passed.
-- The eval harness works end to end. One real run so far: toy suite, task
-  `delete-graph`, Haiku. The hidden test passed; the run cost $0.09, took 42 s,
-  and made 14 tool calls (8 file reads, of only 4 distinct files). Output is in
-  `runs/toy/smoke-1/` (gitignored).
-- **The excalidraw suite is written and validated, with no agent runs yet.**
-  See "Excalidraw suite" below.
-- **Waiting on the user:** approval to spend on the calibration run and the
-  baseline. Recommended: Sonnet 5.5 at medium effort, $3 cap per run.
+  - `a5fdd53`: excalidraw suite v1, workspaces moved out of the home folder,
+    workspaces hide later commits.
+  - Not yet committed: suite v2 (scoped checks, toggle-action family),
+    `files_changed` and `shell_writes` metrics.
+- `python -m pytest -q`: 39 passed.
+- **Baseline v1 is done** (`runs/excalidraw/baseline-1/`, Sonnet 5.5, medium
+  effort, 3 runs per task): 27/27 passed, $4.03 in total. The median run cost
+  $0.12 and made 14 tool calls in 144 s. Most tasks were cheap (6–24 calls),
+  so memory has little to save on them. See "Baseline findings" below.
+- **Suite v2 is built and validated.** All 6 hidden tests fail at the base
+  commit, and the suite's own checks pass on the references. The checks take
+  31–42 s per run. It keeps the alt-shortcut family (the one with headroom) and
+  replaces the two easy families with a harder `toggle-action` family. The
+  checks are now scoped (about 15–40 s instead of over 2 minutes, with vitest
+  capped at 4 workers). The user asked for this. See
+  [[eval-checks-controlled]] in memory.
+- **Next:** finish validating v2, then run a no-memory baseline for the
+  toggle-action family only (9 runs). The alt-shortcut runs from baseline-1
+  still count, because only the checks changed and the agent sees the same
+  task.
 
 ## Goal
 
@@ -146,6 +155,10 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 - `TraceMetrics` counts tool calls, failed calls, shell commands, searches,
   files edited, and reads versus distinct files read. Repeat reads are a rough
   measure of wasted effort.
+  - `files_edited` covers only the edit tools. Agents often edit through Bash
+    (`sed -i`, heredocs), which `shell_writes` counts with a regex heuristic.
+  - The run record's `files_changed`, taken from the diff, is the ground truth
+    for which files changed.
 - CLI: `python -m singularity.traces <session id or path> [--json]`.
 
 ### Eval harness: `src/singularity/eval/`
@@ -183,6 +196,8 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 - **`examples/toy/`:** two similar tasks, `delete-graph` and `rename-graph`,
   against this repo at `017370d`, each with hidden tests. Only `delete-graph`
   has been run for real.
+- **`tests/fake_claude.py`:** stands in for `claude`, so `tests/test_eval.py`
+  covers the whole pipeline at no cost.
 - **Workspace isolation:** after each reset the workspace deletes every ref and
   reflog entry, leaving only the detached base commit. Without that, an agent
   could run `git log --all` and see later commits. That includes the toy
@@ -199,45 +214,81 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
     hidden coupling for the rectangle key, but the `keyBinding: "r"` there is
     the arrowhead picker's hotkey. Memory can record false facts, so the
     refiner needs a way to drop them.
-- **Three families, three tasks each.** The first task in each family is the
-  seed (memory is built from it, then it's repeated exactly), and the other
-  two are variants.
-  - `tool-shortcut`: rectangle R→M, diamond D→J, ellipse O→U. Touches the
-    `KEYS` constants, `Tools.tsx`, `HelpDialog.tsx`, `regressionTests.test.tsx`
-    (plus a snapshot named after the key) and, for rectangle only,
-    `tool.test.tsx`.
+- **Suite v2: two families, three tasks each.** The first task in each family
+  is the seed (memory is built from it, then it's repeated exactly), and the
+  other two are variants.
   - `alt-shortcut`: zen mode Alt+Z→Alt+M, view mode Alt+R→Alt+J, snap to
     objects Alt+S→Alt+U. Touches `CODES` in keys.ts, the action's `keyTest`,
     `actions/shortcuts.ts` and `HelpDialog.tsx`, which spells the shortcut out
     separately.
-  - `appstate-field`: `minimapEnabled` (kept in local storage only),
-    `presenterMode` (never stored) and `exportPadding` (a number, kept in local
-    storage and exports, validated on restore). Touches `types.ts`,
-    `appState.ts` (the defaults and `APP_STATE_STORAGE_CONF`) and six snapshot
-    files that dump the whole appState. `exportPadding` also needs a change to
-    `restore.ts`.
-- **Checks:**
-  - The full vitest suite (101 s; the hidden test is copied in as
-    `packages/excalidraw/tests/hidden-check.test.tsx`) plus `yarn tsc` (19 s).
-    The checks don't count toward the agent's time.
-  - `MermaidToExcalidraw.test.tsx` is excluded because its snapshot depends on
-    timing. `vitest -u` sometimes records a transient error state into it,
-    which would fail a correct agent that followed the repo's "run
-    `yarn test:update`" instruction.
+  - `toggle-action`: a "Minimap" toggle (`minimapEnabled`, Alt+M, local storage
+    only), "Rulers" (`rulersEnabled`, Alt+U, local storage and exports) and
+    "Presenter mode" (`presenterModeEnabled`, Alt+J, never stored, not offered
+    in view mode). Each touches about 11 files:
+    - the appState type, its default and `APP_STATE_STORAGE_CONF`;
+    - a new action file, which is only registered if `actions/index.ts`
+      exports it (`register()` runs as an import side effect, and an action
+      nobody imports silently never registers);
+    - the `ActionName` and `ShortcutName` unions, a `CODES` key, the shortcut
+      map and an `en.json` label;
+    - two context-menu lists in `App.tsx` (view mode has its own list);
+    - `HelpDialog.tsx`;
+    - three places in `main-menu/DefaultItems.tsx`.
+    It also changes snapshots in `contextmenu`, `history`, `regressionTests`
+    and `packages/utils`' `export` test. This mirrors upstream commit
+    `437595fa` (the arrow binding and midpoint snapping toggles).
+  - Dropped after baseline-1: `tool-shortcut` (R→M, D→J, O→U) and
+    `appstate-field`. Both were solved in 6–24 calls, so memory had little to
+    save. They remain at `a5fdd53`.
+- **Checks (scoped):** the hidden test (copied in as
+  `packages/excalidraw/tests/hidden-check.test.tsx`), plus the test files the
+  change can break, plus files agents tend to add tests to. vitest runs with
+  `--minWorkers=1 --maxWorkers=4`, followed by `yarn tsc` (about 15 s).
+  - The affected files were found by applying the reference fix without
+    updating any tests, running the full suite once and keeping the files that
+    failed.
+  - The scoped vitest run takes about 14 s for the alt family. v1 ran the full
+    suite on all 16 cores (101 s per run), which maxed out the user's CPU for
+    the whole baseline and pulled in a flaky snapshot
+    (`MermaidToExcalidraw.test.tsx`).
   - Checks run without `CI=true`, so a snapshot that doesn't exist yet is
-    written and passes. An agent that leaves an obsolete
-    "key r selects rectangle" snapshot isn't penalized for it.
-- **Validation:**
-  - Every hidden test fails at the base commit.
-  - The full checks pass on a reference solution. The reference patches are in
-    `examples/excalidraw/reference/` and include the regenerated snapshots.
-  - The scripts that generated the tests and references were scratch files and
-    aren't in the repo. The tests are short enough to edit by hand.
+    written and passes.
+- **Validation (`validate3.py`, a scratch script):** the hidden test fails at
+  the base commit, and the suite's own checks pass on a reference solution.
+  The reference patches, including regenerated snapshots, are in
+  `examples/excalidraw/reference/`.
 - **Setup:** `yarn install --frozen-lockfile --prefer-offline`, keeping
   `node_modules`. The first install in a fresh workspace takes about 3
   minutes; after that it takes about a second.
-- **`tests/fake_claude.py`:** stands in for `claude`, so `tests/test_eval.py`
-  covers the whole pipeline at no cost.
+
+### Baseline findings (baseline-1, no memory)
+
+- **Cost:** the median run cost $0.12, made 14 tool calls, used 234k tokens
+  (mostly cache reads) and took 144 s. Sonnet 5.5 at medium effort is
+  efficient: it often makes every edit with one chained `sed -i` or a burst of
+  Edit calls.
+- **zen mode, the one task with headroom:** a median of 36 calls ($0.46),
+  ranging from 13 to 39.
+  - In 2 of 3 runs the agent made the fix in about 12 calls, then added its
+    own Alt+M test to `excalidraw.test.tsx`. That file renders `<Excalidraw />`
+    without `handleKeyboardGlobally`, so the key never fires. The agent then
+    spent about 24 calls debugging, including temporary `console.log`s in the
+    action and reading `App.tsx` and `actions/manager.tsx`.
+  - The view-mode runs added their test to `viewMode.test.tsx`, which already
+    sets `handleKeyboardGlobally`, so they never hit the trap.
+  - This is the kind of pitfall an edge should carry, with a condition: "when
+    adding a keyboard test in a file without `handleKeyboardGlobally`".
+- **Variance:** the cost of one task can swing 4× depending on a single
+  choice, such as whether the agent writes its own test. Compare medians with
+  the min–max range shown, and use more than 3 runs per setup on high-variance
+  tasks.
+- **False leads:** agents search for `"r"` and land on the arrowhead picker's
+  `keyBinding: "r"` in `actionProperties.tsx`, the same false fact the user's
+  v1 map recorded.
+- **Wall time** from the third pass is inflated, because the user was running
+  a game at the same time and the CPU sat at 100%. Tokens, cost and tool
+  calls weren't affected.
+
 
 ## Facts verified about Claude Code 2.1.286 on this machine
 
@@ -261,8 +312,8 @@ These come from inspecting real session logs and the CLI binary
 
 ## Next steps
 
-1. **Calibration run (needs the user's go-ahead).** Run one task, e.g. `--task shortcut-rectangle-m --reps 1`, to measure real cost and time, then set the overall budget from that.
-2. **Baseline.** Run the no-memory baseline with at least 3 runs per task (27 runs). Measure how large run-to-run variation is before comparing setups.
+1. **Commit suite v2** (ask first).
+2. **Baseline for toggle-action.** Run 9 no-memory runs (`--task toggle-minimap --task toggle-rulers --task toggle-presenter --reps 3`). If any task is still cheap (under about 20 calls), replace it again before building memory setups. Expect a higher cost per run than v1.
 3. **Saved-scripts baseline.** Build it as a `MemorySetup`. `after_run` saves successful runs as a script or skill, and `before_run` gives the agent the relevant ones.
 4. **Graph setup.**
    - Turn traces into semantic steps by mapping tool calls to nodes with `command_patterns` (e.g. "run tests"). Build or extend a graph from successful traces.
@@ -273,7 +324,9 @@ These come from inspecting real session logs and the CLI binary
 
 ## Open questions for the user
 
-- Approval of the recommended model (Sonnet 5.5, medium effort) and the per-run cap ($3), and an overall budget once the calibration run gives a real cost per run.
+- Approval to run the toggle-action baseline (9 runs).
+- Whether to add a curated mid-size repo later, with designed procedures and known correct answers. It would sit alongside excalidraw, not replace it. The user liked the idea of a "big enough, controlled" environment, and we agreed to make excalidraw controlled first.
+- Whether agents' own test runs should also be capped. They often run the full suite through `yarn test:update`, which loads all 16 cores. Capping it would change the agent's environment compared with baseline-1, though only in timing.
 
 ## Working notes
 
