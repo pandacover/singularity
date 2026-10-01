@@ -1,0 +1,25 @@
+{
+  "id": "c000004",
+  "graph_id": "excalidraw-tasks",
+  "base_version": 1,
+  "edits": {
+    "add_nodes": [
+      {
+        "id": "x",
+        "type": "state",
+        "description": "pending state",
+        "command_patterns": [],
+        "script": null
+      }
+    ],
+    "delete_nodes": [],
+    "add_edges": [],
+    "delete_edges": []
+  },
+  "rationale": "stale base",
+  "status": "pending",
+  "score": null,
+  "reason": "",
+  "committed_version": null,
+  "created_at": "2026-10-01T13:00:00+00:00"
+}

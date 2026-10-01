@@ -1,0 +1,43 @@
+{
+  "id": "c000006",
+  "graph_id": "excalidraw-tasks",
+  "base_version": 2,
+  "edits": {
+    "add_nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "description": "Task begins (revised)",
+        "command_patterns": [],
+        "script": null
+      }
+    ],
+    "delete_nodes": [],
+    "add_edges": [
+      {
+        "source": "start",
+        "target": "find_config",
+        "relation": "leads_to",
+        "condition": null,
+        "guidance": "Check packages/excalidraw first",
+        "pitfalls": null,
+        "facts": {
+          "excalidraw": {
+            "paths": [
+              "packages/excalidraw"
+            ],
+            "commands": [],
+            "dead_ends": []
+          }
+        }
+      }
+    ],
+    "delete_edges": []
+  },
+  "rationale": "revise start",
+  "status": "pending",
+  "score": null,
+  "reason": "",
+  "committed_version": null,
+  "created_at": "2026-10-01T14:00:00.500000+00:00"
+}
