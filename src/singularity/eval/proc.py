@@ -33,7 +33,13 @@ def run_process(
     env: dict[str, str] | None = None,
     input: str | None = None,
     shell: bool = False,
+    low_priority: bool = False,
 ) -> ProcResult:
+    """Run `args`, killing the whole process tree on timeout or interrupt.
+
+    `low_priority` starts the process below normal priority (inherited by the
+    processes it starts), so long eval runs don't make the machine sluggish.
+    """
     start = time.perf_counter()
     proc = subprocess.Popen(
         args,
@@ -45,7 +51,7 @@ def run_process(
         stderr=subprocess.PIPE,
         encoding="utf-8",
         errors="replace",
-        **_new_process_group(),
+        **_process_options(low_priority),
     )
     timed_out = False
     try:
@@ -68,10 +74,17 @@ def run_process(
     )
 
 
-def _new_process_group() -> dict[str, Any]:
+def _process_options(low_priority: bool) -> dict[str, Any]:
+    # A new process group, so the whole tree can be killed together.
     if sys.platform == "win32":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP
+        if low_priority:
+            flags |= subprocess.BELOW_NORMAL_PRIORITY_CLASS
+        return {"creationflags": flags}
+    opts: dict[str, Any] = {"start_new_session": True}
+    if low_priority:
+        opts["preexec_fn"] = lambda: os.nice(10)
+    return opts
 
 
 def _kill_tree(proc: subprocess.Popen[str]) -> None:

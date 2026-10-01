@@ -327,12 +327,15 @@ All figures are medians of 3 runs; tokens include cache reads.
     tokens.
   - **Wall time** barely moves, because the agent's own full-suite test runs
     dominate it. The user was also running a game during the runs.
-- **CPU:** agents run `yarn test:app` / `yarn test:update` (the full suite on
-  all 16 cores), which lags the user's machine. vitest honours
-  `VITEST_MAX_FORKS` / `VITEST_MAX_THREADS`, and an `env` option on the
-  suite's agent config could cap it. That isn't done yet. Capping makes the
-  agent's test runs slower, so rerun the baselines with the same cap if wall
-  time matters.
+- **CPU (done after saved-scripts-1):**
+  - The suite's `env` table caps vitest at 4 workers
+    (`VITEST_MIN/MAX_FORKS`, `VITEST_MIN/MAX_THREADS`) for the agent's own
+    test runs as well as the checks.
+  - The harness also starts the agent and all commands below normal priority.
+    Windows passes the priority down to child processes; this was checked on
+    real vitest workers (4 workers, all BelowNormal).
+  - Wall times from runs before the cap aren't comparable with later ones.
+    Tokens and cost are.
 
 ## Facts verified about Claude Code 2.1.286 on this machine
 
@@ -382,8 +385,8 @@ These come from inspecting real session logs and the CLI binary
 
 - The graph design: what nodes are, what edges carry, what gets injected, and
   how it's built and refined (under discussion).
-- Whether to cap agents' vitest workers (keeps the machine usable; makes runs
-  slower in wall time).
+- Whether to port the harness to TypeScript + Effect before building the graph
+  (under discussion).
 - Whether to add a curated mid-size repo alongside excalidraw later.
 
 ## Working notes

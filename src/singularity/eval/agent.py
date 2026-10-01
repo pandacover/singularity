@@ -90,9 +90,17 @@ def agent_env(base: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def run_agent(command: list[str], session_id: str, prompt: str, cwd: Path, timeout_s: float) -> AgentRun:
+def run_agent(
+    command: list[str],
+    session_id: str,
+    prompt: str,
+    cwd: Path,
+    timeout_s: float,
+    extra_env: dict[str, str] | None = None,
+) -> AgentRun:
+    env = {**agent_env(), **(extra_env or {})}
     # The prompt goes on stdin, which avoids shell quoting problems on Windows.
-    proc = run_process(command, cwd=cwd, timeout_s=timeout_s, env=agent_env(), input=prompt)
+    proc = run_process(command, cwd=cwd, timeout_s=timeout_s, env=env, input=prompt, low_priority=True)
     return AgentRun(command=command, session_id=session_id, proc=proc, result=parse_result(proc.stdout))
 
 

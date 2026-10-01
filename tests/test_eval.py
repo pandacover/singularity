@@ -233,3 +233,32 @@ def test_compare_splits_repeats_and_similar_tasks():
     assert "| -78% " in out.replace("  ", " ")  # one task per group: its own change
     with pytest.raises(ValueError):
         compare(records[:3])
+
+
+def test_suite_env_reaches_agent_and_checks(tmp_path, repo, monkeypatch):
+    home = tmp_path / "claude-home"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
+    check = tmp_path / "check_env.py"
+    check.write_text("import os, sys\nsys.exit(os.environ.get('MY_CAP') != '4')\n")
+    suite = load_suite(write_suite(tmp_path, repo, body='env = { MY_CAP = 4 }'))
+    assert suite.env == {"MY_CAP": "4"}
+    suite.tasks[0].checks = [f'"{Path(sys.executable).as_posix()}" "{check.as_posix()}"']
+    [r] = run_suite(suite, NoMemory(), tmp_path / "out", FAKE_CLAUDE, workspaces=tmp_path / "ws", task_ids=["t1"])
+    assert r["success"] is True  # the check saw MY_CAP
+    seen = json.loads(next(home.glob(f"projects/*/{r['session_id']}.env.json")).read_text())
+    assert seen["env"]["MY_CAP"] == "4"
+
+
+def test_low_priority_process(tmp_path):
+    from singularity.eval.proc import run_process
+
+    if sys.platform == "win32":
+        probe = ("import ctypes; k = ctypes.windll.kernel32; k.GetCurrentProcess.restype = ctypes.c_void_p; "
+                 "k.GetPriorityClass.argtypes = [ctypes.c_void_p]; print(k.GetPriorityClass(k.GetCurrentProcess()))")
+        normal, low = "32", "16384"  # NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS
+    else:
+        probe = "import os; print(os.nice(0))"
+        normal, low = str(os.nice(0)), str(min(os.nice(0) + 10, 19))
+    run = lambda low_priority: run_process([sys.executable, "-c", probe], cwd=tmp_path, timeout_s=30, low_priority=low_priority)
+    assert run(False).stdout.strip() == normal
+    assert run(True).stdout.strip() == low

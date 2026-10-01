@@ -7,6 +7,8 @@ A suite is one source repo, how to run the agent, and a list of tasks. Example:
     base = "017370d"            # default base commit for tasks
     setup = []                  # run in the workspace before each run, untimed
     keep = []                   # gitignored paths kept across resets, e.g. node_modules
+    env = {}                    # extra environment for the agent and commands,
+                                # e.g. { VITEST_MAX_FORKS = "4" } to cap test workers
     command_timeout_s = 600     # for setup commands and checks
 
     [agent]
@@ -71,6 +73,9 @@ class Suite:
     setup: list[str] = field(default_factory=list)
     keep: list[str] = field(default_factory=list)
     command_timeout_s: float = 600
+    # Set for the agent and for setup and check commands, on top of the
+    # harness's own environment.
+    env: dict[str, str] = field(default_factory=dict)
 
     def task(self, task_id: str) -> Task:
         for t in self.tasks:
@@ -85,7 +90,7 @@ def load_suite(path: str | Path) -> Suite:
         raw = tomllib.load(f)
     here = path.parent
 
-    _check_keys("suite", raw, {"name", "repo", "base", "setup", "keep", "command_timeout_s", "agent", "tasks"})
+    _check_keys("suite", raw, {"name", "repo", "base", "setup", "keep", "command_timeout_s", "env", "agent", "tasks"})
     for key in ("name", "repo"):
         if key not in raw:
             raise SuiteError(f"suite: missing {key!r}")
@@ -134,7 +139,14 @@ def load_suite(path: str | Path) -> Suite:
         setup=list(raw.get("setup", [])),
         keep=list(raw.get("keep", [])),
         command_timeout_s=float(raw.get("command_timeout_s", 600)),
+        env=_env(raw.get("env", {})),
     )
+
+
+def _env(raw: Any) -> dict[str, str]:
+    if not isinstance(raw, dict) or not all(isinstance(v, (str, int, float)) for v in raw.values()):
+        raise SuiteError("env: must be a table of names to strings or numbers")
+    return {str(k): str(v) for k, v in raw.items()}
 
 
 def _check_keys(where: str, d: dict[str, Any], allowed: set[str]) -> None:
