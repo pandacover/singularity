@@ -6,7 +6,7 @@ import type { LearnerConfig } from "./GraphLearner.ts"
 import { makeGraphMemory } from "./GraphMemory.ts"
 import { makeSavedScripts } from "./SavedScripts.ts"
 import type { MemorySetup } from "./Setups.ts"
-import { MemoryError, NoMemory, SETUPS } from "./Setups.ts"
+import { combine, MemoryError, NoMemory, SETUPS } from "./Setups.ts"
 import type { SelectorConfig } from "./StepSelector.ts"
 
 export interface SetupContext {
@@ -14,6 +14,8 @@ export interface SetupContext {
   readonly graphId?: string | undefined
   /** Read the graph at this committed version instead of the head. */
   readonly graphVersion?: number | undefined
+  /** saved-scripts-warnings: the graph store its warnings come from (and that it learns into). */
+  readonly warningsDir?: string | undefined
   /** How the graph setup calls a model to pick the steps that apply. */
   readonly selector?: SelectorConfig | undefined
   /** How the graph setup calls Claude to learn. */
@@ -34,6 +36,22 @@ export const makeSetup = (
   if (memoryDir === undefined) return Effect.fail(new MemoryError({ message: `${name} needs a memory directory (--memory)` }))
   if (name === "saved-scripts") return Effect.succeed(makeSavedScripts(memoryDir, frozen))
   if (name === "saved-scripts-top2") return Effect.succeed(makeSavedScripts(memoryDir, frozen, 2))
+  if (name === "saved-scripts-warnings") {
+    if (context.graphId === undefined) return Effect.fail(new MemoryError({ message: `${name} needs a graph id (the suite name)` }))
+    if (context.warningsDir === undefined) {
+      return Effect.fail(new MemoryError({ message: `${name} needs the graph store its warnings come from (--warnings)` }))
+    }
+    // No step selection: a warning that doesn't apply costs only its tokens.
+    const warnings = makeGraphMemory({
+      root: context.warningsDir,
+      graphId: context.graphId,
+      frozen,
+      version: context.graphVersion,
+      learner: context.learner,
+      handOver: "warnings"
+    })
+    return Effect.succeed(combine(name, makeSavedScripts(memoryDir, frozen), warnings, "warnings"))
+  }
   if (name === "graph") {
     return context.graphId === undefined
       ? Effect.fail(new MemoryError({ message: "graph needs a graph id (the suite name)" }))

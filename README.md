@@ -68,6 +68,10 @@ command without running anything.
   involved. Learning asks Sonnet to turn each run into graph edits (see
   `src/eval/GraphLearner.ts`). Both calls go through `claude -p --json-schema`
   with your login. `--graph-version N` uses an earlier version.
+- `saved-scripts-warnings`: the closest past run, as `saved-scripts` gives it,
+  plus the graph's warnings: the mistakes and dead ends recorded on its steps,
+  without the checklist. `--memory` is the saved-scripts store and
+  `--warnings` the graph store.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs so memory doesn't change while it's being measured.

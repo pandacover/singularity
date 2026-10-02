@@ -3,6 +3,7 @@
  *
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
+ *     node src/cli.ts eval run SUITE.toml --setup saved-scripts-warnings --memory DIR --warnings GRAPH_DIR [--frozen]
  *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts|graph --memory DIR [--task ID ...]
  *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
@@ -53,7 +54,12 @@ const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescriptio
 
 const graphVersionFlag = Flag.Int("graph-version").pipe(
   Flag.optional,
-  Flag.withDescription("graph setup: use this committed version, not the latest (read-only)")
+  Flag.withDescription("graph setups: use this committed version, not the latest (read-only)")
+)
+
+const warningsFlag = Flag.String("warnings").pipe(
+  Flag.optional,
+  Flag.withDescription("saved-scripts-warnings: the graph store its warnings come from")
 )
 
 /**
@@ -65,12 +71,14 @@ const setupContext = (
   claude: ReadonlyArray<string>,
   workspaces: string,
   path: Path.Path,
-  graphVersion: Option.Option<number> = Option.none()
+  graphVersion: Option.Option<number> = Option.none(),
+  warnings: Option.Option<string> = Option.none()
 ): SetupContext => {
   const cwd = path.join(workspaces, "_learner")
   return {
     graphId: suiteName,
     graphVersion: Option.getOrUndefined(graphVersion),
+    warningsDir: Option.getOrUndefined(warnings),
     selector: { claude, cwd, model: DEFAULT_SELECTOR_MODEL },
     learner: { claude, cwd, model: DEFAULT_LEARNER_MODEL, effort: DEFAULT_LEARNER_EFFORT }
   }
@@ -90,6 +98,7 @@ const run = Command.make(
       Flag.withDescription("read memory but don't add to it (for measurement runs)")
     ),
     graphVersion: graphVersionFlag,
+    warnings: warningsFlag,
     reps: Flag.Int("reps").pipe(Flag.withDefault(1), Flag.withDescription("runs per task")),
     firstRep: Flag.Int("first-rep").pipe(
       Flag.withDefault(0),
@@ -113,7 +122,7 @@ const run = Command.make(
       args.setup,
       Option.getOrUndefined(args.memory),
       args.frozen,
-      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion)
+      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion, args.warnings)
     )
 
     if (args.dryRun) {
@@ -152,6 +161,7 @@ const learn = Command.make(
     ),
     setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to add to")),
+    warnings: warningsFlag,
     tasks: tasksFlag,
     workspaces: workspacesFlag,
     claude: claudeFlag
@@ -160,15 +170,24 @@ const learn = Command.make(
     yield* lowerPriority
     const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
-    const claude = args.setup === "graph"
+    // Setups with a graph learn into it with Claude.
+    const graphStore = args.setup === "graph"
+      ? Option.some(args.memory)
+      : args.setup === "saved-scripts-warnings" ? args.warnings : Option.none()
+    const claude = Option.isSome(graphStore)
       ? Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
       : []
-    const setup = yield* makeSetup(args.setup, args.memory, false, setupContext(suite.name, claude, args.workspaces, path))
+    const setup = yield* makeSetup(
+      args.setup,
+      args.memory,
+      false,
+      setupContext(suite.name, claude, args.workspaces, path, Option.none(), args.warnings)
+    )
     const n = yield* learnFrom(setup, suite, args.results, args.tasks, (outcome, i, total) =>
       Console.error(`[${i}/${total}] learned from ${outcome.task.id} (${outcome.trace?.sessionId ?? "no transcript"})`))
     yield* Console.log(`fed ${n} runs into ${args.setup} memory at ${args.memory}`)
-    if (args.setup === "graph") {
-      const { calls, costUsd } = yield* learnCost(args.memory)
+    if (Option.isSome(graphStore)) {
+      const { calls, costUsd } = yield* learnCost(graphStore.value)
       yield* Console.log(`learning so far: ${calls} LLM calls, $${pyFixed(costUsd, 2)}`)
     }
   })
@@ -181,6 +200,7 @@ const inject = Command.make(
     setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to read")),
     graphVersion: graphVersionFlag,
+    warnings: warningsFlag,
     tasks: tasksFlag,
     workspaces: workspacesFlag,
     claude: claudeFlag
@@ -196,7 +216,7 @@ const inject = Command.make(
       args.setup,
       args.memory,
       true,
-      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion)
+      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion, args.warnings)
     )
     const tasks = args.tasks.length ? yield* Effect.forEach(args.tasks, (id) => suiteTask(suite, id)) : suite.tasks
     for (const task of tasks) {
