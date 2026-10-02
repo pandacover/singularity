@@ -3,9 +3,11 @@
  *
  * After a successful run, save its prompt, the files it changed, its source diff
  * (snapshot files are listed but not included) and the shell commands that
- * worked. Before a run, find the saved run whose prompt is most similar to the
- * new one and hand it to the agent in the system prompt. An exact repeat gets
- * the whole recipe; a similar task gets a worked example to adapt.
+ * worked: no error, and no failure in their output (a pipe into `tail` hides a
+ * failed exit status). Before a run, find the saved run whose prompt is most
+ * similar to the new one and hand it to the agent in the system prompt. An
+ * exact repeat gets the whole recipe; a similar task gets a worked example to
+ * adapt.
  *
  * Retrieval uses the prompt text only, never the task id or family, so the
  * setup has no information the agent wouldn't have in real use.
@@ -104,7 +106,8 @@ export const makeEntry = (outcome: Outcome): Entry => {
   const commands: Array<string> = []
   for (const c of outcome.trace?.toolCalls ?? []) {
     const cmd = String(c.input.command || "").trim()
-    if (SHELL_TOOLS.has(c.name) && !c.isError && cmd && !commands.includes(cmd)) commands.push(cmd.slice(0, 300))
+    const worked = !c.isError && !reportsFailure(c.result ?? "")
+    if (SHELL_TOOLS.has(c.name) && worked && cmd && !commands.includes(cmd)) commands.push(cmd.slice(0, 300))
   }
   return {
     id: `${outcome.task.id}-${compactTimestamp()}`,
@@ -118,6 +121,17 @@ export const makeEntry = (outcome: Outcome): Entry => {
     created_at: isoNow()
   }
 }
+
+/**
+ * Whether a command's output says that something in it failed: a nonzero exit
+ * code, an npm error, a TypeScript error or failed tests. A pipeline exits with
+ * its last command's status, so `yarn test:update --watch=false 2>&1 | tail`
+ * succeeds even though yarn failed, but the output still says so.
+ */
+export const reportsFailure = (output: string): boolean => FAILURE.test(output.replace(ANSI, ""))
+
+const ANSI = /\x1b\[[0-9;]*m/g
+const FAILURE = /\bexit(?:ed with)? (?:code|status) [1-9]|\bnpm ERR!|\berror TS\d+:|(?<!\d)[1-9]\d* failed\b/i
 
 export const render = (entry: Entry): string => {
   const files = entry.files_changed.map((f) => `- ${f}`).join("\n") || "- (none)"
