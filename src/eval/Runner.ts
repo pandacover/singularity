@@ -54,6 +54,8 @@ export const defaultWorkspaces = (): string => {
 export interface RunSuiteOptions {
   readonly workspaces?: string | undefined
   readonly reps?: number | undefined
+  /** Number of the first pass, for adding passes to an existing output dir. Default 0. */
+  readonly firstRep?: number | undefined
   readonly taskIds?: ReadonlyArray<string> | undefined
   readonly onRecord?: ((record: RunRecord, done: number, total: number) => Effect.Effect<void>) | undefined
 }
@@ -93,9 +95,10 @@ export const runSuite = Effect.fn("runSuite")(function*(
 
   const records: Array<RunRecord> = []
   const total = reps * tasks.length
+  const firstRep = options.firstRep ?? 0
   // Rep-major order: each pass runs every task once, so a slow stretch of API
   // latency is spread across tasks instead of landing on one.
-  for (let rep = 0; rep < reps; rep++) {
+  for (let rep = firstRep; rep < firstRep + reps; rep++) {
     for (const task of tasks) {
       const record = yield* runTask(suite, task, shas.get(task.id)!, setup, ws, rep, out, claude)
       yield* fs.writeFileString(path.join(out, "results.jsonl"), JSON.stringify(record) + "\n", { flag: "a" })
@@ -168,14 +171,18 @@ export const runTask = Effect.fn("runTask")(function*(
 
   yield* setup.afterRun({ task, success, trace, diff })
 
-  const [usage, usageSource] = headlineUsage(agent.result, trace)
+  const [agentUsage, usageSource] = headlineUsage(agent.result, trace)
+  const agentCost = cost(agent.result, trace)
+  // Memory that called a model to prepare (the graph's step selection) pays for it here.
+  const spent = injection.spent
+  const usage = agentUsage !== undefined && spent !== undefined ? addUsage(agentUsage, spent.usage) : agentUsage
   return {
     ...record,
     status: status(agent),
     success,
     session_id: sessionId,
     models: trace ? traceModels(trace) : null,
-    cost_usd: cost(agent.result, trace),
+    cost_usd: agentCost !== null && spent !== undefined ? agentCost + spent.costUsd : agentCost,
     tokens: usage ? usageToJson(usage) : null,
     tokens_source: usageSource,
     wall_time_s: round3(agent.proc.durationS),
@@ -188,6 +195,7 @@ export const runTask = Effect.fn("runTask")(function*(
       duration_s: round3(r.durationS)
     })),
     injection: injection.info,
+    ...(spent === undefined ? {} : { memory_spent: { cost_usd: spent.costUsd, tokens: usageToJson(spent.usage) } }),
     diff_lines: diffLines(diff),
     // From the diff, so it covers edits made through the shell too.
     files_changed: changedFiles(diff)

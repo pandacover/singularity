@@ -3,14 +3,20 @@
  *
  * After a successful run, save its prompt, the files it changed, its source diff
  * (snapshot files are listed but not included) and the shell commands that
- * worked. Before a run, find the saved run whose prompt is most similar to the
- * new one and hand it to the agent in the system prompt. An exact repeat gets
- * the whole recipe; a similar task gets a worked example to adapt.
+ * worked: no error, and no failure in their output (a pipe into `tail` hides a
+ * failed exit status). Before a run, find the saved run whose prompt is most
+ * similar to the new one and hand it to the agent in the system prompt. An
+ * exact repeat gets the whole recipe; a similar task gets a worked example to
+ * adapt.
  *
  * Retrieval uses the prompt text only, never the task id or family, so the
  * setup has no information the agent wouldn't have in real use.
+ *
+ * The top-k variant (`saved-scripts-top2`) hands over up to k saved runs, each
+ * above the similarity threshold, for tasks that combine parts of several.
  */
 import { Effect, FileSystem, Path, Schema } from "effect"
+import { cosine, textSimilarity, words } from "../graph/Similarity.ts"
 import { SHELL_TOOLS } from "../traces/index.ts"
 import type { Injection, MemorySetup, Outcome, SetupServices } from "./Setups.ts"
 import { MemoryError } from "./Setups.ts"
@@ -20,13 +26,6 @@ import { isoNow } from "./Time.ts"
 export const MIN_SIMILARITY = 0.35
 export const MAX_DIFF_CHARS = 16_000
 export const MAX_COMMANDS = 8
-
-const STOPWORDS = new Set(
-  (
-    "a an and are as at be but by for from has have in into is it its of on or " +
-    "should so that the this to was were will with make sure pass tests typecheck"
-  ).split(" ")
-)
 
 /** One saved run, stored as `<memory dir>/<id>.json` (snake_case keys, as the Python version wrote them). */
 export const Entry = Schema.Struct({
@@ -49,7 +48,8 @@ export interface SavedScripts extends MemorySetup {
   readonly entries: Effect.Effect<Array<Entry>, MemoryError, SetupServices>
 }
 
-export const makeSavedScripts = (memoryDir: string, frozen = false): SavedScripts => {
+/** `topK` > 1 is the variant that hands over up to that many saved runs. */
+export const makeSavedScripts = (memoryDir: string, frozen = false, topK = 1): SavedScripts => {
   const entries: SavedScripts["entries"] = Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -64,14 +64,22 @@ export const makeSavedScripts = (memoryDir: string, frozen = false): SavedScript
 
   const beforeRun = Effect.fn("SavedScripts.beforeRun")(function*(task: { readonly prompt: string }) {
     const all = yield* entries
-    const [best, score] = bestMatch(task.prompt, all)
-    const info = { entries: all.length, frozen, similarity: Math.round(score * 1000) / 1000 }
+    const ranked = rankEntries(task.prompt, all)
+    const [best, score] = ranked[0] ?? [undefined, 0]
+    const info = { entries: all.length, frozen, similarity: round3(score) }
     if (best === undefined || score < MIN_SIMILARITY) {
       return { systemPrompt: undefined, info: { ...info, retrieved: null } } satisfies Injection
     }
+    const retrieved = { id: best.id, task_id: best.task_id }
+    const others = ranked.slice(1, topK).filter(([, s]) => s >= MIN_SIMILARITY)
+    if (others.length === 0) return { systemPrompt: render(best), info: { ...info, retrieved } } satisfies Injection
     return {
-      systemPrompt: render(best),
-      info: { ...info, retrieved: { id: best.id, task_id: best.task_id } }
+      systemPrompt: renderMany([best, ...others.map(([e]) => e)]),
+      info: {
+        ...info,
+        retrieved,
+        also_retrieved: others.map(([e, s]) => ({ id: e.id, task_id: e.task_id, similarity: round3(s) }))
+      }
     } satisfies Injection
   })
 
@@ -90,7 +98,7 @@ export const makeSavedScripts = (memoryDir: string, frozen = false): SavedScript
     yield* fs.writeFileString(path.join(memoryDir, `${entry.id}.json`), JSON.stringify(entry, null, 2) + "\n")
   }, Effect.mapError((e) => (e instanceof MemoryError ? e : new MemoryError({ message: e.message }))))
 
-  return { name: "saved-scripts", beforeRun, afterRun, entries }
+  return { name: topK === 1 ? "saved-scripts" : `saved-scripts-top${topK}`, beforeRun, afterRun, entries }
 }
 
 export const makeEntry = (outcome: Outcome): Entry => {
@@ -98,7 +106,8 @@ export const makeEntry = (outcome: Outcome): Entry => {
   const commands: Array<string> = []
   for (const c of outcome.trace?.toolCalls ?? []) {
     const cmd = String(c.input.command || "").trim()
-    if (SHELL_TOOLS.has(c.name) && !c.isError && cmd && !commands.includes(cmd)) commands.push(cmd.slice(0, 300))
+    const worked = !c.isError && !reportsFailure(c.result ?? "")
+    if (SHELL_TOOLS.has(c.name) && worked && cmd && !commands.includes(cmd)) commands.push(cmd.slice(0, 300))
   }
   return {
     id: `${outcome.task.id}-${compactTimestamp()}`,
@@ -112,6 +121,17 @@ export const makeEntry = (outcome: Outcome): Entry => {
     created_at: isoNow()
   }
 }
+
+/**
+ * Whether a command's output says that something in it failed: a nonzero exit
+ * code, an npm error, a TypeScript error or failed tests. A pipeline exits with
+ * its last command's status, so `yarn test:update --watch=false 2>&1 | tail`
+ * succeeds even though yarn failed, but the output still says so.
+ */
+export const reportsFailure = (output: string): boolean => FAILURE.test(output.replace(ANSI, ""))
+
+const ANSI = /\x1b\[[0-9;]*m/g
+const FAILURE = /\bexit(?:ed with)? (?:code|status) [1-9]|\bnpm ERR!|\berror TS\d+:|(?<!\d)[1-9]\d* failed\b/i
 
 export const render = (entry: Entry): string => {
   const files = entry.files_changed.map((f) => `- ${f}`).join("\n") || "- (none)"
@@ -151,6 +171,40 @@ export const render = (entry: Entry): string => {
   return parts.join("\n")
 }
 
+/** Notes for several saved runs, best match first. */
+export const renderMany = (entries: ReadonlyArray<Entry>): string => {
+  const parts = [
+    "# Notes from previous tasks in this repository",
+    "",
+    "Tasks like the one you're about to do were solved successfully here before. " +
+    "Below is what each of those runs changed, most similar first. Use them as a guide " +
+    "where they apply, and adapt them to the current task: names, keys and details may " +
+    "differ, and each example may cover only part of what this task needs."
+  ]
+  for (const [i, entry] of entries.entries()) {
+    const files = entry.files_changed.map((f) => `- ${f}`).join("\n") || "- (none)"
+    const snaps = entry.snapshots_changed.map((f) => `- ${f}`).join("\n")
+    const commands = entry.commands.map((c) => `- \`${c}\``).join("\n") || "- (none recorded)"
+    let diff = entry.source_diff
+    if (diff.length > MAX_DIFF_CHARS) diff = diff.slice(0, MAX_DIFF_CHARS) + "\n... (diff truncated)\n"
+    parts.push("", `## Example ${i + 1}`, "", "### The previous task", "", entry.prompt, "", "### Files it changed", "", files)
+    if (snaps) parts.push("", "Snapshot files it regenerated (not shown below):", "", snaps)
+    parts.push(
+      "",
+      "### Shell commands it ran successfully",
+      "",
+      commands,
+      "",
+      "### Its change to source files",
+      "",
+      "```diff",
+      diff.replace(/\n+$/, ""),
+      "```"
+    )
+  }
+  return parts.join("\n") + "\n"
+}
+
 /** Changed files, changed snapshot files, and the diff without snapshots. */
 export const splitDiff = (diff: string): [Array<string>, Array<string>, string] => {
   const files: Array<string> = []
@@ -171,38 +225,19 @@ export const splitDiff = (diff: string): [Array<string>, Array<string>, string] 
   return [files, snapshots, kept.join("")]
 }
 
-const words = (text: string): Map<string, number> => {
-  const counts = new Map<string, number>()
-  for (const w of text.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
-    if (!STOPWORDS.has(w)) counts.set(w, (counts.get(w) ?? 0) + 1)
-  }
-  return counts
-}
+export const promptSimilarity = textSimilarity
 
-export const cosine = (a: Map<string, number>, b: Map<string, number>): number => {
-  let dot = 0
-  for (const [w, n] of a) dot += n * (b.get(w) ?? 0)
-  const norm = (m: Map<string, number>) => Math.sqrt([...m.values()].reduce((s, v) => s + v * v, 0))
-  const denom = norm(a) * norm(b)
-  return denom ? dot / denom : 0
+/** Entries with their prompt similarity, most similar first (file order on ties). */
+export const rankEntries = (prompt: string, entries: ReadonlyArray<Entry>): Array<[Entry, number]> => {
+  const query = words(prompt)
+  return entries.map((e): [Entry, number] => [e, cosine(query, words(e.prompt))]).sort((a, b) => b[1] - a[1])
 }
-
-export const promptSimilarity = (a: string, b: string): number => cosine(words(a), words(b))
 
 /** The entry with the most similar prompt (the first one on ties), and its score. */
-export const bestMatch = (prompt: string, entries: ReadonlyArray<Entry>): [Entry | undefined, number] => {
-  const query = words(prompt)
-  let best: Entry | undefined
-  let bestScore = 0
-  for (const e of entries) {
-    const score = cosine(query, words(e.prompt))
-    if (best === undefined || score > bestScore) {
-      best = e
-      bestScore = score
-    }
-  }
-  return [best, bestScore]
-}
+export const bestMatch = (prompt: string, entries: ReadonlyArray<Entry>): [Entry | undefined, number] =>
+  rankEntries(prompt, entries)[0] ?? [undefined, 0]
+
+const round3 = (x: number): number => Math.round(x * 1000) / 1000
 
 /** `YYYYMMDDHHMMSS` plus six fractional digits, like the Python version's `%Y%m%d%H%M%S%f`. */
 const compactTimestamp = (): string => {

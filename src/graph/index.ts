@@ -19,7 +19,8 @@ export {
   type ProposeOptions,
   type ReadError,
   type ReadOptions,
-  type ScoreOptions
+  type ScoreOptions,
+  type SearchOptions
 } from "./GraphStore.ts"
 export * as JsonGraphStore from "./JsonGraphStore.ts"
 export {
@@ -39,4 +40,5 @@ export {
   Relation
 } from "./Models.ts"
 export * as Ops from "./Ops.ts"
-export type { Direction } from "./Ops.ts"
+export type { Direction, NodeMatch } from "./Ops.ts"
+export { textSimilarity } from "./Similarity.ts"
