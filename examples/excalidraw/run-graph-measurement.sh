@@ -12,6 +12,15 @@
 #
 # Passes can be split across invocations (e.g. "new 0 1", then "new 2 4"):
 # every run appends to its setup's output directory.
+#
+# Two lanes can run at the same time, which about halves the wall time. LANE=2
+# gives a lane its own clone (<workspaces>/lane2/excalidraw) and its own output
+# directories (suffix -lane2), so the lanes share no files. Reports take both
+# (e.g. runs/excalidraw/graph-1-new*). The measurement used:
+#   lane 1:          new 0 2, then existing 2 2
+#   lane 2: LANE=2   new 3 4, then existing 0 1
+#
+# DRY_RUN=1 prints each run's plan instead of running it.
 set -u
 cd "$(dirname "$0")/../.."
 
@@ -23,17 +32,27 @@ EXISTING=(--task altkey-zen-m --task altkey-viewmode-j --task altkey-snap-u
   --task toggle-minimap --task toggle-rulers --task toggle-presenter)
 TOGGLE=(--task toggle-minimap --task toggle-rulers --task toggle-presenter)
 
+LANE=${LANE:-1}
+LANE_ARGS=()
+SUFFIX=""
+if [ "$LANE" != 1 ]; then
+  root=$(node -e 'import("./src/eval/Runner.ts").then((m) => console.log(m.defaultWorkspaces()))')
+  LANE_ARGS=(--workspaces "$root/lane$LANE")
+  SUFFIX="-lane$LANE"
+fi
+[ -n "${DRY_RUN:-}" ] && LANE_ARGS+=(--dry-run)
+
 run() {
-  node src/cli.ts eval run "$SUITE" --frozen --reps 1 "$@" || echo "!! run failed: $*" >&2
+  node src/cli.ts eval run "$SUITE" --frozen --reps 1 "${LANE_ARGS[@]}" "$@" || echo "!! run failed: $*" >&2
 }
 
 pass_new() {
   local rep=$1
   local setups=(
-    "--setup no-memory ${NEW[*]} --out runs/excalidraw/baseline-3-new"
-    "--setup saved-scripts --memory $SAVED ${NEW[*]} --out runs/excalidraw/saved-scripts-2-new"
-    "--setup saved-scripts-top2 --memory $SAVED --task midpoint-snap-n --out runs/excalidraw/saved-scripts-top2-1"
-    "--setup graph --memory $GRAPH ${NEW[*]} --out runs/excalidraw/graph-1-new"
+    "--setup no-memory ${NEW[*]} --out runs/excalidraw/baseline-3-new$SUFFIX"
+    "--setup saved-scripts --memory $SAVED ${NEW[*]} --out runs/excalidraw/saved-scripts-2-new$SUFFIX"
+    "--setup saved-scripts-top2 --memory $SAVED --task midpoint-snap-n --out runs/excalidraw/saved-scripts-top2-1$SUFFIX"
+    "--setup graph --memory $GRAPH ${NEW[*]} --out runs/excalidraw/graph-1-new$SUFFIX"
   )
   local n=${#setups[@]}
   for ((i = 0; i < n; i++)); do
@@ -45,8 +64,8 @@ pass_new() {
 pass_existing() {
   local rep=$1
   local setups=(
-    "--setup graph --memory $GRAPH ${EXISTING[*]} --out runs/excalidraw/graph-1-existing"
-    "--setup graph --memory $GRAPH --graph-version 3 ${TOGGLE[*]} --out runs/excalidraw/graph-zen-only-1"
+    "--setup graph --memory $GRAPH ${EXISTING[*]} --out runs/excalidraw/graph-1-existing$SUFFIX"
+    "--setup graph --memory $GRAPH --graph-version 3 ${TOGGLE[*]} --out runs/excalidraw/graph-zen-only-1$SUFFIX"
   )
   local n=${#setups[@]}
   for ((i = 0; i < n; i++)); do
