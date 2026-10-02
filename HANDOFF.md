@@ -1,7 +1,264 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-02, in the fourth session. Start here, then see
+Last updated 2026-10-03, in the fourth session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
+
+## Redesign in progress (from 2026-10-02, at the user's request)
+
+The user paused the experiments to rethink the design from the ground up, one
+step at a time, each the foundation for the next:
+
+1. Lessons from the experiments (done).
+2. What to extract from runs, from which runs, and when (agreed).
+3. The workflow record and its interface (agreed).
+4. The graph: how workflows connect, and its interface (agreed).
+5. Retrieval and the abstract layer: the interface the agent sees, and all
+   the ways it could get what it needs (agreed).
+6. Multi-repo: sharing across repos without losing accuracy (agreed: one
+   tenant, many subjects).
+
+**Step 1, the lessons:**
+
+- Turns, not tool calls, drive tokens: each turn rereads about 24k tokens of
+  Claude Code's own prompt plus everything read so far. The agent's own
+  output, thinking included, is about 1.3% of a run's tokens.
+- Knowing where each edit goes saves the most. Steps without locations send
+  the agent searching. The user's own run 6 reached its first edit in 3
+  calls, against 18–25 with a prose note or a graph.
+- Warnings from mistakes work and are followed (0 of 39 runs with the warning
+  doubled the test flag, against 20 of 21 without). They come from detours,
+  so costly runs are useful input.
+- Wrong or extra advice is followed too (unrequested tests; the zen-only graph
+  was 42% worse than no memory). A wrong hint costs more than a missing one.
+- Memory records false facts unless they're checked against the code and the
+  commands' results (the masked failing command, the user's
+  `actionProperties.tsx` link, wrong search strings in their v2 record).
+- Savings need room: cheap tasks gain little; traps gain most.
+- Tasks that combine parts of several past tasks are unsolved.
+- Runs vary a lot: medians with ranges, 5 runs on risky tasks, rules first.
+
+**Step 2, so far:**
+
+- Agreed: extract from successful runs (path and detours), from failed runs
+  only verifiable mistakes, and from runs that used memory whether each piece
+  helped. Build a record per run right after it succeeds, mostly
+  mechanically; merge records into the graph in batches, since one run can't
+  tell a needed step from the agent's own extra (the unrequested-test step
+  came from two zen runs that wrote a test on their own).
+- **The user rejects exact locations** (the existing line an edit sits next
+  to): that memorizes one solution, and a file per task would do the same.
+  Proposed instead: **landmarks**, facts about the codebase that several tasks
+  share ("a setting appears in two right-click menus in `App.tsx`, one for
+  view mode"). Proposed rule: a fact earns its place only if more than one
+  kind of task can use it, or if it's a warning. Not yet agreed.
+- Storing many facts is cheap; handing over ones that don't apply is not,
+  because the agent acts on them. So nodes can hold a lot, as long as
+  retrieval hands over only what applies (step 5).
+- Retrieval means finding memory (workflows, nodes, edges), by three methods:
+  exact string (commands, paths, errors), similarity (shared words) and
+  semantic (meaning, through embeddings or a model reading conditions). Each
+  piece of memory carries the keys it should be found by. Exact matching is
+  cheap enough to run on every command during a task, so warnings can arrive
+  when they apply. One method proposes and another confirms, since wrong
+  matches get followed.
+
+**Step 3, proposed (2026-10-03): the workflow record**, one per run, built
+once the run counts as successful, and never changed afterwards. It is the
+evidence; the graph is what changes, and points back to its records.
+
+- Parts: the run (repo, starting commit, cost, outcome, a pointer to the raw
+  log, which stays where the run happened); the task (its kind in general
+  words, what it asked for and ruled out, task-specific values marked as
+  such); the path (each step's purpose, whether the task asked for it or the
+  agent chose it, its landmarks, files touched, and the command that checked
+  it); detours (trigger, symptom, fix, cost); verified facts (commands that
+  worked, false leads, which tests cover what); and, for runs that used
+  memory, what each piece of memory did.
+- Every piece carries retrieval keys: exact strings, its text, its meaning.
+- No new code, no exact lines, nothing unverified unless marked as such.
+- Built mechanically where possible (the log against the final diff and the
+  commands' results), with a model naming steps and judging asked-for versus
+  chosen; every claim about the code is checked against the code.
+- Failed runs get a record with only their verifiable mistakes.
+- Interface: build a record from a finished run; add feedback when a run
+  used memory; find records by repo, task kind, step or key.
+- Agreed by the user (2026-10-03), landmarks included.
+
+**The user's abstract layer (clarified 2026-10-03)** is the interface the
+agent actually sees and uses. It hides the memory layer's complexity and
+hands over exactly what the agent needs. It is step 5, not part of the graph.
+
+**Step 4, agreed (2026-10-03): the graph**, the hidden memory layer behind
+that interface: what the records add up to, in three layers:
+
+- Task kinds: typical routes through the steps, such as "change an action's
+  shortcut", with the conditions that change the route.
+- Steps and transitions: each step merged from many records, with its
+  landmarks per repo, its checks and its warnings; transitions carry
+  conditions.
+- Records at the bottom: every item points to the records behind it.
+- Merging, in batches: match a record's steps to existing ones by exact keys
+  first, then by meaning, with a model confirming close calls. Steps shared
+  across task kinds become one node (the user's implicit skills, such as
+  "give an action a shortcut": key table, label, help dialog). A step is
+  required if every successful run of its kind took it or the task asked
+  for it, otherwise optional and handed over only when asked for. Detours
+  merge into warnings by trigger. Conditions come from comparing tasks that
+  took a transition with those that didn't.
+- Accuracy: every merge is a candidate. A free replay check comes first: for
+  each past task, would the new graph hand over what it needed and nothing
+  else? That would have caught the unrequested test step. Landmarks are
+  checked against the current code; feedback from runs that used memory
+  moves confidence; rejected changes are remembered.
+- Where it should pay off: tasks like `midpoint-snap-n`, which match no
+  single past task but reuse a shared sub-route.
+- Interface: merge a batch as a candidate; check, then commit or reject;
+  read task kinds, routes, steps and warnings by any key, with evidence;
+  trace any item to its records.
+
+**Step 5, agreed (2026-10-03): the abstract layer**, the interface the
+agent sees. It hands memory over at two moments, and only what applies:
+
+- At task start: the route for this task (its steps, where each happens,
+  how each is checked) and the warnings on those steps. Found by
+  similarity or meaning on the task text, confirmed by a model reading the
+  conditions. No records, counts or other task kinds.
+- During the task: a warning when its exact trigger appears (a command, a
+  file, an error). Example: when the agent writes a keyboard test that
+  renders `<Excalidraw>` without `handleKeyboardGlobally`, it is told right
+  then, instead of debugging for about 24 calls.
+  - Caveat from the data: a warning saves a turn only if it arrives before
+    the mistake is made. The doubled `--watch=false` fails at once, so
+    blocking that command still costs the retry turn; that warning belongs
+    at task start (it worked there: 0 of 5). Just-in-time suits traps that
+    are expensive to discover later.
+- Delivery, the open decision: an MCP tool is pull (the agent must ask, and
+  each question usually costs a turn of 25–50k tokens). Claude Code hooks
+  are push (a script at session start or before and after each tool call,
+  no asking). Both can query the hosted server. Proposed: hooks for the two
+  moments, plus an MCP tool for when the agent is stuck.
+  - CLI or MCP for the pull (checked in Claude Code's docs, 2026-10-03):
+    the same per question. MCP needs no install (a URL and a login) and
+    fits the hosted plan; a CLI must be installed and kept up to date on
+    every machine. Claude Code defers MCP tools by default (tool search):
+    the agent searches before its first call, one extra turn, unless the
+    server is marked `alwaysLoad` ("Exempt a server from deferral" in the
+    MCP docs). Bash is always loaded, so a CLI has no such turn.
+  - Hooks don't need a CLI: a hook can be a shell command, an HTTP POST
+    (`"type": "http"`) or a call to an MCP tool (`"type": "mcp_tool"`).
+    Text a hook returns in `additionalContext` reaches the model next to
+    the tool result (or before the first prompt, at session start), so it
+    costs no extra turn. Hooks run in `claude -p` too.
+  - A `PreToolUse` hook can also deny a command with a reason, or rewrite
+    it before it runs (`updatedInput`). Rewriting would save the doubled
+    flag's retry turn, but then memory acts instead of advising: an open
+    question for later.
+- Local and cloud, the user's split (2026-10-03): the CLI stores records
+  and does lexical and exact search (local, no model). Semantic search is
+  cloud-only and reached through MCP. The user doesn't want semantic search
+  in the CLI.
+  - API or MCP for embedding and semantic search, proposed: an API on the
+    server does both. Embedding is machine work (a record when it is
+    stored, the task text when it is searched); the agent never needs a
+    vector, so it gets no tool for it. The MCP tool is a thin door on that
+    API for the agent; hooks (`"type": "http"`) and the CLI call the API
+    directly.
+  - The split fits how often each search runs: exact triggers are checked
+    on every tool call, so they stay local and fast; semantic search runs
+    once at task start, so a cloud round trip is fine. At task start one
+    call returns the route, its warnings and their exact triggers; the CLI
+    keeps them for the session so later hooks match locally.
+  - The agent still gets one answer, never a choice between two searches:
+    the task-start hook merges local and cloud results.
+  - The task-start hook is `UserPromptSubmit`, which fires with the task
+    text (confirm its input field when building; its default timeout is
+    30 s). `SessionStart` fires before the prompt and doesn't receive it.
+- Every handover is logged, so the run's record can say what each piece of
+  memory did (step 3's feedback).
+- Agreed by the user (2026-10-03), with the API under the MCP tool.
+
+**Step 6, agreed (2026-10-03): many repos.** One graph for all repos.
+Every item in it has a reach, and the agent gets only the items whose reach
+includes its repo:
+
+- Tenants and subjects (decided by the user): the product is multi-tenant,
+  and a tenant holds several subjects (repos). Memory can be shared between
+  subjects in a tenant, never between tenants. For now: one tenant with
+  several subjects. Everything below happens inside one tenant; every item
+  still carries its tenant, so isolation is there from the start.
+- Reach: this subject; subjects that use the same tools (recognized by exact
+  checks, such as `vitest` in `package.json`); or every subject in the
+  tenant (lessons about the agent's own tools).
+- Everything starts in its own repo and reaches further only on evidence:
+  the same lesson learned independently in another repo (matched by exact
+  keys first, then by meaning), or tried there and found to hold. A model
+  may propose a wider reach, but it stays a proposal until then. Why: wrong
+  advice gets followed (step 1), and our learner mixed the two before
+  (excalidraw's `handleKeyboardGlobally` trap sat in the shared warnings,
+  while the general lesson that the test runner's name filter is a pattern
+  sat in excalidraw's facts).
+- Never shared: landmarks, paths and commands. They're checked against each
+  repo's code anyway (step 4), so another repo's can't pass.
+- Low risk to try early in other repos: warnings with exact triggers, since
+  they appear only when the trigger does. Example: "an edit fails when its
+  text appears twice; quote more lines" fires on that error in any repo.
+  Riskier: routes, which arrive at task start with no trigger. They reach
+  another repo only as shapes (steps and order, no locations), only after
+  holding in more than one repo, and only with conditions that can be
+  checked there ("if the app has a help dialog listing shortcuts").
+- A new repo's first tasks get only the wider items. Each successful run
+  adds that repo's landmarks, so later tasks there get full routes.
+- Accuracy: the replay check (step 4) runs in every repo an item reaches,
+  and feedback is kept per repo, so an item can be right in one repo and
+  wrong in another.
+- To test it: a second repo with a few tasks of its own, with memory built
+  from excalidraw runs only. Compare no memory and shared memory on the new
+  repo. The rule: shared memory never makes a task worse than no memory.
+- This replaces "one graph per repo for now" under Decisions.
+
+**Build order, proposed (2026-10-03); not started, because the user asked to
+wait.** Each stage rests on the one before. Paid runs and model calls only
+after an explicit go.
+
+1. Records.
+   - a. The mechanical part (free): build a record from a finished run with
+     no model. The run (tenant, subject, commit, cost, outcome, a pointer to
+     its log), files touched (`diff.patch`), commands and whether they
+     worked (`reportsFailure`), detours (a failing call, what fixed it, and
+     the tokens spent in between) and checks (`checks.log`). A record store
+     behind its own interface, JSON files for now. Input: the 145 successful
+     runs under `runs/excalidraw`. Known answers to check it against: the
+     doubled `--watch=false` detour in the 51 runs counted earlier (20
+     saved-scripts, 31 no-memory) and in none of the 39 that had the
+     warning; the `handleKeyboardGlobally` debugging where
+     `check-warnings.ts` found it.
+   - b. The model part (a few cents per run): a model names the steps and
+     the task kind, marks each step asked-for or chosen, and proposes
+     landmarks. Every claim is checked against the code at the run's
+     commit, and claims that fail are dropped. Known answer: the zen runs'
+     unrequested test step comes out as chosen.
+2. The graph: merge records in batches into task kinds, steps, transitions
+   and warnings, each with its reach and evidence. Every batch is a
+   candidate, and the replay check decides commit or reject. Known answer:
+   no shortcut task is handed a test step it didn't ask for.
+3. The handover, on the user's machine first: the API (exact, lexical and
+   semantic search, embeddings), the `UserPromptSubmit` hook (route and
+   warnings at task start), `PreToolUse`/`PostToolUse` hooks (exact
+   triggers), the MCP tool for when the agent is stuck, and the local CLI.
+   Free check: replay recorded sessions through the trigger matcher and
+   count the warnings that would have arrived before their mistake. Open:
+   which embedding provider.
+4. The measurement on excalidraw (paid, pre-registered first): the new
+   memory against the saved-solutions baseline and no memory. Goal: tokens
+   close to the baseline, success no worse.
+5. Then a second subject (paid, pre-registered: a few tasks in another
+   repo, memory from excalidraw only; shared memory must never make a task
+   worse than no memory), and then hosting (the API and a graph database on
+   the user's cloud, a tenant on every item).
+
+The old pipeline (the per-run learner and the graph setup) stays until
+stage 4 shows the new one is better; no-memory and saved-scripts stay as
+baselines.
 
 ## Status (fourth session)
 
@@ -33,6 +290,48 @@ README.md for commands and CLAUDE.md for how the code is written.
     suffixed `-lane2`), about 4h40m instead of about 6–7 hours. No agent
     command reached its time limit (longest 441 s of 600 s), so no run was
     rerun. Reports take both lanes' dirs, e.g. `runs/excalidraw/graph-1-new*`.
+- **What the warnings could add to saved-scripts** (from existing logs, no
+  new runs; 2026-10-02; counts from `examples/excalidraw/check-warnings.ts`):
+  - `yarn test:update --watch=false` fails (the script already passes the
+    flag). Of the runs that ran `test:update`, saved-scripts runs made this
+    mistake in 20 of 21, no-memory runs in 31 of 44, and graph runs, whose
+    steps carried the pitfall, in 0 of 34. Each costs a turn and a full suite
+    run (about 40k tokens, 13–20% of a toggle or page-breaks run).
+  - The `handleKeyboardGlobally` trap on `stats-shortcut-k`: all 5
+    saved-scripts runs wrote their first test without it, and 4 of them lost
+    126k–615k tokens finding out why. All 5 graph runs used it from the start.
+  - **Saved-scripts bug (fixed):** the minimap entry listed
+    `yarn test:typecheck ... && yarn test:update --watch=false 2>&1 | tail -40`
+    as a command that worked, because the pipe into `tail` hid the failure.
+    So the memory taught the mistake.
+  - Other covered detours were small (a duplicate-match Edit retry, a
+    prettier check). `midpoint-snap-n` runs lost up to ~250k tokens on
+    contextmenu snapshot failures, which the warnings cover only loosely.
+- **The follow-up check passed** (2026-10-02, 20:36–21:13 local time, 13
+  runs, $1.27): `saved-scripts-warnings`, the closest saved solution plus the
+  graph's warnings, with no checklist. Pre-registered at the end of
+  `examples/excalidraw/PREREGISTRATION.md`, with its rules and results.
+  - All four rules held, and all 13 runs passed. Against saved-scripts:
+    `stats-shortcut-k` −62% (187k), `page-breaks` −41% (180k),
+    `altkey-zen-m` −2% (118k). Every run followed both warnings it needed,
+    and it beat the graph too.
+  - **The user's call (2026-10-02):** copying a past run's finished code is
+    an anti-pattern for them. Saved solutions, with or without warnings, are
+    the baseline; the product is the step graph, to be improved until it
+    gets close to them.
+  - **Where the graph's gap comes from** (existing logs, the 6 old tasks):
+    graph runs take 1–4 more turns (usually 3) than saved-scripts runs, and
+    each turn rereads 30–55k tokens. On `toggle-rulers` the saved run made
+    all 19 edits in its second turn, since the diff showed the exact text to
+    change. The graph run spent three turns reading files to find where each
+    edit goes (`App.tsx` among them, which made every later turn bigger),
+    then lost two more to an edit whose text matched three places. On the
+    shortcut tasks it also wrote a test nobody asked for, two more turns.
+  - Lanes: `warnings 0 1` and `LANE=2 warnings 2 4` in
+    `run-graph-measurement.sh`. Logs: `runs/excalidraw/warnings-lane*.log`.
+  - Not committed yet: the fix, the new setup, the check script, the
+    pre-registration's follow-up section and these notes.
+  - `npm test`: 75 passed. `npm run typecheck`: clean.
 - **Where the time goes** (measured on earlier runs): each run is about 5
   minutes, about 3½ of which is the agent's own full test suite (excalidraw's
   `CLAUDE.md` says to always run `yarn test:update`; 4 workers make it ~185 s
@@ -165,6 +464,8 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 - **Success:** a task succeeds when its check commands (tests) pass. Hidden tests
   are copied in after the agent finishes (`check_files`). (Proposed and built;
   the user didn't object.)
+  - Outside evals (decided by the user, 2026-10-02): a session counts as
+    successful once its change is committed and its tests pass.
 - **Stack (decided by the user):** TypeScript + Effect 4, replacing Python.
   - The user doesn't write the code and only wants to follow the concepts,
     so the choice weighs agent experience over their own familiarity with
@@ -178,7 +479,8 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
 - **Graph setup, agreed so far:**
   - An LLM builds the graph from recorded runs ("the accuracy is worth some
     pennies").
-  - One graph per repo for now.
+  - One graph per repo for now. (Replaced by redesign step 6: one graph per
+    tenant, shared between its subjects.)
   - The refiner loop comes after the first static-graph measurement.
   - 5 runs per new task is fine (about $15–20 for the measurement).
   - The claim and thresholds: the user reread them and moved on (2026-10-02);
@@ -274,6 +576,20 @@ Run things with `node src/cli.ts ...` (see README.md).
   `--graph-version N` reads an earlier graph version.
 - **`saved-scripts-top2`:** up to the two best saved runs, each above 0.35.
   Its notes differ from top-1's only for `midpoint-snap-n`.
+- **`saved-scripts-warnings`:** the saved-scripts notes, then the graph's
+  warnings (`renderWarnings`): every pitfall and dead end on the edges into
+  the candidate steps, under each step, with the edge's condition when it has
+  one. No checklist and no selector call; on this graph every task gets all 13
+  steps' warnings, about 1,400 tokens.
+  - Built with `combine` (`Setups.ts`) from saved-scripts and the graph setup
+    with `handOver: "warnings"`. Its info nests the graph's under `warnings`,
+    so `report --compare` classifies its runs by the saved solution.
+  - CLI: `--memory` is the saved-scripts store, `--warnings` the graph store.
+    It learns into both unless frozen.
+- **Saved-scripts keeps only commands that worked:** no error, and no
+  failure in their output (`reportsFailure`: a nonzero exit code, `npm ERR!`,
+  a TypeScript error, failed tests). The memory rebuilt with the fix is
+  `runs/excalidraw/memory/saved-scripts-2`; the old one stays for the old runs.
 
 ### Session-log parser: `src/traces/`
 
@@ -503,12 +819,25 @@ These come from inspecting real session logs and the CLI binary
 
 ## Next steps
 
-0. **Decide what follows the measurement** (done; the claim doesn't hold).
-   Proposed to the user: saved-scripts for what to do, plus only the
-   graph's pitfalls for what to avoid, with no checklist. That keeps what
-   each did best. It needs its own pre-registration and runs.
-1. **The graph setup** (the plan as of the third session; done except the
-   measurement).
+0. **Saved-scripts plus the graph's warnings** (the user agreed on
+   2026-10-02; done, the check passed): saved-scripts for what to do, plus
+   only the graph's pitfalls for what to avoid, with no checklist. That keeps
+   what each did best.
+1. **Next: bring the step graph close to saved solutions** (the user's
+   goal), without storing the finished code. Paused for the redesign above,
+   which replaces this plan. Of what was proposed here, exact-line anchors
+   were rejected by the user. A read list of files worth reading up front,
+   dropping the unrequested test step and keeping the warnings carry over
+   into the redesign's discussion. Target as before: within about 15% of
+   saved-scripts' tokens.
+2. **Then the hosted version.** The user wants the memory served from their
+   own cloud through an MCP server, once the memory works. Open choices for
+   the user: where it runs, which graph database, and whether the agent
+   pulls memory with a tool call or a hook injects it at session start.
+   Pulling differs from injecting at task start, so it needs its own
+   measurement.
+3. **The graph setup** (the plan as of the third session; done, and
+   measured: the claim doesn't hold).
    - **The claim to test (the user reread it and moved on).**
      - Saved-scripts remembers whole tasks; the graph remembers steps.
      - On exact repeats and close variants a saved diff is near optimal. So
@@ -543,14 +872,14 @@ These come from inspecting real session logs and the CLI binary
      take the 2-hop neighbourhood, render a short checklist (about 1k
      tokens), and inject it once at task start.
    - **Refiner loop:** later, after the static graph is measured.
-2. **Optional: a stronger script baseline** for exact repeats: offer the saved
+4. **Optional: a stronger script baseline** for exact repeats: offer the saved
    patch as one command.
-3. **Later:** a graph database backend for `GraphStore`.
+5. **Later:** a graph database backend for `GraphStore` (part of step 2).
 
 ## Open questions for the user
 
-- What to do after the graph lost: try saved-scripts plus the graph's
-  pitfalls, or stop at saved-scripts.
+- For the hosted version: where it runs, which graph database, and whether
+  agents pull memory through an MCP tool or a hook injects it at task start.
 - Whether to add a curated mid-size repo alongside excalidraw later.
 
 ## Working notes
