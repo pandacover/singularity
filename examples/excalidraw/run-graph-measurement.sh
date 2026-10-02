@@ -9,6 +9,9 @@
 #   bash examples/excalidraw/run-graph-measurement.sh existing FIRST LAST
 #       graph on the 6 existing tasks, and the zen-only graph (version 3) on
 #       the toggle tasks (passes 0-2 in the plan)
+#   bash examples/excalidraw/run-graph-measurement.sh warnings FIRST LAST
+#       the follow-up: saved-scripts-warnings on stats-shortcut-k and
+#       page-breaks (passes 0-4), and on altkey-zen-m (passes 0-2)
 #
 # Passes can be split across invocations (e.g. "new 0 1", then "new 2 4"):
 # every run appends to its setup's output directory.
@@ -19,6 +22,9 @@
 # (e.g. runs/excalidraw/graph-1-new*). The measurement used:
 #   lane 1:          new 0 2, then existing 2 2
 #   lane 2: LANE=2   new 3 4, then existing 0 1
+# and the follow-up:
+#   lane 1:          warnings 0 1
+#   lane 2: LANE=2   warnings 2 4
 #
 # DRY_RUN=1 prints each run's plan instead of running it.
 set -u
@@ -26,6 +32,8 @@ cd "$(dirname "$0")/../.."
 
 SUITE=examples/excalidraw/suite.toml
 SAVED=runs/excalidraw/memory/saved-scripts
+# Rebuilt from the same runs once saved-scripts stopped keeping failed commands.
+SAVED2=runs/excalidraw/memory/saved-scripts-2
 GRAPH=runs/excalidraw/memory/graph
 NEW=(--task midpoint-snap-n --task page-breaks --task stats-shortcut-k)
 EXISTING=(--task altkey-zen-m --task altkey-viewmode-j --task altkey-snap-u
@@ -74,8 +82,17 @@ pass_existing() {
   done
 }
 
+pass_warnings() {
+  local rep=$1
+  local tasks=(--task stats-shortcut-k --task page-breaks)
+  [ "$rep" -le 2 ] && tasks+=(--task altkey-zen-m)
+  run --first-rep "$rep" --setup saved-scripts-warnings --memory "$SAVED2" --warnings "$GRAPH" --graph-version 6 \
+    "${tasks[@]}" --out "runs/excalidraw/saved-scripts-warnings-1$SUFFIX"
+}
+
 case "${1:-}" in
   new) for ((rep = $2; rep <= $3; rep++)); do pass_new "$rep"; done ;;
   existing) for ((rep = $2; rep <= $3; rep++)); do pass_existing "$rep"; done ;;
-  *) echo "usage: $0 new|existing FIRST LAST" >&2; exit 2 ;;
+  warnings) for ((rep = $2; rep <= $3; rep++)); do pass_warnings "$rep"; done ;;
+  *) echo "usage: $0 new|existing|warnings FIRST LAST" >&2; exit 2 ;;
 esac

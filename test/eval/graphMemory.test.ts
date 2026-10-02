@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { toEditSet } from "../../src/eval/GraphLearner.ts"
 import type { LearnedEdits } from "../../src/eval/GraphLearner.ts"
-import { LEARN_LOG, makeGraphMemory, renderChecklist, stepOrder } from "../../src/eval/GraphMemory.ts"
+import { LEARN_LOG, makeGraphMemory, renderChecklist, renderWarnings, stepOrder } from "../../src/eval/GraphMemory.ts"
 import { makeSetup } from "../../src/eval/Memory.ts"
 import { runKind } from "../../src/eval/Report.ts"
 import { runSuite } from "../../src/eval/Runner.ts"
@@ -284,6 +284,37 @@ describe("graph memory", () => {
     assert.strictEqual(setup.name, "graph")
     assert.include((await run(Effect.flip(makeSetup("graph", tempDir())))).message, "graph id")
   })
+
+  it("hands over only its mistakes and dead ends after a saved solution", async () => {
+    const root = tempDir()
+    const graphRoot = join(root, "graph")
+    await withAnswers([ANSWER], () =>
+      run(makeGraphMemory({ root: graphRoot, graphId: "unit", frozen: false, learner: learner() }).afterRun(outcome())))
+    const saved = join(root, "saved")
+    await run(makeSavedScripts(saved).afterRun(outcome()))
+    const setup = await run(makeSetup("saved-scripts-warnings", saved, true, { graphId: "unit", warningsDir: graphRoot }))
+    assert.strictEqual(setup.name, "saved-scripts-warnings")
+
+    const view = task("Change the view mode keyboard shortcut from Alt+R to Alt+J and update the help dialog", "view")
+    const injection = await run(setup.beforeRun(view, root))
+    const text = injection.systemPrompt ?? ""
+    assert.isBelow(text.indexOf("# Notes from a previous task"), text.indexOf("# Mistakes to avoid in this repository"))
+    assert.include(text, "- **List the keyboard shortcut in the help dialog**\n  - Avoid: It doesn't read the shortcut map\n")
+    assert.include(text, "- **Run the scoped checks**\n  - Dead end: searching for the bare letter finds unrelated matches\n")
+    assert.notInclude(text, "**Add the key code") // no warnings recorded on it
+    assert.notInclude(text, "The help dialog spells shortcuts out itself") // guidance, not a warning
+    assert.strictEqual((injection.info.retrieved as { task_id: string }).task_id, "zen")
+    assert.deepStrictEqual((injection.info.warnings as { sources: Array<string> }).sources, ["zen"])
+    assert.strictEqual(runKind({ task_id: "view", injection: injection.info }), "similar task")
+
+    // The warnings don't depend on finding a saved solution.
+    const checks = await run(setup.beforeRun(task("Run the scoped checks", "checks"), root))
+    assert.isNull(checks.info.retrieved)
+    assert.isTrue((checks.systemPrompt ?? "").startsWith("# Mistakes to avoid in this repository\n"))
+
+    const noStore = await run(Effect.flip(makeSetup("saved-scripts-warnings", saved, true, { graphId: "unit" })))
+    assert.include(noStore.message, "--warnings")
+  })
 })
 
 describe("graph learner", () => {
@@ -347,6 +378,24 @@ describe("graph learner", () => {
     const text = renderChecklist(g, stepOrder(g), "unit")
     assert.include(text, "1. **a**\n   - When: when a is missing")
     assert.notInclude(text, "when a already exists")
+  })
+
+  it("lists warnings under their step, with the condition of the path they were recorded on", () => {
+    const g = Graph.fromArrays(
+      ["start", "a", "b", "c"].map((id) => new Node({ id, type: id === "start" ? "start" : "action", description: `do ${id}` })),
+      [
+        new Edge({ source: "start", target: "a", condition: "when a is missing.", pitfalls: "a needs a name" }),
+        new Edge({ source: "a", target: "b", guidance: "copy b", pitfalls: "b is slow" }),
+        new Edge({ source: "start", target: "b", facts: { unit: new EdgeFacts({ dead_ends: ["b's log is empty"] }) } }),
+        new Edge({ source: "b", target: "c", guidance: "only advice" })
+      ]
+    )
+    const text = renderWarnings(g, stepOrder(g), "unit") ?? ""
+    assert.isTrue(text.startsWith("# Mistakes to avoid in this repository\n"))
+    assert.isTrue(
+      text.endsWith("- **do a**\n  - When a is missing:\n    - Avoid: a needs a name\n- **do b**\n  - Avoid: b is slow\n  - Dead end: b's log is empty\n")
+    )
+    assert.isUndefined(renderWarnings(g, ["c"], "unit"))
   })
 })
 

@@ -2,12 +2,14 @@
  * Memory setups: what the agent is given before a run, and what it learns after.
  *
  * The evaluation compares setups on the same tasks: no memory, saved scripts,
- * and the procedural graph. Each one plugs in here.
+ * the procedural graph, and saved scripts with the graph's warnings. Each one
+ * plugs in here.
  */
 import type { FileSystem, Path } from "effect"
 import { Effect, Schema } from "effect"
 import type { ChildProcessSpawner } from "effect/process"
 import type { Trace, Usage } from "../traces/index.ts"
+import { addUsage } from "../traces/index.ts"
 import type { Task } from "./Suite.ts"
 
 export class MemoryError extends Schema.TaggedError<MemoryError>()("MemoryError", {
@@ -52,5 +54,28 @@ export const NoMemory: MemorySetup = {
   afterRun: () => Effect.void
 }
 
-export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "graph"] as const
+/**
+ * Two setups as one: both prepare memory, the second's text after the first's,
+ * and both learn from each run. The second's info is recorded under `key`.
+ */
+export const combine = (name: string, first: MemorySetup, second: MemorySetup, key: string): MemorySetup => ({
+  name,
+  beforeRun: (task, workspace) =>
+    Effect.gen(function*() {
+      const a = yield* first.beforeRun(task, workspace)
+      const b = yield* second.beforeRun(task, workspace)
+      const texts = [a.systemPrompt, b.systemPrompt].filter((t): t is string => t !== undefined && t !== "")
+      const spent = a.spent === undefined || b.spent === undefined
+        ? a.spent ?? b.spent
+        : { costUsd: a.spent.costUsd + b.spent.costUsd, usage: addUsage(a.spent.usage, b.spent.usage) }
+      return {
+        systemPrompt: texts.length > 0 ? texts.join("\n") : undefined,
+        info: { ...a.info, [key]: b.info },
+        spent
+      } satisfies Injection
+    }),
+  afterRun: (outcome) => Effect.andThen(first.afterRun(outcome), second.afterRun(outcome))
+})
+
+export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "saved-scripts-warnings", "graph"] as const
 export type SetupName = (typeof SETUPS)[number]

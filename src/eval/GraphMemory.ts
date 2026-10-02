@@ -11,6 +11,11 @@
  * paper's online mode), which is where its extra token cost came from. The
  * selection call's cost counts toward the run.
  *
+ * The checklist cost more than it saved, but its pitfalls kept agents out of
+ * mistakes that saved solutions repeat (PREREGISTRATION.md). So the graph can
+ * also hand over only the mistakes and dead ends recorded on its steps, for
+ * `saved-scripts-warnings`, which gives them with the closest saved solution.
+ *
  * After a run (unless frozen): an LLM turns the run into graph edits
  * (GraphLearner), committed as the next version. One graph per repository; its
  * id and the key for repository facts are both the suite name.
@@ -53,6 +58,8 @@ export interface GraphMemoryOptions {
   readonly selector?: SelectorConfig | undefined
   /** Needed only for learning. */
   readonly learner?: LearnerConfig | undefined
+  /** The steps as a checklist (the default), or only their mistakes and dead ends. */
+  readonly handOver?: "checklist" | "warnings" | undefined
 }
 
 /** One line of learn-log.jsonl. */
@@ -64,6 +71,8 @@ export const makeGraphMemory = (options: GraphMemoryOptions): MemorySetup => {
   const store = JsonGraphStore.layer(root)
   const toMemoryError = (e: { readonly message: string }) =>
     e instanceof MemoryError ? e : new MemoryError({ message: `graph memory: ${e.message}` })
+  const render = (graph: Graph, steps: ReadonlyArray<string>, from?: ReadonlySet<string>): string | undefined =>
+    options.handOver === "warnings" ? renderWarnings(graph, steps, repo) : renderChecklist(graph, steps, repo, from)
 
   /** Task ids the graph had learned from by `version`, so reports can tell exact repeats from similar tasks. */
   const sources = Effect.fn("GraphMemory.sources")(function*(version: number) {
@@ -103,21 +112,21 @@ export const makeGraphMemory = (options: GraphMemoryOptions): MemorySetup => {
     const order = stepOrder(candidates)
     const all = { ...info, seeds: seedInfo, candidates: order }
     if (options.selector === undefined) {
-      return { systemPrompt: renderChecklist(candidates, order, repo), info: { ...all, nodes: order } } satisfies Injection
+      return { systemPrompt: render(candidates, order), info: { ...all, nodes: order } } satisfies Injection
     }
     yield* (yield* FileSystem.FileSystem).makeDirectory(options.selector.cwd, { recursive: true })
     const selection = yield* Effect.result(selectSteps(options.selector, task.prompt, candidates, order))
     if (Result.isFailure(selection)) {
       // A failed call shouldn't sink the run: hand over every candidate, and say so.
       const failed = { ...all, nodes: order, selector: { model: options.selector.model, error: selection.failure.message } }
-      return { systemPrompt: renderChecklist(candidates, order, repo), info: failed } satisfies Injection
+      return { systemPrompt: render(candidates, order), info: failed } satisfies Injection
     }
     const { costUsd, reasons, steps, usage } = selection.success
     const chosen = { ...all, nodes: steps, selector: { model: options.selector.model, reasons, cost_usd: costUsd } }
     const spent = { costUsd, usage }
     if (steps.length === 0) return { systemPrompt: undefined, info: chosen, spent } satisfies Injection
     return {
-      systemPrompt: renderChecklist(candidates, steps, repo, new Set(["start", ...steps])),
+      systemPrompt: render(candidates, steps, new Set(["start", ...steps])),
       info: chosen,
       spent
     } satisfies Injection
@@ -282,6 +291,49 @@ export const renderChecklist = (
     if (node.script !== null) lines.push(`   - Script: ${code(node.script)}`)
   }
   return lines.join("\n") + "\n"
+}
+
+/**
+ * The mistakes and dead ends recorded on the edges into the steps in `order`,
+ * under each step's description, or undefined if there are none. Every edge
+ * into a step counts, and one with a condition shows it: a warning such as
+ * "skipping this fails the context menu test" holds only on that path.
+ */
+export const renderWarnings = (graph: Graph, order: ReadonlyArray<string>, repo: string): string | undefined => {
+  const lines = [
+    "# Mistakes to avoid in this repository",
+    "",
+    "Earlier tasks in this repository made the mistakes below or hit these dead ends, each listed " +
+    "under the step where it happened. They matter only when your task includes that step: don't " +
+    "add work because of them.",
+    ""
+  ]
+  const header = lines.length
+  for (const id of order) {
+    const node = graph.nodes.get(id)
+    if (node === undefined || node.type === "start") continue
+    // The warnings on the edges into this step, by condition ("" for none).
+    const byCondition = new Map<string, Array<string>>()
+    for (const e of graph.sortedEdges()) {
+      if (e.target !== id || e.source === id) continue
+      const items = [
+        ...unique([e.pitfalls]).map((p) => `Avoid: ${p}`),
+        ...unique(e.facts[repo]?.dead_ends ?? []).map((d) => `Dead end: ${d}`)
+      ]
+      if (items.length === 0) continue
+      const when = (e.condition ?? "").trim().replace(/\.$/, "")
+      byCondition.set(when, [...(byCondition.get(when) ?? []), ...items])
+    }
+    if (byCondition.size === 0) continue
+    lines.push(`- **${node.description.trim()}**`)
+    for (const item of unique(byCondition.get("") ?? [])) lines.push(`  - ${item}`)
+    for (const [when, items] of byCondition) {
+      if (when === "") continue
+      lines.push(`  - ${when.charAt(0).toUpperCase()}${when.slice(1)}:`)
+      for (const item of unique(items)) lines.push(`    - ${item}`)
+    }
+  }
+  return lines.length === header ? undefined : lines.join("\n") + "\n"
 }
 
 /** A whole graph as Markdown, for people: steps in order, then every transition with its advice and facts. */
