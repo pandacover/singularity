@@ -18,7 +18,7 @@
 import { Context, type Effect } from "effect"
 import type { CandidateNotFound, Conflict, GraphExists, GraphNotFound, InvalidEdit, NodeNotFound, StoreError } from "./Errors.ts"
 import type { Candidate, CandidateStatus, EditSet, Graph, GraphInfo, Node } from "./Models.ts"
-import type { Direction } from "./Ops.ts"
+import type { Direction, NodeMatch } from "./Ops.ts"
 
 /** The version a read sees: undefined for head, a number for a committed version, a candidate id for that candidate's view. */
 export type At = number | string | undefined
@@ -32,6 +32,13 @@ export interface NeighborhoodOptions extends ReadOptions {
   readonly hops?: number
   /** Which edges to follow from a node. Default "out". */
   readonly direction?: Direction
+}
+
+export interface SearchOptions extends ReadOptions {
+  /** At most this many nodes. Default 5. */
+  readonly limit?: number
+  /** Leave out nodes scoring below this. Default 0: any word in common. */
+  readonly minScore?: number
 }
 
 export interface ProposeOptions {
@@ -67,6 +74,12 @@ export class GraphStore extends Context.Service<GraphStore, {
   ): Effect.Effect<ReadonlyMap<string, Node>, ReadError>
   /** Nodes whose command patterns match `command`, sorted by id. Used to localize the agent. */
   matchNodes(graphId: string, command: string, options?: ReadOptions): Effect.Effect<ReadonlyArray<Node>, ReadError>
+  /**
+   * Nodes whose descriptions best match `text` (e.g. a task prompt), best
+   * first. Used to find where a new task enters the graph. A database would
+   * answer this from a full-text index; scores only need to rank sensibly.
+   */
+  searchNodes(graphId: string, text: string, options?: SearchOptions): Effect.Effect<ReadonlyArray<NodeMatch>, ReadError>
   /** Nodes within `hops` of the given nodes and the edges between them. */
   neighborhood(
     graphId: string,

@@ -84,8 +84,19 @@ const spread = (values: ReadonlyArray<unknown>, fmt: (x: number) => string, scal
   return xs.length === 1 ? med : `${med} (${fmt(Math.min(...xs))}-${fmt(Math.max(...xs))})`
 }
 
-/** How a memory run relates to what it retrieved: exact repeat, similar task, or nothing. */
+/**
+ * How a memory run relates to its memory: exact repeat, similar task, or
+ * nothing retrieved. For saved-scripts that's the retrieved run's task. The
+ * graph records the tasks it learned from (`sources`) and the steps it handed
+ * over (`nodes`).
+ */
 export const runKind = (r: RunRecord): string => {
+  const sources = field(r, "injection", "sources")
+  if (Array.isArray(sources)) {
+    const nodes = field(r, "injection", "nodes")
+    if (!Array.isArray(nodes) || nodes.length === 0) return "no match"
+    return sources.includes(r.task_id) ? "exact repeat" : "similar task"
+  }
   const retrieved = field(r, "injection", "retrieved", "task_id")
   if (retrieved === undefined || retrieved === null) return "no match"
   return retrieved === r.task_id ? "exact repeat" : "similar task"

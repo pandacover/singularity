@@ -58,9 +58,23 @@ command without running anything.
 
 - `no-memory`: nothing (the baseline).
 - `saved-scripts`: the closest past successful run (its prompt, files, source
-  diff and working commands), matched by prompt similarity. Needs
-  `--memory DIR`; add `--frozen` for measurement runs so memory doesn't change
-  while it's being measured.
+  diff and working commands), matched by prompt similarity.
+- `saved-scripts-top2`: up to the two closest past runs, each similar enough.
+- `graph`: the procedural graph. Steps whose descriptions share words with
+  the prompt mark where the task enters the graph; Sonnet then reads the task
+  and the nearby steps with their conditions and decides which apply (about
+  $0.01, counted in the run's cost). The chosen steps are handed over once as a
+  checklist: when each applies, how, what to avoid, and the files and commands
+  involved. Learning asks Sonnet to turn each run into graph edits (see
+  `src/eval/GraphLearner.ts`). Both calls go through `claude -p --json-schema`
+  with your login. `--graph-version N` uses an earlier version.
+- `saved-scripts-warnings`: the closest past run, as `saved-scripts` gives it,
+  plus the graph's warnings: the mistakes and dead ends recorded on its steps,
+  without the checklist. `--memory` is the saved-scripts store and
+  `--warnings` the graph store.
+
+Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
+measurement runs so memory doesn't change while it's being measured.
 
 Build memory from runs already recorded, without running the agent again:
 
@@ -68,5 +82,15 @@ Build memory from runs already recorded, without running the agent again:
 node src/cli.ts eval learn examples/excalidraw/suite.toml runs/excalidraw/baseline-1 \
   --setup saved-scripts --memory runs/excalidraw/memory/saved-scripts --task altkey-zen-m
 ```
+
+See what a setup would hand the agent for each task, and inspect a graph:
+
+```
+node src/cli.ts eval inject examples/excalidraw/suite.toml --setup graph --memory runs/excalidraw/memory/graph
+node src/cli.ts graph show runs/excalidraw/memory/graph
+```
+
+`report --compare --baseline saved-scripts` compares setups against
+saved-scripts instead of no memory.
 
 New setups implement `MemorySetup` in `src/eval/Setups.ts`.

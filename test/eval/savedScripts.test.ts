@@ -5,7 +5,15 @@ import { join } from "node:path"
 import { learnFrom } from "../../src/eval/Learn.ts"
 import { makeSetup } from "../../src/eval/Memory.ts"
 import { runSuite } from "../../src/eval/Runner.ts"
-import { bestMatch, makeEntry, makeSavedScripts, MIN_SIMILARITY, render, splitDiff } from "../../src/eval/SavedScripts.ts"
+import {
+  bestMatch,
+  makeEntry,
+  makeSavedScripts,
+  MIN_SIMILARITY,
+  render,
+  reportsFailure,
+  splitDiff
+} from "../../src/eval/SavedScripts.ts"
 import type { Outcome } from "../../src/eval/Setups.ts"
 import { NoMemory } from "../../src/eval/Setups.ts"
 import type { Task } from "../../src/eval/Suite.ts"
@@ -108,6 +116,30 @@ describe("saved-scripts", () => {
     assert.isUndefined(unrelated.systemPrompt)
     assert.isNull(unrelated.info.retrieved)
     assert.deepStrictEqual(bestMatch("anything", []), [undefined, 0])
+  })
+
+  it("doesn't save commands whose output reports a failure", () => {
+    const trace = fakeTrace(0)
+    const call = (command: string, result: string, isError = false): ToolCall => ({
+      ...fakeTrace(1).toolCalls[0],
+      input: { command },
+      result,
+      isError
+    })
+    const yarnFailed = "$ vitest --update --watch=false --watch=false\nerror Command failed with exit code 1.\n"
+    const testsFailed = "\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m\x1b[2m | \x1b[22m\x1b[1m\x1b[32m2361 passed"
+    const entry = makeEntry(outcome(true, {
+      ...trace,
+      toolCalls: [
+        call("yarn test:update --watch=false 2>&1 | tail -40", yarnFailed),
+        call("yarn vitest run x.test.tsx | tail -5", testsFailed),
+        call("yarn tsc | head", "src/a.ts(1,7): error TS2322: Type 'string' is not assignable"),
+        call("exit 3", "Exit code 3", true),
+        call("yarn test:update 2>&1 | tail -40", "Tests  2362 passed | 0 failed (2410)\nDone in 95.76s.")
+      ]
+    }))
+    assert.deepStrictEqual(entry.commands, ["yarn test:update 2>&1 | tail -40"])
+    assert.isFalse(reportsFailure("Test Files  139 passed (139)"))
   })
 
   it("lists snapshots in the notes without their content", () => {

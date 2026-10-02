@@ -1,0 +1,95 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..1ae7b3ed 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,7 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  K: "KeyK",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/excalidraw/actions/actionToggleStats.tsx b/packages/excalidraw/actions/actionToggleStats.tsx
+index eb3cd040..08f084a4 100644
+--- a/packages/excalidraw/actions/actionToggleStats.tsx
++++ b/packages/excalidraw/actions/actionToggleStats.tsx
+@@ -24,5 +24,5 @@ export const actionToggleStats = register({
+   },
+   checked: (appState) => appState.stats.open,
+   keyTest: (event) =>
+-    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.SLASH,
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.K,
+ });
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..1edf3b6f 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -94,7 +94,7 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
+-  stats: [getShortcutKey("Alt+/")],
++  stats: [getShortcutKey("Alt+K")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+   flipVertical: [getShortcutKey("Shift+V")],
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..3ff134ce 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -315,7 +315,7 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+             )}
+             <Shortcut
+               label={t("stats.fullTitle")}
+-              shortcuts={[getShortcutKey("Alt+/")]}
++              shortcuts={[getShortcutKey("Alt+K")]}
+             />
+             <Shortcut
+               label={t("search.title")}
+diff --git a/packages/excalidraw/tests/excalidraw.test.tsx b/packages/excalidraw/tests/excalidraw.test.tsx
+index 54637454..41f9e635 100644
+--- a/packages/excalidraw/tests/excalidraw.test.tsx
++++ b/packages/excalidraw/tests/excalidraw.test.tsx
+@@ -1,7 +1,7 @@
+ import { queryByText, queryByTestId } from "@testing-library/react";
+ import { useMemo } from "react";
+ 
+-import { THEME } from "@excalidraw/common";
++import { CODES, THEME } from "@excalidraw/common";
+ 
+ import { t } from "../i18n";
+ import { Excalidraw, Footer, MainMenu } from "../index";
+@@ -15,6 +15,7 @@ import {
+   render,
+   waitFor,
+ } from "./test-utils";
++import { Keyboard } from "./helpers/ui";
+ 
+ const { h } = window;
+ 
+@@ -497,4 +498,24 @@ describe("<Excalidraw/>", () => {
+       "custom-excalidraw",
+     );
+   });
++
++  it("toggles the stats panel with Alt+K and not with Alt+/", async () => {
++    await render(<Excalidraw handleKeyboardGlobally={true} />);
++    expect(h.state.stats.open).toBe(false);
++
++    Keyboard.withModifierKeys({ alt: true }, () => {
++      Keyboard.codeDown(CODES.SLASH);
++    });
++    expect(h.state.stats.open).toBe(false);
++
++    Keyboard.withModifierKeys({ alt: true }, () => {
++      Keyboard.codeDown(CODES.K);
++    });
++    expect(h.state.stats.open).toBe(true);
++
++    Keyboard.withModifierKeys({ alt: true }, () => {
++      Keyboard.codeDown(CODES.K);
++    });
++    expect(h.state.stats.open).toBe(false);
++  });
+ });
