@@ -105,3 +105,58 @@ unchanged.
   thinking off it dropped a needed step in 1 of 2 tries.
 - **Rendering.** A step shows the advice on the edges from the chosen steps
   into it, and its conditions only when every such edge has one.
+- **Two lanes (2026-10-02).** To about halve the wall time, the runs go
+  through two clones of the repo at once (`LANE=2` in
+  `run-graph-measurement.sh`). Lane 1 runs passes 0–2 of the new tasks and
+  pass 2 of the existing ones, lane 2 the rest. Each pass stays in one lane,
+  with its setups taking turns as before, and each lane writes its own output
+  directories. Nothing the agent sees or the checks do changes. The agent's
+  own test runs are slower when both clones test at once, so wall time is
+  noisier; it doesn't decide anything.
+- **Cut-off commands (2026-10-02, after the first 3 runs, before any
+  cut-off).** With both clones testing at once, the full suite took 190–275 s
+  instead of about 185 s, and one chained command (typecheck, lint fix and
+  the full suite) took 441 s of the 600 s the agent allowed it. If an agent
+  command reaches its time limit, the agent's behavior changes for a reason
+  that has nothing to do with memory. So a run in which any agent command
+  reaches its limit is rerun in one lane with nothing else running, and the
+  rerun replaces it. If more than two runs are cut off, the remaining passes
+  run in one lane.
+
+## Results (2026-10-02)
+
+All 77 runs completed, and no agent command reached its time limit. One run
+failed: the graph on `toggle-rulers` labelled the setting "Toggle rulers"
+(after the existing "Toggle grid") instead of "Rulers". The runs cost $18.21.
+Median total tokens, with min–max:
+
+| Rule | Comparison | Change | Verdict |
+|---|---|---|---|
+| 1. Existing tasks | graph against saved-scripts, median of the per-task changes | +82% (+25% to +114%); 1 failed run against 0 | fail |
+| 2. Recombined | `midpoint-snap-n`: graph 432k (369–559k) against saved-scripts-top2 271k (215–419k) | +59% | no win |
+| 2. Subset | `page-breaks`: graph 336k (250–382k) against saved-scripts 304k (264–348k) | +10% | no win |
+| 2. Lesson from failures | `stats-shortcut-k`: graph 252k (234–289k) against saved-scripts 491k (218–833k) | −49% | win, within run-to-run noise |
+| 2. Partial overlap | zen-only graph against no memory, median of the per-task changes on the toggle tasks | +42% (−6% to +51%) | no win |
+
+**The claim doesn't hold.** The graph won 1 of the 4 kinds (3 were needed)
+and used more tokens than saved-scripts on the existing tasks.
+
+Observations, not part of the rules:
+
+- Every graph run on a shortcut task (zen mode, view mode, snap, midpoint)
+  was handed the `update_shortcut_tests` step and wrote a new keyboard test in
+  `excalidraw.test.tsx`, though none of those prompts asked for one.
+  Saved-scripts runs edited no test files there (1 of 5 on midpoint). The
+  zen-only graph did the same on the toggle tasks, where it was worse than no
+  memory.
+- A checklist leaves the edits to the agent, while a saved diff can be copied:
+  graph runs made more tool calls and reads than saved-scripts (zen mode 16
+  against 8 calls, `toggle-rulers` 40 against 24).
+- On `stats-shortcut-k` the graph's `handleKeyboardGlobally` pitfall worked:
+  all 5 runs stayed between 234k and 289k tokens, against 471k–1,296k for no
+  memory and 218k–833k for saved-scripts.
+- The step selector added about 2.8k tokens per run, about 1%.
+- The earlier runs used as baselines here (`saved-scripts-1`,
+  `baseline-2-toggle`) ran on Claude Code 2.1.286, the measurement on 2.1.287
+  (an auto-update). The new-task comparisons all ran on 2.1.287 and show the
+  same pattern.

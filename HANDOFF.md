@@ -17,11 +17,31 @@ README.md for commands and CLAUDE.md for how the code is written.
 - **The graph is built:** `runs/excalidraw/memory/graph`, version 6, 13 steps
   and 22 transitions, learned from the 6 seed runs for $0.53. Inspect it with
   `node src/cli.ts graph show runs/excalidraw/memory/graph`.
-- **Next: the measurement** (77 runs, about $15 and 5 hours), waiting for the
-  user's go-ahead after seeing the graph. Run it with
-  `bash examples/excalidraw/run-graph-measurement.sh new 0 4`, then
-  `... existing 0 2`. Then compare with `report --compare` (against
-  no-memory) and `report --compare --baseline saved-scripts`.
+- **The measurement is done** (2026-10-02, 01:42–06:24 local time, 77 runs,
+  $18.21). **The claim doesn't hold:** the graph won 1 of the 4 kinds of task
+  (3 were needed) and used 82% more tokens than saved-scripts on the 6
+  existing tasks. Full results and observations are at the end of
+  `examples/excalidraw/PREREGISTRATION.md`.
+  - It won only on the lesson-from-failures task (`stats-shortcut-k`, −49%
+    against saved-scripts, within run-to-run noise by the rules, but all 5
+    runs stayed at 234k–289k tokens against saved-scripts' 218k–833k).
+  - Why it lost: a checklist leaves the edits to the agent, while a saved
+    diff can be copied. And the selector handed over the "add a keyboard
+    test" step to every shortcut task, so the agent wrote tests no prompt
+    asked for (this made it worse than no memory twice).
+  - Ran in two lanes (two clones at once: `LANE=2` in the script, outputs
+    suffixed `-lane2`), about 4h40m instead of about 6–7 hours. No agent
+    command reached its time limit (longest 441 s of 600 s), so no run was
+    rerun. Reports take both lanes' dirs, e.g. `runs/excalidraw/graph-1-new*`.
+- **Where the time goes** (measured on earlier runs): each run is about 5
+  minutes, about 3½ of which is the agent's own full test suite (excalidraw's
+  `CLAUDE.md` says to always run `yarn test:update`; 4 workers make it ~185 s
+  instead of ~100 s). Our scoped checks take ~½ minute and the model ~½–1.
+  Telling the agent to run targeted tests was rejected: it would break
+  comparability with earlier runs and cause snapshot failures unrelated to
+  memory, and the full run costs time, not tokens.
+- **The user asked for shorter replies** (2026-10-02): one thread, plain
+  words, one example, then the next step.
 
 ## Status (end of the third session)
 
@@ -436,8 +456,8 @@ All figures are medians of 3 runs; tokens include cache reads.
   - It injects about 0.7k tokens for zen mode and about 3k for minimap.
   - The memory was built for free from the baselines' successful runs with
     `learn`, and stored in `runs/excalidraw/memory/saved-scripts/`.
-- **This is the bar the graph has to clear.** Findings that matter for its
-  design:
+- **This is the bar the graph has to clear.** It didn't, in the 2026-10-02
+  measurement (see Status). Findings that matter for its design:
   - **Exact repeats have a floor.** The agent replays the saved diff one Edit
     per hunk (minimap: 19 Edits plus tests, about 35 calls). Only a real
     script (apply the patch in one command) would do better, so guidance
@@ -483,8 +503,10 @@ These come from inspecting real session logs and the CLI binary
 
 ## Next steps
 
-0. **Run the measurement** (see Status) once the user agrees, then report
-   every task against the pre-registered thresholds, including losses.
+0. **Decide what follows the measurement** (done; the claim doesn't hold).
+   Proposed to the user: saved-scripts for what to do, plus only the
+   graph's pitfalls for what to avoid, with no checklist. That keeps what
+   each did best. It needs its own pre-registration and runs.
 1. **The graph setup** (the plan as of the third session; done except the
    measurement).
    - **The claim to test (the user reread it and moved on).**
@@ -527,13 +549,14 @@ These come from inspecting real session logs and the CLI binary
 
 ## Open questions for the user
 
-- Go-ahead for the measurement runs.
+- What to do after the graph lost: try saved-scripts plus the graph's
+  pitfalls, or stop at saved-scripts.
 - Whether to add a curated mid-size repo alongside excalidraw later.
 
 ## Working notes
 
 - Commit only when the user asks, and work on a feature branch (currently
-  `ts-effect-port`), not `main`.
+  `graph-setup`), not `main`.
 - Runs cost real money on the user's account. Use `--dry-run` first, and set
   `max_budget_usd` in suites.
 - Keep heavy folders (workspaces, target repos' node_modules) out of this repo
