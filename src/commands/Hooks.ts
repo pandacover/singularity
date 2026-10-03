@@ -4,20 +4,16 @@
  */
 import { Console, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { fileURLToPath } from "node:url"
 import { defaultClaude } from "../eval/Agent.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"
 import { DEFAULT_SELECTOR_MODEL } from "../eval/StepSelector.ts"
-import { hasOurHooks, hooksSettings, withOurHooks, withoutOurHooks } from "../handover/Install.ts"
+import { HOOK_SCRIPT, hasOurHooks, hooksSettings, withOurHooks, withoutOurHooks } from "../handover/Install.ts"
 import { taskStart } from "../handover/TaskStart.ts"
 import { loadHome } from "../local/Home.ts"
 import { ReportError } from "../eval/Report.ts"
 import { claudeHome } from "../traces/index.ts"
 import { homeFlag, recordsLayer } from "./Common.ts"
 import { memoryLayer } from "./Memory.ts"
-
-/** The hook entry point, next to the CLI. */
-export const HOOK_SCRIPT = fileURLToPath(new URL("../hook.ts", import.meta.url))
 
 const SCOPES = ["user", "project", "local"] as const
 

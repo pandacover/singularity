@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest"
-import { buildGraph, causes, generalize, mechanicalTrigger, namesValue, stepIdOf } from "../../src/memory/Build.ts"
+import { buildGraph, causes, generalize, mechanicalTrigger, namesValue, namesValueFile, stepIdOf } from "../../src/memory/Build.ts"
 import { judge, replay } from "../../src/memory/Replay.ts"
 import { flagLesson, readRecord, step } from "./fixtures.ts"
 
@@ -87,6 +87,19 @@ describe("buildGraph", () => {
     assert.strictEqual(generalize("Press Z, then the Alt+M shortcut, not Alt+Z.", r), "Press the old key, then the new key shortcut, not Alt+the old key.")
     const g = buildGraph([r], { tenant: "local" })
     assert.strictEqual(g.steps[0].purpose, "Add M so the new key works.")
+  })
+
+  it("doesn't take a task's own files for where a step happens", () => {
+    const values = [{ name: "action", value: "zen mode (actionToggleZenMode)" }]
+    const r = readRecord(ZEN, KIND, [{ ...keyTest, files: ["src/actions/actionToggleZenMode.tsx", "src/actions/shortcuts.ts"] }], { values })
+    assert.isTrue(namesValueFile("src/actions/actionToggleZenMode.tsx", r))
+    assert.isFalse(namesValueFile("src/actions/shortcuts.ts", r))
+    // Words inside a name count too: "minimap" names actionToggleMinimap.tsx, and not contextmenu.test.tsx.
+    const minimap = readRecord(ZEN, KIND, [], { values: [{ name: "action name", value: "minimap" }] })
+    assert.isTrue(namesValueFile("src/actions/actionToggleMinimap.tsx", minimap))
+    assert.isFalse(namesValueFile("tests/contextmenu.test.tsx", minimap))
+    const g = buildGraph([r], { tenant: "local" })
+    assert.deepStrictEqual(g.steps[0].where.repo.files.map((f) => f.path), ["src/actions/shortcuts.ts"])
   })
 })
 

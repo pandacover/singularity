@@ -22,6 +22,7 @@ import type { Kind, Step, Warning } from "../memory/Models.ts"
 import { MemoryStore } from "../memory/MemoryStore.ts"
 import { rankKinds } from "../memory/Replay.ts"
 import { RecordStore } from "../records/RecordStore.ts"
+import { type Usage, usageToJson } from "../traces/index.ts"
 import { logHandover, type SessionState, writeSession } from "./Session.ts"
 import { repoTools } from "./Tools.ts"
 
@@ -177,6 +178,7 @@ export const taskStart = Effect.fn("taskStart")(function*(
   let kind: Kind | undefined
   let answer: SelectionAnswer | undefined
   let selection: SessionState["selection"] = null
+  let selectionUsage: Usage | undefined
   if (proposed.length > 0 && options.selector !== undefined) {
     const allSteps = new Map((yield* memory.steps(proposed.flatMap((p) => p.kind.route.map((e) => e.step)))).map((s) => [s.id, s]))
     yield* fs.makeDirectory(options.selector.cwd, { recursive: true })
@@ -195,6 +197,7 @@ export const taskStart = Effect.fn("taskStart")(function*(
       answer = called.success.value
       kind = proposed.find((p) => p.kind.id === answer!.kind)?.kind
       selection = { model: options.selector.model, cost_usd: called.success.costUsd, error: null }
+      selectionUsage = called.success.usage
     } else {
       // A failed call shouldn't cost the task its memory: fall back to word search alone.
       selection = { model: options.selector.model, cost_usd: null, error: called.failure.message }
@@ -268,7 +271,10 @@ export const taskStart = Effect.fn("taskStart")(function*(
     warnings: atStart.map((w) => w.id),
     reasons,
     selection,
-    chars: text?.length ?? 0
+    // What the selection's model call used, so a measurement can count it with the run.
+    selection_tokens: selectionUsage === undefined ? null : usageToJson(selectionUsage),
+    chars: text?.length ?? 0,
+    text: text ?? null
   })
   return { text, state, proposals, reasons } satisfies TaskStartResult
 })

@@ -13,6 +13,10 @@
  * replaces them and uninstalling removes only them.
  */
 import { Predicate } from "effect"
+import { fileURLToPath } from "node:url"
+
+/** The hook entry point, next to the CLI. */
+export const HOOK_SCRIPT = fileURLToPath(new URL("../hook.ts", import.meta.url))
 
 export interface HookSpec {
   readonly event: string

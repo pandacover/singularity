@@ -89,7 +89,7 @@ A trigger says with exact strings when the mistake is being made, so a hook can 
 - on "edit": an edit to a file whose path ends with "file" (any file if null), writing text that contains every string in "all" and none in "none".
 - on "error": a failed call whose output contains every string in "all".
 
-Strings are plain text, not regular expressions. The trigger must match the call that failed (for "edit": the edit that caused the failure) and must not match the call that fixed it. Copy short strings from the log, specific enough not to fire on harmless calls. "file" is only for "edit" triggers; use null otherwise.
+Strings are plain text, not regular expressions. The trigger must match the call that failed (for "edit": the edit that caused the failure) and must not match the call that fixed it. Copy short strings from the log, specific enough not to fire on harmless calls. Use strings that any task making the same mistake would write, never this task's own values (its feature's name, its keys, its labels, a test's title): a trigger with them can't fire on another task. "file" is only for "edit" triggers; use null otherwise.
 
 The earlier a warning arrives, the more it saves. When a detour cost many turns, look for the edit or command that caused it, and write the trigger for that moment rather than for the error at the end: for instance an edit that writes a test without the setup the test needs.
 
@@ -288,7 +288,10 @@ export const verifyReading = (reading: Reading, evidence: Evidence): { readonly 
     }
     let trigger = l.trigger
     if (trigger !== null) {
-      const problem = triggerProblem(trigger) ?? triggerMismatch(trigger, main, d.failed.call, d.fixed.call, event)
+      const value = triggerValue(trigger, reading.values)
+      const problem = triggerProblem(trigger) ??
+        (value === undefined ? undefined : `it names this task's own value "${value}", so it couldn't fire on another task`) ??
+        triggerMismatch(trigger, main, d.failed.call, d.fixed.call, event)
       if (problem !== undefined) {
         dropped.push(`trigger (${describeTrigger(trigger)}) for "${l.lesson}": ${problem}`)
         trigger = null
@@ -322,6 +325,27 @@ export const verifyReading = (reading: Reading, evidence: Evidence): { readonly 
     },
     dropped
   }
+}
+
+/** Values that are plain literals (`false`, `0`) belong to no one task: any task's code has them. */
+const LITERAL = /^(true|false|null|undefined|\d+(\.\d+)?)$/i
+
+/**
+ * The task's own value that a trigger's strings contain, if any (the
+ * feature's name, its keys): a trigger with one can't fire on another task.
+ * Values the model wrote with details count by each part ("Alt+M (CODES.M /
+ * KeyM)"); a path stays whole. The trigger's file doesn't count: that is
+ * where the mistake happens, whatever the task.
+ */
+export const triggerValue = (trigger: Trigger, values: ReadonlyArray<{ readonly value: string }>): string | undefined => {
+  const parts = values
+    .flatMap((v) => v.value.split(/[(),;]|\s\/\s/).map((p) => p.trim()))
+    .filter((p) => p.length >= 2 && !LITERAL.test(p))
+  const strings = [...trigger.all, ...trigger.none]
+  return parts.find((p) => {
+    const pattern = new RegExp(`(^|[^A-Za-z0-9])${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^A-Za-z0-9])`, "i")
+    return strings.some((s) => pattern.test(s))
+  })
 }
 
 /**

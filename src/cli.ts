@@ -4,6 +4,7 @@
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts-warnings --memory DIR --warnings GRAPH_DIR [--frozen]
+ *     node src/cli.ts eval run SUITE.toml --setup hooks --memory MEMORY_HOME
  *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts|graph --memory DIR [--task ID ...]
  *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
@@ -61,6 +62,13 @@ const workspacesFlag = Flag.String("workspaces").pipe(
 
 const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable"))
 
+/**
+ * Setups that prepare memory before a run, and learn after it, through the
+ * harness. The hooks setup does neither: its hooks hand memory over during the
+ * run (preview with `handover --home`), and memory is built with `memory build`.
+ */
+const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks")
+
 const graphVersionFlag = Flag.Int("graph-version").pipe(
   Flag.optional,
   Flag.withDescription("graph setups: use this committed version, not the latest (read-only)")
@@ -100,7 +108,7 @@ const run = Command.make(
     setup: Flag.Literals("setup", SETUPS).pipe(Flag.withDefault("no-memory")),
     memory: Flag.String("memory").pipe(
       Flag.optional,
-      Flag.withDescription("memory store for setups that learn (e.g. saved-scripts)")
+      Flag.withDescription("memory store for setups that learn (e.g. saved-scripts); for hooks, a memory home")
     ),
     frozen: Flag.Boolean("frozen").pipe(
       Flag.withDefault(false),
@@ -142,7 +150,9 @@ const run = Command.make(
         const sha = yield* resolveRef(ws, t.base)
         yield* Console.log(`task       ${t.id} @ ${sha.slice(0, 12)}  checks: ${t.checks.length}`)
       }
-      yield* Console.log("command    " + buildCommand(claude, suite.agent, "<session-id>").join(" "))
+      // The hooks setup writes its settings into each run's directory.
+      const settings = args.setup === "hooks" ? ["--settings", "<run dir>/hooks.json"] : []
+      yield* Console.log("command    " + [...buildCommand(claude, suite.agent, "<session-id>"), ...settings].join(" "))
       return
     }
 
@@ -168,7 +178,7 @@ const learn = Command.make(
       Argument.variadic({ min: 1 }),
       Argument.withDescription("results.jsonl files or run output dirs")
     ),
-    setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
+    setup: Flag.Literals("setup", PREPARED_SETUPS),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to add to")),
     warnings: warningsFlag,
     tasks: tasksFlag,
@@ -206,7 +216,7 @@ const inject = Command.make(
   "inject",
   {
     suite: Argument.String("suite").pipe(Argument.withDescription("suite TOML file")),
-    setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
+    setup: Flag.Literals("setup", PREPARED_SETUPS),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to read")),
     graphVersion: graphVersionFlag,
     warnings: warningsFlag,

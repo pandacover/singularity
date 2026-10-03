@@ -46,12 +46,36 @@ const Injection = Schema.Struct({
   }))
 })
 
+/** What the hooks setup records: the local memory's route, steps and warnings (HooksMemory.ts). */
+const HooksInjection = Schema.Struct({
+  version: Schema.optionalKey(Schema.Number),
+  kind: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  nodes: Schema.optionalKey(Schema.Array(Schema.String)),
+  warnings_at_start: Schema.optionalKey(Schema.Array(Schema.String)),
+  fired: Schema.optionalKey(Schema.Array(Schema.Struct({ warning: Schema.String })))
+})
+
 /** The memory an eval run was given, from its setup and injection info. Which pieces helped isn't in the log. */
 export const evalMemory = (setup: string, injection: unknown): MemoryUse | null => {
   if (setup === "no-memory") return null
+  const item = (id: string, kind: string, moment: "start" | "trigger" = "start"): MemoryItem => ({ id, kind, moment, outcome: "unknown", note: null })
+  if (setup === "hooks") {
+    // The same items a session's record gets from its hooks (SessionEnd.ts).
+    const hooks = Option.getOrUndefined(Schema.decodeUnknownOption(HooksInjection)(injection ?? {}))
+    if (hooks === undefined) return { setup, version: null, items: [] }
+    return {
+      setup,
+      version: hooks.version ?? null,
+      items: [
+        ...(hooks.kind == null ? [] : [item(hooks.kind, "route")]),
+        ...(hooks.nodes ?? []).map((s) => item(s, "step")),
+        ...(hooks.warnings_at_start ?? []).map((w) => item(w, "warning")),
+        ...(hooks.fired ?? []).map((f) => item(f.warning, "warning", "trigger"))
+      ]
+    }
+  }
   const info = Option.getOrUndefined(Schema.decodeUnknownOption(Injection)(injection ?? {}))
   if (info === undefined) return { setup, version: null, items: [] }
-  const item = (id: string, kind: string): MemoryItem => ({ id, kind, moment: "start", outcome: "unknown", note: null })
   const saved = [info.retrieved ?? undefined, ...(info.also_retrieved ?? [])]
     .filter((r) => r !== undefined)
     .map((r) => item(`saved-scripts:${r.task_id}`, "saved-solution"))
@@ -69,6 +93,8 @@ export interface ImportResult {
 export interface ImportOptions {
   /** The repo, when a run's working directory no longer exists. */
   readonly repo?: string | undefined
+  /** Only runs of these eval tasks (all when empty or absent), e.g. to build memory from some tasks only. */
+  readonly taskIds?: ReadonlyArray<string> | undefined
   readonly onRecord?: ((id: string, line: RunLine) => Effect.Effect<void>) | undefined
 }
 
@@ -98,6 +124,7 @@ export const importRunDirs = Effect.fn("importRunDirs")(function*(dirs: Readonly
         continue
       }
       const line = decoded.value
+      if (options.taskIds !== undefined && options.taskIds.length > 0 && !options.taskIds.includes(line.task_id)) continue
       const runDir = path.join(dir, "runs", line.run_id)
       const transcript = line.session_id === undefined ? undefined : path.join(runDir, "transcript", `${line.session_id}.jsonl`)
       if (typeof line.success !== "boolean" || transcript === undefined || !(yield* fs.exists(transcript))) {

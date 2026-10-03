@@ -3,14 +3,50 @@
 Last updated 2026-10-03, in the fifth session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
 
+## Status: the measurement is prepared, not run (2026-10-03)
+
+The user asked whether runs had been made and whether they could be compared
+cleanly with the earlier ones. None had: the fifth session built memory from
+the old runs and checked it by replaying them, which is free. Comparing new
+runs cleanly needed the same evidence (memory from the seed runs only) and the
+same conditions (Claude Code had moved to 2.1.288). The user then said to
+prepare the paid measurement (build stage 4) for them to read before anything
+is spent.
+
+- **The pre-registration**: `examples/excalidraw/PREREGISTRATION-local-memory.md`
+  (memory, runs, the gate, the rules). Waiting for the user's OK; commit it
+  before the first counted run. About 50 runs, $10, 3½ hours.
+- **A `hooks` setup** (`src/eval/HooksMemory.ts`): the local memory handed
+  over by its own hooks during the run (`--settings`), from a copy of a frozen
+  memory home in the run's directory; the route selection's cost counts toward
+  the run. Tested end to end: the fake claude runs the real hook scripts.
+- **Frozen memories** from the seed runs only, each built in a home of its own:
+  `runs/excalidraw/memory/local-seed` (zen and minimap) and `local-zen` (zen
+  only, for the partial-overlap test). Hashes are in the pre-registration.
+- **The same conditions**: Claude Code keeps earlier versions in
+  `~/.local/share/claude/versions/`, so every run uses its baselines' version
+  (2.1.286 for the existing tasks, 2.1.287 for the new ones) from pinned
+  copies in `C:\singularity-workspaces\_claude`. Runs never update Claude Code
+  (`DISABLE_AUTOUPDATER=1`). A gate of 6 runs checks that nothing else moved.
+- **Two fixes** found while building the seed memories (the pre-registration's
+  amendments): a trigger may not contain the task's own values (it could never
+  fire on another task), and a task's own files (`actionToggleZenMode.tsx`)
+  don't count as where a step happens.
+- `npm test`: 131 passed. `npm run typecheck`: clean. Not committed, on
+  `local-memory` after `835c8de`.
+
+Next: the user reads the pre-registration. With their OK, commit it, then
+`bash examples/excalidraw/run-local-memory-measurement.sh smoke`, then
+`drift 0 2`; if the gate passes, the two lanes (the plan is in the script).
+
 ## Status (fifth session): the local version is built
 
 The user asked to build the local setup first (2026-10-03): stores in
 `~/.singularity`, a CLI and hooks for storing and for exact and word search,
 and graph building, keeping the model call at task start and leaving the
 cloud steps for later. All of it is built, on branch `local-memory` (from
-`main` after PR #3 was merged), not committed yet. `npm test`: 126 passed.
-`npm run typecheck`: clean.
+`main` after PR #3 was merged), committed as `835c8de`. `npm test`: 126
+passed. `npm run typecheck`: clean.
 
 What exists now, with what it showed on the excalidraw runs:
 
@@ -612,7 +648,8 @@ Run things with `node src/cli.ts ...` (see README.md).
     false-lead anchors present at the base commit (only a file the run
     created can be proven by its added lines), triggers specific and
     matching the failure (an edit trigger: an edit before it) but not the
-    fix. Dropped claims are listed in the record.
+    fix, and free of the task's own values (`triggerValue`). Dropped claims
+    are listed in the record.
   - `RecordStore.ts` (interface), `JsonRecordStore.ts`, `Subjects.ts`
     (subjects matched by root commit, remote, then path), `Build.ts`,
     `FromRuns.ts` (eval run dirs), `Keys.ts` (exact keys and text for search).
@@ -627,7 +664,9 @@ Run things with `node src/cli.ts ...` (see README.md).
     edit trigger only failing tests and type errors) or similar words in the
     same step; of a warning's triggers the one that fits the most of its
     detours wins; false leads need two runs; text that names one task's
-    values (from the reading) is rewritten with the values' names.
+    values (from the reading) is rewritten with the values' names, and a
+    file named after them (`actionToggleZenMode.tsx`) doesn't count as where
+    a step happens.
   - `Aliases.ts`: close calls between step names (no run took both, same
     files, similar names), decided once by a model and kept in
     `aliases.json`.
@@ -663,7 +702,10 @@ Run things with `node src/cli.ts ...` (see README.md).
 - **`src/commands/`**: `record`, `search`, `memory`, `handover`, `hooks`.
 - The eval harness sets `SINGULARITY_HOOKS=off` for the agent and for
   memory's own model calls (a task-start hook inside the task-start model
-  call would call itself).
+  call would call itself), except in its `hooks` setup
+  (`src/eval/HooksMemory.ts`), which turns them on for the agent with
+  `--settings`, against a copy of a memory home in the run's directory, and
+  records what they handed over and what the route selection cost.
 
 ### Graph storage: `src/graph/`
 
@@ -985,11 +1027,9 @@ These come from inspecting real session logs and the CLI binary
 the older items below where they overlap):
 
 1. **The measurement on excalidraw** (build stage 4; paid, pre-registered
-   first, needs the user's go): a `hooks` setup in the eval harness (the
-   agent gets the hooks through `--settings`, `SINGULARITY_HOOKS` on, a
-   frozen memory version built only from runs of other tasks), against
-   saved-scripts and no memory. Goal: tokens close to saved-scripts, success
-   no worse.
+   first, needs the user's go): prepared, see the status at the top and
+   `examples/excalidraw/PREREGISTRATION-local-memory.md`. Goal: tokens close
+   to saved-scripts, success no worse.
 2. **Read more records** if the measurement needs them: 91 records have no
    model reading yet (`record annotate --all --per-task N`). Re-reading the
    55 read ones would also restore the check commands the first, too strict

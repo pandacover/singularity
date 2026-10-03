@@ -32,7 +32,7 @@ subject.
 **Workflow records**, one per finished run, are the evidence:
 
 ```
-node src/cli.ts record import runs/excalidraw/*/       # eval runs
+node src/cli.ts record import runs/excalidraw/*/ [--task ID ...]   # eval runs (of some tasks only)
 node src/cli.ts record session SESSION_ID              # a session that committed its change with passing tests
 node src/cli.ts record annotate --all --per-task 4     # a model's reading, a few cents a record
 node src/cli.ts record list | show ID
@@ -137,9 +137,20 @@ command without running anything.
   plus the graph's warnings: the mistakes and dead ends recorded on its steps,
   without the checklist. `--memory` is the saved-scripts store and
   `--warnings` the graph store.
+- `hooks`: the local memory, handed over by its own hooks as in daily use.
+  `--memory` is a memory home (a `SINGULARITY_HOME`), copied into each run's
+  directory, so it never changes. Claude Code gets the hooks through
+  `--settings`: the route at the first prompt, a warning when its trigger
+  appears. The route selection's model call runs the same Claude Code as the
+  agent, and counts toward the run. Preview what a task gets with
+  `handover --home HOME --cwd WORKSPACE "the prompt"`.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs so memory doesn't change while it's being measured.
+
+`--claude PATH` runs another Claude Code, e.g. a pinned copy of an earlier
+version (`~/.local/share/claude/versions/` keeps a few), so a run is compared
+with baselines from the same version. Runs never update Claude Code.
 
 Build memory from runs already recorded, without running the agent again:
 
