@@ -90,6 +90,10 @@ export const agentEnv = (base: Readonly<Record<string, string | undefined>> = pr
   // Claude Code's own auto-memory would carry notes from one run to the next
   // and contaminate every setup, so it is always off.
   env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"
+  // Our own hooks, if installed for daily work, stay out of measurement runs
+  // and out of the model calls memory makes itself (a task-start hook inside
+  // the task-start model call would call itself). A suite's env can turn them on.
+  env.SINGULARITY_HOOKS = "off"
   return env
 }
 

@@ -1,7 +1,68 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-03, in the fourth session. Start here, then see
+Last updated 2026-10-03, in the fifth session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
+
+## Status (fifth session): the local version is built
+
+The user asked to build the local setup first (2026-10-03): stores in
+`~/.singularity`, a CLI and hooks for storing and for exact and word search,
+and graph building, keeping the model call at task start and leaving the
+cloud steps for later. All of it is built, on branch `local-memory` (from
+`main` after PR #3 was merged), not committed yet. `npm test`: 126 passed.
+`npm run typecheck`: clean.
+
+What exists now, with what it showed on the excalidraw runs:
+
+- **The store** (`~/.singularity`, tenant `local`, subject `excalidraw`
+  recognized by its root commit). Records, the memory graph and session
+  state are JSON files behind `RecordStore` and `MemoryStore` interfaces,
+  each with its own layer, like `GraphStore`.
+- **Records, the mechanical part** (stage 1a, free): all 146 runs under
+  `runs/excalidraw` are records (145 successes, 1 failure). Known answers:
+  every run in which the doubled `--watch=false` actually ran has a detour
+  for it (in 3 the fix was another test command, so the detour doesn't name
+  the flag; in one the command never ran). The `handleKeyboardGlobally`
+  debugging shows as test-failure detours: 842k and 856k tokens in the two
+  zen runs that wrote their own test, 34k–639k in the five saved-scripts
+  stats runs.
+- **Records, the model part** (stage 1b): 55 records read (up to 4 per task,
+  runs without memory first), $2.44 plus about $0.2 of trial readings.
+  Known answer: the zen runs' unrequested test step comes out as "chosen".
+  Of 52 lessons, 42 came with a trigger that held up against the log. 32
+  check commands were dropped by a check that was too strict (a typecheck
+  chained with the failing doubled-flag command); the check is fixed for
+  future readings.
+- **Search**: `search` (word) and `search --exact`, over records, task
+  kinds, steps and warnings.
+- **The graph** (stage 2): version 6, 4 task kinds, 25 steps, 15 warnings.
+  The replay over the 55 read tasks: 0 steps handed over unneeded, 0 needed
+  steps missing, every task matched to its kind, warnings reach all 52
+  detours with a lesson, 0 false alarms. Known answer: the "add a keyboard
+  test" step is optional, "only when the task explicitly asks for a new
+  test", so no shortcut task is handed it unasked; a build that made it
+  required is rejected (`test/memory/build.test.ts`).
+- **Warnings that matter**: the doubled flag (trigger `test:update` +
+  `--watch=false`, on the snapshot step) and `handleKeyboardGlobally`
+  (trigger: an edit to `excalidraw.test.tsx` writing `fireEvent.keyDown(document`
+  and `altKey` without `handleKeyboardGlobally`, on the keyboard-test step,
+  median cost 653k tokens). `memory triggers` (the free check) replays the
+  recorded runs, each warning only against runs it wasn't learned from: the
+  `handleKeyboardGlobally` warning would have arrived before the mistake in
+  3 of 5 such runs (1,016k tokens of detour); the doubled flag's arrives at
+  the failing call itself, as predicted, so it is also handed over at the
+  start with its step.
+- **The hand-over** (stage 3, local): `handover TASK` shows what a task
+  would get. The stats task gets 9 steps including the keyboard test and the
+  `handleKeyboardGlobally` warning; the zen task gets 7, without the test
+  step ("the task doesn't ask for a new test"). About $0.03 and 7 s.
+- **Hooks**, checked end to end with real Claude Code 2.1.288 (Haiku, a tiny
+  repo with seeded memory, hooks passed with `--settings`, $0.05): the route
+  arrived at the first prompt and the trigger warning after `npm test`, both
+  as `hook_additional_context`; the session was recorded at its end (commit
+  plus passing tests), with feedback that the warning was followed and both
+  steps' files were changed. Not installed in the user's own settings: that
+  is the user's call (`hooks install`).
 
 ## Redesign in progress (from 2026-10-02, at the user's request)
 
@@ -216,9 +277,14 @@ includes its repo:
   repo. The rule: shared memory never makes a task worse than no memory.
 - This replaces "one graph per repo for now" under Decisions.
 
-**Build order, proposed (2026-10-03); not started, because the user asked to
-wait.** Each stage rests on the one before. Paid runs and model calls only
-after an explicit go.
+**Build order (2026-10-03).** Each stage rests on the one before. Paid runs
+and model calls only after an explicit go. On 2026-10-03 the user asked for
+the local version first (stores in `~/.singularity`, CLI and hooks for
+storing and for exact and word search, graph building), with the model call
+at task start kept and the cloud steps deferred, and allowed model readings
+of real records. Stages 1–3 are built locally, without the cloud parts
+(semantic search, embeddings, the API and the MCP tool); see the status at
+the top and "Local memory" under What's built. Stages 4 and 5 wait for a go.
 
 1. Records.
    - a. The mechanical part (free): build a record from a finished run with
@@ -497,11 +563,107 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
     dropped needed steps, or thought for 8k tokens with thinking on.
   - The zen-only graph for the partial-overlap test is version 3 of the same
     store (after the zen runs, before minimap), not a separate build.
+- **Local memory, decided in the fifth session (by Claude, within the
+  agreed design):**
+  - One record per session, id `<subject>-<first 8 of the session id>`;
+    records change only to get the model's reading (once) and feedback.
+  - Triggers are plain substrings in three forms (command, edit, error),
+    never regular expressions, so whoever reads one knows what it matches.
+  - The task-start hook acts at a session's first prompt only; later
+    prompts are follow-ups. There is no `PreToolUse` hook: its
+    `additionalContext` arrives with the tool's result, like `PostToolUse`'s,
+    and denying or rewriting is still the user's open question.
+  - A session counts as successful if its HEAD moved since the task started
+    (or it committed while running) and its last test command passed.
+  - The hook entry point is a separate script that loads only what each
+    event needs: the tool-call hook takes about 0.1 s without memory for the
+    session and 0.4 s with it, against 1.3 s for the full CLI.
 
 ## What's built
 
 All code is TypeScript + Effect 4 under `src/`, with tests under `test/`.
 Run things with `node src/cli.ts ...` (see README.md).
+
+### Local memory (the redesign, fifth session)
+
+- **`src/local/`**: `Home.ts` (`~/.singularity` or `$SINGULARITY_HOME`, the
+  tenant in `config.json`, created with tenant `local`), `Git.ts` (a repo's
+  identity: root commits, normalized remotes, HEAD; a file at a commit).
+- **`src/records/`**, the workflow record (step 3):
+  - `Models.ts`: the record (run, task, files, files read, commands,
+    detours, checks, memory use, the model's reading), snake_case on disk.
+  - `Shell.ts`: command lines split into segments (quotes, heredocs and
+    PowerShell here-strings respected), each with a key (`yarn test:update`,
+    `git diff`); filters after a pipe don't count; checks classified (test,
+    typecheck, lint, build).
+  - `Extract.ts`: the mechanical part. A detour is a failing call (not a
+    read, search or read-only command) and the later call that shows it
+    fixed: the same command running without its old error (even if
+    something else then fails), a passing test run that covers the failing
+    tests (not one filtered by test name), a passing typecheck, the next
+    edit of the same file. Failures on the way join the detour. In a run
+    that succeeded, an open test failure closes at the last passing check of
+    its kind. Cost: the tokens of the turns after the failure, up to the fix.
+  - `Triggers.ts`: exact triggers (`command`, `edit`, `error`), plain
+    substrings; edit triggers also match shell commands that write files.
+  - `Annotate.ts`: the model's reading (Sonnet, medium effort) with the
+    tenant's kind and step names as vocabulary, then the checks: step files
+    must be changed files, checks commands that worked, landmark and
+    false-lead anchors present at the base commit (only a file the run
+    created can be proven by its added lines), triggers specific and
+    matching the failure (an edit trigger: an edit before it) but not the
+    fix. Dropped claims are listed in the record.
+  - `RecordStore.ts` (interface), `JsonRecordStore.ts`, `Subjects.ts`
+    (subjects matched by root commit, remote, then path), `Build.ts`,
+    `FromRuns.ts` (eval run dirs), `Keys.ts` (exact keys and text for search).
+- **`src/memory/`**, the graph (step 4):
+  - `Build.ts` (pure): kinds from the readings, every run of one task in the
+    kind most of them were given; steps by name across kinds; a route step is
+    required if every run of the kind took it and none as its own choice;
+    files and landmarks counted per subject; warnings merged from lessons and
+    from log-only triggers (a command that worked once flags were dropped, an
+    edit whose text matched twice) by the same trigger, a trigger that fits
+    the other's detour (a command trigger only claims command errors, an
+    edit trigger only failing tests and type errors) or similar words in the
+    same step; of a warning's triggers the one that fits the most of its
+    detours wins; false leads need two runs; text that names one task's
+    values (from the reading) is rewritten with the values' names.
+  - `Aliases.ts`: close calls between step names (no run took both, same
+    files, similar names), decided once by a model and kept in
+    `aliases.json`.
+  - `Conditions.ts`: a model writes conditions for optional steps, from the
+    tasks that took them against those that didn't.
+  - `Replay.ts`: the replay check and the commit rule (no unasked step, not
+    more extra or missing steps, not more false alarms, not fewer warned
+    detours unless false alarms fell). `TriggerReplay.ts`: the free trigger
+    check, leaving each warning's own runs out.
+  - `MemoryStore.ts`, `JsonMemoryStore.ts`: versions and candidates, like
+    `GraphStore`, with reads by subject and reach. `Merge.ts`: build,
+    replay, propose, commit or reject.
+- **`src/search/`**: BM25 over words (identifiers split, plural `s`
+  dropped), exact substring search, over records and graph items.
+- **`src/handover/`** (step 5, local part):
+  - `TaskStart.ts`: word search proposes up to three kinds (each sharing two
+    words, or 10% of the weighted wording, with the task); a model (Sonnet,
+    thinking off) picks the kind and decides step by step; without a model,
+    the best kind's required steps and those most runs needed. Landmarks are
+    re-checked against the working tree; files are listed only if at least
+    60% of the step's runs (and two) edited them; checks only if two runs
+    used them; warnings of the chosen steps and kind come along. The
+    warnings with triggers that reach the subject are kept in the session's
+    state, and every hand-over is logged in `handovers.jsonl`.
+  - `OnTool.ts`: a warning per trigger, once a session. `SessionEnd.ts`:
+    the record of a session whose HEAD moved and whose last test run passed,
+    with what became of its memory (a step whose usual files changed was
+    followed; a warning whose trigger matched again was ignored).
+  - `Install.ts` and `src/hook.ts`: the hooks (`UserPromptSubmit`,
+    `PostToolUse` and `PostToolUseFailure` for shell commands and edits,
+    `SessionEnd`), merged into a settings file without touching anything
+    else (a backup is kept as `settings.json.before-singularity`).
+- **`src/commands/`**: `record`, `search`, `memory`, `handover`, `hooks`.
+- The eval harness sets `SINGULARITY_HOOKS=off` for the agent and for
+  memory's own model calls (a task-start hook inside the task-start model
+  call would call itself).
 
 ### Graph storage: `src/graph/`
 
@@ -819,6 +981,33 @@ These come from inspecting real session logs and the CLI binary
 
 ## Next steps
 
+**From the fifth session on** (the local version is built; these replace
+the older items below where they overlap):
+
+1. **The measurement on excalidraw** (build stage 4; paid, pre-registered
+   first, needs the user's go): a `hooks` setup in the eval harness (the
+   agent gets the hooks through `--settings`, `SINGULARITY_HOOKS` on, a
+   frozen memory version built only from runs of other tasks), against
+   saved-scripts and no memory. Goal: tokens close to saved-scripts, success
+   no worse.
+2. **Read more records** if the measurement needs them: 91 records have no
+   model reading yet (`record annotate --all --per-task N`). Re-reading the
+   55 read ones would also restore the check commands the first, too strict
+   check dropped.
+3. **A second subject, then hosting** (build stage 5): the cloud steps,
+   deferred by the user: semantic search with embeddings, the API, the MCP
+   tool, a graph database behind `MemoryStore` and `RecordStore`.
+
+Known weak spots: detours are found by rules over command lines, which can
+misattribute a failure inside a chained command; some step purposes and
+landmarks still name one feature (the "update snapshots" step's purpose
+speaks of a new appState field); the model's kinds sometimes split one
+family in two ("add a keyboard shortcut to an existing setting toggle" next
+to "change an action's keyboard shortcut"), which the model at task start
+copes with, since it reads both.
+
+**Older items:**
+
 0. **Saved-scripts plus the graph's warnings** (the user agreed on
    2026-10-02; done, the check passed): saved-scripts for what to do, plus
    only the graph's pitfalls for what to avoid, with no checklist. That keeps
@@ -878,6 +1067,19 @@ These come from inspecting real session logs and the CLI binary
 
 ## Open questions for the user
 
+- Install the hooks for daily work? `node src/cli.ts hooks install` puts
+  them in `~/.claude/settings.json` (every session; a model call of about
+  $0.03 at each session's first prompt in a repo memory knows); `--scope
+  local --repo DIR` limits them to one repo. `hooks uninstall` takes them out.
+- How memory should keep learning: sessions are recorded at their end
+  automatically, but the model's reading and graph builds are manual
+  (`record annotate --all`, then `memory build --conditions`, a few cents
+  each). Run them on a schedule, or after each recorded session?
+- The landmark rule ("a fact earns its place only if more than one kind of
+  task can use it") is applied when records are read: the model is told to
+  give only such facts. Keep it that way?
+- `PreToolUse` could deny or rewrite a command a warning knows will fail,
+  which would save the doubled flag's retry turn; still open, as before.
 - For the hosted version: where it runs, which graph database, and whether
   agents pull memory through an MCP tool or a hook injects it at task start.
 - Whether to add a curated mid-size repo alongside excalidraw later.
@@ -885,7 +1087,7 @@ These come from inspecting real session logs and the CLI binary
 ## Working notes
 
 - Commit only when the user asks, and work on a feature branch (currently
-  `graph-setup`), not `main`.
+  `local-memory`), not `main`.
 - Runs cost real money on the user's account. Use `--dry-run` first, and set
   `max_budget_usd` in suites.
 - Keep heavy folders (workspaces, target repos' node_modules) out of this repo
