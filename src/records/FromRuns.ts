@@ -55,10 +55,34 @@ const HooksInjection = Schema.Struct({
   fired: Schema.optionalKey(Schema.Array(Schema.Struct({ warning: Schema.String })))
 })
 
+/** What memory v1's setup records (WorkflowsMemory.ts): the workflows, the places shown, the pitfalls. */
+const WorkflowsInjection = Schema.Struct({
+  version: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  workflows: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))),
+  shown: Schema.optionalKey(Schema.Array(Schema.Struct({ place: Schema.String, file: Schema.String }))),
+  pitfalls_at_start: Schema.optionalKey(Schema.Array(Schema.String)),
+  fired: Schema.optionalKey(Schema.Array(Schema.Struct({ pitfall: Schema.String })))
+})
+
 /** The memory an eval run was given, from its setup and injection info. Which pieces helped isn't in the log. */
 export const evalMemory = (setup: string, injection: unknown): MemoryUse | null => {
   if (setup === "no-memory") return null
   const item = (id: string, kind: string, moment: "start" | "trigger" = "start"): MemoryItem => ({ id, kind, moment, outcome: "unknown", note: null })
+  if (setup === "workflows") {
+    // The same kinds of item v1's own session records carry (workflows/Feedback.ts); what became of them is judged when learning.
+    const v1 = Option.getOrUndefined(Schema.decodeUnknownOption(WorkflowsInjection)(injection ?? {}))
+    if (v1 === undefined) return { setup, version: null, items: [] }
+    return {
+      setup,
+      version: v1.version ?? null,
+      items: [
+        ...(v1.workflows ?? []).map((w) => item(w.id, "workflow")),
+        ...(v1.shown ?? []).map((s) => ({ ...item(s.place, "place"), note: s.file })),
+        ...(v1.pitfalls_at_start ?? []).map((p) => item(p, "pitfall")),
+        ...(v1.fired ?? []).map((f) => item(f.pitfall, "pitfall", "trigger"))
+      ]
+    }
+  }
   if (setup === "hooks") {
     // The same items a session's record gets from its hooks (SessionEnd.ts).
     const hooks = Option.getOrUndefined(Schema.decodeUnknownOption(HooksInjection)(injection ?? {}))

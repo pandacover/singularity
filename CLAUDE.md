@@ -21,7 +21,12 @@ from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
 reading, the store), `src/memory/` (the memory graph: build, replay, store),
 `src/search/` (exact and word search), `src/handover/` (task start and the
 code at its places, triggers, session end, hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
-hook entry point). Tests mirror it under `test/`.
+hook entry point). That local memory is v0, frozen at tag `memory-v0`.
+Memory v1 is `src/workflows/`: workflows with blanks induced from runs, a graph
+of them that learns from results, places kept as the blocks around an edit
+and found in the code at use, its own hooks (`src/workflows/hook.ts`) and eval
+setup (`src/eval/WorkflowsMemory.ts`). Keep v0 and v1 apart: v1 reuses the
+records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
 ## Writing Effect 4 code
 

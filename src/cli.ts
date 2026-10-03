@@ -4,7 +4,7 @@
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts-warnings --memory DIR --warnings GRAPH_DIR [--frozen]
- *     node src/cli.ts eval run SUITE.toml --setup hooks --memory MEMORY_HOME
+ *     node src/cli.ts eval run SUITE.toml --setup hooks|workflows --memory MEMORY_HOME
  *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts|graph --memory DIR [--task ID ...]
  *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
@@ -15,6 +15,7 @@
  *     node src/cli.ts memory build [--conditions] [--dry-run] | show [AT] | candidates | replay [AT]
  *     node src/cli.ts handover TASK... [--cwd REPO] [--no-model]
  *     node src/cli.ts hooks install|uninstall [--scope user|project|local] | print | status
+ *     node src/cli.ts workflows build [--task ID ...] [--fresh] | show [AT] | candidates
  */
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
@@ -23,6 +24,7 @@ import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"
 import { memoryCommand } from "./commands/Memory.ts"
 import { recordCommand } from "./commands/Records.ts"
 import { searchCommand } from "./commands/Search.ts"
+import { workflowsCommand } from "./commands/Workflows.ts"
 import { GraphStore, JsonGraphStore } from "./graph/index.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
 import { DEFAULT_LEARNER_EFFORT, DEFAULT_LEARNER_MODEL } from "./eval/GraphLearner.ts"
@@ -67,7 +69,7 @@ const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescriptio
  * harness. The hooks setup does neither: its hooks hand memory over during the
  * run (preview with `handover --home`), and memory is built with `memory build`.
  */
-const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks")
+const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows")
 
 const graphVersionFlag = Flag.Int("graph-version").pipe(
   Flag.optional,
@@ -398,7 +400,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand]),
+  Command.withSubcommands([evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand]),
   Command.run({ version: "0.1.0" }),
   Effect.catchTags({
     SuiteError: reportError,

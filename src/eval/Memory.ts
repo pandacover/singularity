@@ -6,6 +6,7 @@ import type { LearnerConfig } from "./GraphLearner.ts"
 import { makeGraphMemory } from "./GraphMemory.ts"
 import { makeHooksMemory } from "./HooksMemory.ts"
 import { makeSavedScripts } from "./SavedScripts.ts"
+import { makeWorkflowsMemory } from "./WorkflowsMemory.ts"
 import type { MemorySetup } from "./Setups.ts"
 import { combine, MemoryError, NoMemory, SETUPS } from "./Setups.ts"
 import type { SelectorConfig } from "./StepSelector.ts"
@@ -25,7 +26,8 @@ export interface SetupContext {
 
 /**
  * Setups that learn need `memoryDir`; `frozen` makes them read-only (for
- * measurement runs). For `hooks` it is a memory home, which is never changed.
+ * measurement runs). For `hooks` and `workflows` it is a memory home, which is
+ * never changed.
  */
 export const makeSetup = (
   name: string,
@@ -61,6 +63,12 @@ export const makeSetup = (
     return context.selector === undefined
       ? Effect.fail(new MemoryError({ message: "hooks needs the claude command for its model call" }))
       : Effect.succeed(makeHooksMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
+  }
+  if (name === "workflows") {
+    // Like hooks: a memory home, handed over by v1's own hooks; their model call runs the agent's Claude Code.
+    return context.selector === undefined
+      ? Effect.fail(new MemoryError({ message: "workflows needs the claude command for its model call" }))
+      : Effect.succeed(makeWorkflowsMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
   }
   if (name === "graph") {
     return context.graphId === undefined
