@@ -160,3 +160,60 @@ product's behavior. Within each pass the setups take turns going first.
 - **Learning from results** isn't measured here: v1 stays as built from the
   six seed runs. A later round can let it learn from these runs
   (`workflows evolve`) and run the similar tasks again.
+
+## Results (2026-10-04)
+
+All 71 runs ran (2026-10-03, 19:43 to about 23:18 UTC, below normal priority),
+for $11.36. The smoke check passed on both versions (the hand-over arrived,
+its model call counted, no hook error). The gate passed: +4% (2.1.286) and
+-1% (2.1.287). No run was cut off, no task-start hook failed or logged an
+error, so nothing was rerun. Both memories kept their hashes. Lanes 1 and 2
+outlived the 2-hour limit on the background commands that started them; the
+scripts ran on, and every run finished on its own.
+
+`score-v1.ts` gives:
+
+| Rule | Result | |
+|---|---|---|
+| 1. Close to the exact script on exact repeats and twins | +41% (zen +43%, minimap +41%, viewmode +17%, snap +13%, rulers +184%) | fails |
+| 2. Better than the exact script on similar tasks | 1 of 4: stats -48% (within run-to-run noise); presenter +74%, page-breaks -16%, midpoint +15% | fails |
+| 3. Never worse than no memory | 0 of 9 worse; -4% (snap) to -85% (zen) | holds |
+| 4. Success no worse | 1 of 33 failed: a rulers run named its label "Toggle rulers", and the hidden test looks for "Rulers" in the menus and the help dialog | fails |
+
+**The goal isn't met.**
+
+Median tokens (min-max) per task, with turns:
+
+| Task | v1 | v0 | Exact script | No memory |
+|---|---|---|---|---|
+| `altkey-zen-m` | 172k, 5 turns | 158k, 5 | 120k, 4 | 1,165k, 25 |
+| `altkey-viewmode-j` | 163k, 5 | 150k, 5 | 140k, 5 | 315k, 10 |
+| `altkey-snap-u` | 203k, 6 | 227k, 7 | 180k, 6 | 213k, 7 |
+| `toggle-minimap` | 441k, 10 | 314k, 8 | 312k, 8 | 787k, 16 |
+| `toggle-rulers` | 531k, 12 | 328k, 8 | 187k, 5 | 563k, 13 |
+| `toggle-presenter` | 385k, 10 | 407k, 10 | 221k, 6 | 673k, 15 |
+| `midpoint-snap-n` | 312k, 9 | 263k, 8 | 271k (top2), 9 | 386k, 12 |
+| `page-breaks` | 255k, 7 | 200k, 5 | 304k, 8 | 324k, 10 |
+| `stats-shortcut-k` | 257k, 8 | 233k, 7 | 491k, 15 | 801k, 22 |
+
+v1 against v0: a median of +11% (from -10% on snap to +62% on rulers).
+
+**Why, from the runs** (no new runs):
+
+- **Turns.** On the toggle tasks v1 took more turns than v0 (rulers 12
+  against 8, minimap 10 against 8, page-breaks 7 against 5), and on rulers
+  4-5 turns before its first edit (v0 2-3, the exact script 1). Each turn
+  also weighed a little more: v1's hand-over is longer (median 4.2k
+  characters, 9.3k on the toggle tasks; v0's 2.9k).
+- **The places were right.** In v1's own runs (`score-v1.ts fit`) the places
+  shown were where the edits went: rulers 19 of 19, presenter 17 of 18,
+  page-breaks 7 of 7 (plus the 4 places of an action it didn't need),
+  midpoint 4 of 6, the shortcut tasks 3 of 4.
+- **What it lacked is an example to copy.** For a new action file v1 names
+  the sibling files; v0 handed over a whole one. For a new Preferences item or
+  help-dialog row, v1 shows the end of the list, not one complete member. The
+  turns before the first edit are spent reading one.
+- **The warnings worked** (`check-warnings.ts`): the doubled `--watch=false` in
+  0 of 33 runs; all 5 stats runs wrote their test with
+  `handleKeyboardGlobally`; no test nobody asked for (the one test edit on a
+  shortcut task updated the existing view-mode test, as its task asks).

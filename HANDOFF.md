@@ -3,7 +3,35 @@
 Last updated 2026-10-04, in the seventh session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
 
-## Status: v1 built and checked for free; the paid comparison is drafted, not run (2026-10-04, seventh session)
+## Status: v1 measured; its goal isn't met, and the runs say why (2026-10-04, seventh session)
+
+The comparison of `PREREGISTRATION-v1.md` ran with the user's go (71 runs,
+$11.36; results at its end; scores with `examples/excalidraw/score-v1.ts`).
+v1 and the pre-registration were committed before the first counted run
+(`ae287ee`); the results and these notes are not committed yet.
+
+- Rule 3 holds: v1 is never worse than no memory (-4% to -85% on all nine
+  tasks), and its warnings worked (doubled flag 0 of 33, `handleKeyboardGlobally`
+  5 of 5, no unasked tests).
+- Rules 1, 2 and 4 fail: +41% against the exact script on repeats and twins
+  (rulers +184%), 1 of 4 similar tasks won (stats, within noise), and 1 of 33
+  runs failed (a rulers run labelled its setting "Toggle rulers"; the hidden
+  test looks for "Rulers"). Against v0 (with its code at the places), v1 is
+  +11% (median per task), worse on the toggle tasks.
+- Why: turns. v1's places were right in its own runs (rulers 19 of 19), but on
+  the toggle tasks it took more turns (rulers 12, v0 8, exact script 5) and
+  4-5 turns before its first edit (v0 2-3, exact 1), with a longer hand-over
+  each turn. It shows where to edit but, for what must be copied (a new action
+  file, a Preferences item, a help-dialog row), only sibling names or the end
+  of a list; v0 handed over a whole sibling file and the neighbouring lines.
+  The agent reads an example first.
+- Next, for the user to decide: show one complete sibling at each place (the
+  last whole member of the list) and the shortest sibling file whole for new
+  files, both read from today's code, with shorter step text; check it on the
+  toggle tasks (a few paid runs). Learning from results (`evolve` on these 33
+  runs) is the other lever, untested in paid runs.
+
+## Status: v1 built and checked for free; the paid comparison is drafted, then run (2026-10-04, seventh session)
 
 **Built** (not committed yet; `npm test`: 176 passed, typecheck clean), all in
 `src/workflows/` apart from the eval setup and CLI:
