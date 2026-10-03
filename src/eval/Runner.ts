@@ -33,6 +33,7 @@ import { procOk, runProcess, runShell } from "./Proc.ts"
 import { pyFixed } from "./PyFormat.ts"
 import type { RunRecord } from "./Report.ts"
 import type { MemorySetup } from "./Setups.ts"
+import { addSpent } from "./Setups.ts"
 import type { Suite, Task } from "./Suite.ts"
 import { suiteTask } from "./Suite.ts"
 import { isoNow } from "./Time.ts"
@@ -147,7 +148,7 @@ export const runTask = Effect.fn("runTask")(function*(
     return { ...record, status: "setup_failed", success: null } as RunRecord
   }
 
-  const injection = yield* setup.beforeRun(task, ws.path)
+  const injection = yield* setup.beforeRun(task, ws.path, runDir)
   let promptFile: string | undefined
   if (injection.systemPrompt) {
     promptFile = path.join(runDir, "injected.md")
@@ -155,10 +156,12 @@ export const runTask = Effect.fn("runTask")(function*(
   }
 
   const sessionId = randomUUID()
-  const command = buildCommand(claude, suite.agent, sessionId, promptFile)
-  const agent = yield* runAgent(command, sessionId, task.prompt, ws.path, suite.agent.timeoutS, suite.env)
+  const command = [...buildCommand(claude, suite.agent, sessionId, promptFile), ...(injection.args ?? [])]
+  const agent = yield* runAgent(command, sessionId, task.prompt, ws.path, suite.agent.timeoutS, { ...suite.env, ...injection.env })
   yield* fs.writeFileString(path.join(runDir, "agent.stdout.json"), agent.proc.stdout)
   yield* fs.writeFileString(path.join(runDir, "agent.stderr.txt"), agent.proc.stderr)
+  // Memory handed over during the run (by hooks): what it was, and what it cost.
+  const delivered = injection.delivered === undefined ? undefined : yield* injection.delivered
 
   const trace = yield* saveTrace(sessionId, path.join(runDir, "transcript"))
   const diff = yield* workspaceDiff(ws, sha)
@@ -173,8 +176,9 @@ export const runTask = Effect.fn("runTask")(function*(
 
   const [agentUsage, usageSource] = headlineUsage(agent.result, trace)
   const agentCost = cost(agent.result, trace)
-  // Memory that called a model to prepare (the graph's step selection) pays for it here.
-  const spent = injection.spent
+  // Memory that called a model to prepare (the graph's step selection) or to
+  // hand over (the hooks' route selection) pays for it here.
+  const spent = addSpent(injection.spent, delivered?.spent)
   const usage = agentUsage !== undefined && spent !== undefined ? addUsage(agentUsage, spent.usage) : agentUsage
   return {
     ...record,
@@ -194,7 +198,7 @@ export const runTask = Effect.fn("runTask")(function*(
       timed_out: r.timedOut,
       duration_s: round3(r.durationS)
     })),
-    injection: injection.info,
+    injection: delivered === undefined ? injection.info : { ...injection.info, ...delivered.info },
     ...(spent === undefined ? {} : { memory_spent: { cost_usd: spent.costUsd, tokens: usageToJson(spent.usage) } }),
     diff_lines: diffLines(diff),
     // From the diff, so it covers edits made through the shell too.

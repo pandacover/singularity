@@ -22,6 +22,71 @@ node src/cli.ts traces <session id or path to .jsonl> [--json]
 Reads Claude Code's transcript (including subagents) and prints tokens, tool
 calls, failed calls, and repeated file reads.
 
+## Local memory
+
+Memory lives in `~/.singularity` (or `$SINGULARITY_HOME`). It belongs to one
+tenant, named in its `config.json`, and is about subjects: repos, recognized
+by their root commits and remotes, so every clone of a repo is the same
+subject.
+
+**Workflow records**, one per finished run, are the evidence:
+
+```
+node src/cli.ts record import runs/excalidraw/*/ [--task ID ...]   # eval runs (of some tasks only)
+node src/cli.ts record session SESSION_ID              # a session that committed its change with passing tests
+node src/cli.ts record annotate --all --per-task 4     # a model's reading, a few cents a record
+node src/cli.ts record list | show ID
+```
+
+A record holds what the log and the diff show without any model: files
+changed, every shell command and whether it worked, and detours (a call that
+failed, the later call that fixed it, and the tokens in between). The model's
+reading adds the task's kind, its steps (each asked for, needed, or the
+agent's own choice), landmarks in the code, and what each detour teaches, with
+an exact trigger. Every claim is checked against the code at the run's commit
+and against the log, and dropped if it doesn't hold.
+
+**The memory graph** is built from the records: task kinds with their routes
+(required and optional steps, with the condition for each optional one),
+steps with where they happen in each repo, and warnings with their triggers.
+
+```
+node src/cli.ts memory build --conditions   # merge the records; a replay check commits or rejects
+node src/cli.ts memory show [VERSION]
+node src/cli.ts memory replay | triggers | candidates
+```
+
+Each build is a candidate. The replay check asks, for every past task,
+whether the graph would hand it what it needed and nothing else, and whether
+its triggers fire on commands that worked; a build that hands a task a step
+it never asked for is rejected. `memory triggers` replays recorded runs
+through the warnings' triggers, to see which would have arrived before their
+mistake. `--conditions` has a model write the conditions of optional steps
+and decide which near-identical step names are one step (a few cents).
+
+**Search**, exact and by words (search by meaning is for the hosted version):
+
+```
+node src/cli.ts search help dialog shortcut
+node src/cli.ts search --exact handleKeyboardGlobally [--type record|kind|step|warning]
+```
+
+**Hand-over**, through Claude Code hooks:
+
+```
+node src/cli.ts handover --cwd REPO "Change the zen mode shortcut to Alt+M"   # what a task would get
+node src/cli.ts hooks install [--scope user|project|local]                   # or `hooks print`, for claude --settings
+node src/cli.ts hooks status | uninstall
+```
+
+At a session's first prompt, the hook hands over the route for the task and
+the warnings on its steps: word search proposes up to three task kinds, and a
+model confirms one and picks its steps (about $0.03 and a few seconds). After
+each shell command or edit, a warning whose exact trigger appears is handed
+over, once a session. When a session ends with a committed change and passing
+tests, it becomes a record. `SINGULARITY_HOOKS=off` turns the hooks off; the
+eval harness sets it, so installed hooks stay out of measurement runs.
+
 ## Run an evaluation
 
 ```
@@ -72,9 +137,20 @@ command without running anything.
   plus the graph's warnings: the mistakes and dead ends recorded on its steps,
   without the checklist. `--memory` is the saved-scripts store and
   `--warnings` the graph store.
+- `hooks`: the local memory, handed over by its own hooks as in daily use.
+  `--memory` is a memory home (a `SINGULARITY_HOME`), copied into each run's
+  directory, so it never changes. Claude Code gets the hooks through
+  `--settings`: the route at the first prompt, a warning when its trigger
+  appears. The route selection's model call runs the same Claude Code as the
+  agent, and counts toward the run. Preview what a task gets with
+  `handover --home HOME --cwd WORKSPACE "the prompt"`.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs so memory doesn't change while it's being measured.
+
+`--claude PATH` runs another Claude Code, e.g. a pinned copy of an earlier
+version (`~/.local/share/claude/versions/` keeps a few), so a run is compared
+with baselines from the same version. Runs never update Claude Code.
 
 Build memory from runs already recorded, without running the agent again:
 

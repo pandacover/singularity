@@ -4,6 +4,7 @@
 import { Effect } from "effect"
 import type { LearnerConfig } from "./GraphLearner.ts"
 import { makeGraphMemory } from "./GraphMemory.ts"
+import { makeHooksMemory } from "./HooksMemory.ts"
 import { makeSavedScripts } from "./SavedScripts.ts"
 import type { MemorySetup } from "./Setups.ts"
 import { combine, MemoryError, NoMemory, SETUPS } from "./Setups.ts"
@@ -22,7 +23,10 @@ export interface SetupContext {
   readonly learner?: LearnerConfig | undefined
 }
 
-/** Setups that learn need `memoryDir`; `frozen` makes them read-only (for measurement runs). */
+/**
+ * Setups that learn need `memoryDir`; `frozen` makes them read-only (for
+ * measurement runs). For `hooks` it is a memory home, which is never changed.
+ */
 export const makeSetup = (
   name: string,
   memoryDir?: string,
@@ -51,6 +55,12 @@ export const makeSetup = (
       handOver: "warnings"
     })
     return Effect.succeed(combine(name, makeSavedScripts(memoryDir, frozen), warnings, "warnings"))
+  }
+  if (name === "hooks") {
+    // The memory directory is a memory home; the hooks' model call runs the agent's Claude Code.
+    return context.selector === undefined
+      ? Effect.fail(new MemoryError({ message: "hooks needs the claude command for its model call" }))
+      : Effect.succeed(makeHooksMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
   }
   if (name === "graph") {
     return context.graphId === undefined
