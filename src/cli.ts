@@ -9,10 +9,19 @@
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
  *     node src/cli.ts graph show DIR [--graph ID] [--version N]
  *     node src/cli.ts traces SESSION [--json]
+ *     node src/cli.ts record import RUN_DIRS... | session ID | list | show ID | annotate [IDS...|--all]
+ *     node src/cli.ts search QUERY... [--exact]
+ *     node src/cli.ts memory build [--conditions] [--dry-run] | show [AT] | candidates | replay [AT]
+ *     node src/cli.ts handover TASK... [--cwd REPO] [--no-model]
+ *     node src/cli.ts hooks install|uninstall [--scope user|project|local] | print | status
  */
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"
+import { memoryCommand } from "./commands/Memory.ts"
+import { recordCommand } from "./commands/Records.ts"
+import { searchCommand } from "./commands/Search.ts"
 import { GraphStore, JsonGraphStore } from "./graph/index.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
 import { DEFAULT_LEARNER_EFFORT, DEFAULT_LEARNER_MODEL } from "./eval/GraphLearner.ts"
@@ -374,7 +383,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([evalCommand, graphCommand, traces]),
+  Command.withSubcommands([evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand]),
   Command.run({ version: "0.1.0" }),
   Effect.catchTags({
     SuiteError: reportError,
@@ -386,7 +395,10 @@ Command.make("singularity").pipe(
     StoreError: reportError,
     GraphNotFound: reportError,
     CandidateNotFound: reportError,
-    InvalidEdit: reportError
+    InvalidEdit: reportError,
+    Conflict: reportError,
+    HomeError: reportError,
+    RecordNotFound: reportError
   }),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain

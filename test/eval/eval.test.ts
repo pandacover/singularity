@@ -128,7 +128,7 @@ describe("agent", () => {
     assert.strictEqual(cmd.at(-1), "--safe-mode")
 
     const env = agentEnv({ PATH: "x", CLAUDECODE: "1", CLAUDE_EFFORT: "max", CLAUDE_CONFIG_DIR: "c", ANTHROPIC_API_KEY: "k" })
-    assert.deepStrictEqual(env, { PATH: "x", CLAUDE_CONFIG_DIR: "c", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" })
+    assert.deepStrictEqual(env, { PATH: "x", CLAUDE_CONFIG_DIR: "c", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", SINGULARITY_HOOKS: "off" })
   })
 
   it("parses the result despite noise", () => {
@@ -174,6 +174,7 @@ describe("runSuite", () => {
       const seen = seenByAgent(home, r.session_id)
       assert.notProperty(seen.env, "CLAUDECODE")
       assert.strictEqual(seen.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1")
+      assert.strictEqual(seen.env.SINGULARITY_HOOKS, "off")
 
       const table = summarize(await run(loadRecords([out])))
       assert.include(table, "| no-memory | t1")

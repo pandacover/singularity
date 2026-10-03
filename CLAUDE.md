@@ -14,8 +14,14 @@ decisions, results and next steps; read it first.
   that the code and the docs below describe in sync.
 
 Layout: `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
-procedural graph store), `src/eval/` (the eval harness and memory setups),
-`src/cli.ts` (the command line). Tests mirror it under `test/`.
+procedural graph store of the first graph setup), `src/eval/` (the eval
+harness and memory setups), `src/cli.ts` (the command line). The local memory
+from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
+`src/records/` (workflow records: extraction, the model's reading, the
+store), `src/memory/` (the memory graph: build, replay, store), `src/search/`
+(exact and word search), `src/handover/` (task start, triggers, session end,
+hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
+hook entry point). Tests mirror it under `test/`.
 
 ## Writing Effect 4 code
 
@@ -61,7 +67,8 @@ and `src/graph/PythonCompat.ts` (Python's JSON layout, sort order and
 comparable.
 
 Graph `command_patterns` are JavaScript regular expressions. Prompts that ask
-an LLM to write them must say so.
+an LLM to write them must say so. Warning triggers in the memory graph are
+plain substrings, never regular expressions, and prompts say that too.
 
 Everything written to disk keeps the snake_case keys the Python version used:
 `results.jsonl`, saved-scripts memory entries, graph store files. Old runs in
@@ -77,3 +84,11 @@ records use those keys.
   harness runs everything below normal priority. Keep it that way.
 - Heavy folders (workspaces, node_modules of target repos) live outside this
   repo, in `C:\singularity-workspaces`.
+- Hooks run in the user's own sessions once installed. They must never break
+  a session (errors go to `~/.singularity/hook-errors.log`, exit 0), and the
+  tool-call hook runs after every call, so `src/hook.ts` checks the session
+  file with plain `node:fs` and loads modules only for the event at hand.
+  Keep it fast (about 0.1 s without memory, 0.4 s with). Tests use a temporary
+  `SINGULARITY_HOME`, never the real one.
+- Model calls that build memory (`record annotate`, `memory build
+  --conditions`) cost a few cents each; run them on a few records first.
