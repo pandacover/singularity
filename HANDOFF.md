@@ -3,6 +3,92 @@
 Last updated 2026-10-04, in the seventh session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
 
+## Status: v1 built and checked for free; the paid comparison is drafted, not run (2026-10-04, seventh session)
+
+**Built** (not committed yet; `npm test`: 176 passed, typecheck clean), all in
+`src/workflows/` apart from the eval setup and CLI:
+
+- `Places.ts`: a place is the chain of blocks around an edit (`class App ›
+  getContextMenuItems = ( › if (type === "canvas") { › return [`), from
+  indentation, lifted to each statement's first line; a block's opening line
+  joined with its attributes tells look-alike blocks apart; a changed row among
+  look-alike rows stands for its list; top-level additions are a group of
+  statements that start alike (`PreferencesToggle…`, keywords aside) or the
+  imports. `resolvePlace` finds a place in today's code among the direct
+  children of each block, exactly, else by first words.
+- `Edits.ts`, `Evidence.ts`: a run's diff as edits with their places, in the
+  order the run made them (from its log), new files with the siblings they
+  are named like, detours, checks, and the task's own values (what the prompt
+  quotes, and names the change brought that the repo didn't have before, by
+  `git grep`).
+- `Induce.ts`: one Sonnet call (high effort) reads the evidence and proposes
+  workflows with blanks, edges with conditions, pitfalls with exact triggers;
+  checks drop what names a task's values, places one run used or a task's own
+  file (one of many files named alike, edited by one task), triggers that
+  don't single out their mistake; problems go back once. A workflow learned
+  from unasked work is `only_if_asked`.
+- `Select.ts` (one Sonnet call at task start, thinking off, about $0.02),
+  `Locate.ts` (places found in the working tree or at a commit; a place whose
+  file no longer has it is looked for where its outermost block's first line
+  now is), `Render.ts` (workflows in graph order, each place with current line
+  numbers and a short excerpt, under 9,800 characters), `Start.ts`.
+- Hooks: `src/workflows/hook.ts` with `HookStart.ts`, `HookTool.ts`
+  (pitfall triggers), `HookEnd.ts` (session record with `Feedback.ts`: which
+  shown places a run edited, which it left alone, where it went instead).
+  Eval setup `workflows` (`src/eval/WorkflowsMemory.ts`), tested end to end
+  with the fake claude. v0's code is untouched.
+- `Evolve.ts`: learning from results: new runs' results (what memory showed
+  or would have shown, against where they edited), a refinement by the
+  inducing model with rejected revisions in view, and a gate that replays
+  current and revised memory over all runs and keeps the revision only if
+  shown-and-edited minus shown-and-unused doesn't drop.
+- CLI `workflows build|show|candidates|handover|evolve`; checks
+  `examples/excalidraw/check-v1-places.ts` and `check-older-code.ts`.
+
+**The seed memory** `runs/excalidraw/memory/v1-seed` (version 1; the six seed
+records, as v0's): 8 workflows (add an app-state field, create a toggle
+action, give an action a keyboard shortcut, change an action's shortcut, add
+to the right-click menu with the view-mode list conditional, add a
+Preferences toggle, update snapshots, and a keyboard test only if asked, with
+the `handleKeyboardGlobally` pitfall), 20 places, 4 pitfalls; $0.14. Three
+builds before it, each fixing something the previous showed: a step at zen's
+own file, the keyboard pitfall's wrong cause (the model now sees the edits
+that fixed a detour), the shortcut workflow split in two (workflows must be
+complete for their purpose), and the test workflow handed to tasks that only
+"update" tests (`only_if_asked`).
+
+**Free checks** (tables in `examples/excalidraw/PREREGISTRATION-v1.md`):
+
+- Held out (`check-v1-places.ts`, selections about $0.25 a pass): rulers 18
+  of 18 places shown, presenter 17 of 17 without the view-mode list,
+  page-breaks 7 of 7 plus 4 it didn't need (it made no action; memory only saw
+  minimap, which needed one), midpoint 4 of 7 (v0: 0), shortcut tasks 3 of
+  4-5 with nothing extra. Weak: the old suite's tool-shortcut tasks (rectangle
+  R→M) get the action-shortcut workflow and 3 useless places; the picker
+  can't tell a tool from an action by words, thinking or not. Learning from
+  such a run is the cure.
+- Older code (`check-older-code.ts`): over 7 and 17 months v0's lines and v1's
+  places hold equally (both 19 places, 13 of the March 2026 commit's
+  additions in a known place); across excalidraw's move of its files (2023,
+  2022) v0 finds nothing, v1 finds 11 and 7 places in the files they moved to.
+  So v1's advantage here is fitting other tasks, and surviving moves; not
+  months of ordinary change, which v0's lines survived too.
+
+**Learning from results, tried for free-ish** ($0.52, in a copy of the seed
+memory at `C:\singularity-workspaces\_v1-evolve-test`): one `workflows evolve`
+round with the 10 no-memory runs of `page-breaks` and `midpoint-snap-n` as
+new runs. Replayed over all 16 runs, the revision shows 122 of the 140 places
+they edited (the seed memory 118) and 4 places they left alone (23); the gate
+kept it. It learned, in general words, that a Preferences-only setting needs
+no action (the item can set the field itself), and that giving an existing
+action a shortcut also shows it on the action's existing menu item. On tasks
+it didn't learn from, the held-out check is about the same (rulers one place
+fewer, within the selection's noise). The real seed memory is unchanged.
+
+**Next:** the user approves (or changes) `PREREGISTRATION-v1.md` and its spend
+(71 runs, about $16, or 41 runs, about $9, without new v0 runs); then commit
+it, smoke and gate, run. Spent this session on model calls: about $1.85.
+
 ## Status: memory v0 frozen, v1 being built from scratch (2026-10-04, seventh session)
 
 **Why.** The user rejected the direction of the sessions before

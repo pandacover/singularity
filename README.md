@@ -94,6 +94,28 @@ over, once a session. When a session ends with a committed change and passing
 tests, it becomes a record. `SINGULARITY_HOOKS=off` turns the hooks off; the
 eval harness sets it, so installed hooks stay out of measurement runs.
 
+That memory is v0 (tag `memory-v0`). Memory v1 lives in the same home, under
+`tenants/<tenant>/workflows/`:
+
+```
+node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)
+node src/cli.ts workflows show [AT] [--json]                                 # print it
+node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT]          # preview a task's hand-over
+node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR]   # learn from new runs
+node src/cli.ts workflows candidates                                         # proposals and what became of them
+```
+
+v1 keeps small workflows written with blanks (`{field}`, `{key}`), learned
+from runs, and a graph of them whose edges say when one leads to another. A
+step's place is kept as the blocks that enclose the edit (`class App ›
+getContextMenuItems › if (this.state.viewModeEnabled) › return [`), never as
+code; at task start its hooks (`src/workflows/hook.ts`) pick the workflows the
+task needs (a model call, about two cents), find each place in the code as it
+is (in the file it moved to, if it moved) and hand them over with current line
+numbers. `evolve` revises memory from what new runs did and what it showed
+them, and keeps the revision only if, replayed over the runs, it shows more of
+the places they edited and fewer they left alone.
+
 ## Run an evaluation
 
 ```
@@ -152,6 +174,12 @@ command without running anything.
   appears. The route selection's model call runs the same Claude Code as the
   agent, and counts toward the run. Preview what a task gets with
   `handover --home HOME --cwd WORKSPACE "the prompt"`.
+- `workflows`: memory v1, handed over by its own hooks the same way:
+  `--memory` is a memory home with v1 memory, copied into each run's
+  directory; the workflows arrive at the first prompt, a pitfall's warning when
+  its trigger appears, and the selection's model call counts toward the run.
+  Each run keeps its hand-over log (what was shown, at which lines), which
+  `workflows evolve` learns from. Preview with `workflows handover`.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs so memory doesn't change while it's being measured.

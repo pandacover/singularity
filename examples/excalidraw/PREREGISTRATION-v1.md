@@ -1,0 +1,162 @@
+# Pre-registration: memory v1 against v0, saved scripts and no memory
+
+Written 2026-10-04, before any run of memory v1. The user approved the spend
+("run the comparison", 2026-10-04): the full plan, new v0 runs included. This
+file is committed with the code it measures before the first counted run;
+changes after that are amendments, listed at the end with their reason.
+
+## What is measured
+
+Four setups on the nine excalidraw tasks of `suite.toml`, each handed over the
+way it would be in daily use:
+
+| Setup | What the agent gets | Built from |
+|---|---|---|
+| no memory | nothing | |
+| exact script (`saved-scripts`) | the closest past run's diff and commands, in the system prompt | the seed tasks' runs |
+| v0 (`hooks`, `runs/excalidraw/memory/local-seed-spots`) | its own hooks: a route of steps for the closest kind of task, and the code at the lines next to past edits | the seed tasks' 6 no-memory runs |
+| v1 (`workflows`, `runs/excalidraw/memory/v1-seed`) | its own hooks: the workflows the task needs, with blanks, each step's place found in the code as it is; pitfall warnings | the same 6 runs |
+
+v0 and v1 learned from the same six runs: the three no-memory runs of
+`altkey-zen-m` (baseline-1) and of `toggle-minimap` (baseline-2-toggle).
+v1's build cost $0.14 (one Sonnet call); its selection at task start (one
+Sonnet call, about two cents) counts toward each run, as v0's does.
+
+The goal is the project's: correct results for fewer tokens, tool calls and
+dollars. The tasks, by how they relate to what memory learned from:
+
+| Kind | Tasks |
+|---|---|
+| exact repeat | `altkey-zen-m`, `toggle-minimap` |
+| twin (same steps at the same places, other names and values) | `altkey-viewmode-j`, `altkey-snap-u`, `toggle-rulers` |
+| similar (shares only some steps) | `toggle-presenter` (other rules), `page-breaks` (a subset), `midpoint-snap-n` (a mix of two past tasks), `stats-shortcut-k` (a past task plus a test and its trap) |
+
+Code that changed is checked for free instead (below): at the base commit the
+code is the same one memory learned from.
+
+## What the free checks already say (before any run)
+
+`examples/excalidraw/check-v1-places.ts` (selection calls only, about $0.25)
+holds each task out: memory from the seed tasks, compared with where the
+task's own no-memory runs edited. Medians per task:
+
+| Task | Places the runs edited | Shown by v1 | Shown, left alone | v0 (check-places.ts, 2026-10-03) |
+|---|---|---|---|---|
+| `toggle-rulers` | 18 | 18 | 1 | 16 of 17 additions, 1 place left alone |
+| `toggle-presenter` | 17 | 17 | 1 (no view-mode list) | the view-mode menu shown in every run, which the task must leave alone |
+| `page-breaks` | 7 | 7 | 4 (an action it didn't make) | 9 of 16 places shown were things the task must not do |
+| `midpoint-snap-n` | 7 | 4 | 0 | none of its places |
+| `altkey-viewmode-j`, `altkey-snap-u` | 4-5 | 3 | 0 | |
+| `stats-shortcut-k` | 5 | 3 | 1 | |
+
+The selection hands the test workflow only to the task that asks for a test
+(`stats-shortcut-k`); the shortcut tasks don't get it.
+
+`examples/excalidraw/check-older-code.ts` (free) looks memory up in the code
+before four past excalidraw commits that added a setting, where the edits
+went is known:
+
+| Commit | v1 places found | Its additions in a v1 place | v0 places found | In a v0 place |
+|---|---|---|---|---|
+| 2026-03 arrow binding | 19 of 19 | 13 | 19 | 13 |
+| 2025-05 shape switch | 16 of 19 | 0 | 16 | 0 |
+| 2023-09 snapping (files moved since) | 11 of 19, all in the files they moved to | 10 | 0 | 0 |
+| 2022-04 element locking | 7 of 19, all moved | 1 | 0 | 0 |
+
+Over months the two are even here; across the move of excalidraw's files, v0
+finds nothing and v1 finds its places by the blocks' first lines.
+
+## The same conditions as the baselines
+
+As in `PREREGISTRATION-local-memory.md`: the suite, Sonnet 5.5 at medium
+effort, the harness, the vitest cap, and Claude Code pinned to the version
+each task's baselines used: 2.1.286 for the six existing tasks, 2.1.287 for
+the three new ones, from `<workspaces>/_claude/<version>/claude.exe`, never
+updated during runs.
+
+**The baselines** are the earlier runs, on those versions: no memory in
+`baseline-1` (the shortcut tasks), `baseline-2-toggle` (the toggle tasks) and
+`baseline-3-new*`; the exact script in `saved-scripts-1`, `saved-scripts-2-new*`
+and `saved-scripts-top2-1*`. Their medians are in the Baselines table of
+`PREREGISTRATION-local-memory.md`.
+
+**The gate**, as before: 3 runs on each version repeat an earlier setup, and
+must land within ±15% of its earlier median, or nothing else runs and we
+decide with the user:
+
+| Version | Setup and task | Earlier runs | Passes if the new median is within |
+|---|---|---|---|
+| 2.1.286 | saved-scripts on `altkey-viewmode-j` | 140k (139–144k) | 119k–161k |
+| 2.1.287 | saved-scripts-warnings on `altkey-zen-m` | 118k (118–147k) | 100k–136k |
+
+## Runs
+
+| What | Setup | Claude Code | Runs |
+|---|---|---|---|
+| Smoke check, not counted | v1 on `altkey-zen-m` | 2.1.286 and 2.1.287 | 2 |
+| The gate | see above | both | 6 |
+| The 6 existing tasks | v1 | 2.1.286 | 3 per task: 18 |
+| The 3 new tasks | v1 | 2.1.287 | 5 per task: 15 |
+| The 6 existing tasks, rulers aside (it has 3) | v0 | 2.1.286 | 3 per task: 15 |
+| The 3 new tasks | v0 | 2.1.287 | 5 per task: 15 |
+
+71 runs, about $16 at the earlier runs' costs ($0.22 per run on average), about
+3 hours in two lanes. No memory and the exact script have their runs already
+(the baselines), on the same pinned versions.
+
+`run-v1-measurement.sh` runs them: the smoke check and the gate in one lane,
+then `existing 0 2` in lane 1 and `new 0 4` in lane 2, below normal priority
+(the harness's default: the user didn't ask for normal this time, and wall
+time decides nothing). Output: `runs/excalidraw/v1-existing*`, `v1-new*`,
+`v0spots-existing*`, `v0spots-new*`, `v1-gate-286*`, `v1-gate-287*` and
+`v1-smoke-*`; v0's earlier `toggle-rulers` runs are in `hooks-spots-1`.
+
+**The memories stay as they are**, checked after the runs by their hashes
+(`runs/` isn't in git):
+
+    (cd runs/excalidraw/memory/v1-seed && find . -type f | LC_ALL=C sort | xargs sha256sum) | sha256sum
+    v1-seed           3b3a719b6bd7758b1470e90fa26d3ce96ae451a76164fcc22eaf3048f000f7fd
+    local-seed-spots  d00751f4ab8633c01f406dc27b94658cbf3735259b8e731b43a8f526f101e2c7
+
+The v0 hash is the one recorded for its sixth-session test.
+
+## What counts
+
+The headline is the median of total tokens per task (cache reads included,
+memory's own model calls included), with min–max; cost next to it; tool calls
+reported. A win whose median falls inside the other setup's range is reported
+as within run-to-run noise.
+
+**The goal**, the user's rules (2026-10-03):
+
+1. **Close to the exact script on exact repeats and twins.** On the five
+   tasks of those kinds, the median of the per-task changes in median tokens,
+   v1 against `saved-scripts-1`, is at most +15%.
+2. **Better than the exact script on similar tasks.** On at least 3 of the 4
+   similar tasks, v1's median is at least 25% below the better saved-scripts
+   variant's: `toggle-presenter` at most 166k (221k), `page-breaks` at most
+   228k (304k), `midpoint-snap-n` at most 203k (top2 271k),
+   `stats-shortcut-k` at most 368k (491k).
+3. **Never worse than no memory.** On none of the 9 tasks is v1's median more
+   than 15% above no memory's median and above no memory's highest run.
+4. **Success no worse.** None of v1's 33 runs fails its checks.
+
+**Reported, deciding nothing:** v1 against v0 on every task; the mechanisms
+counted by `check-warnings.ts` (the doubled `--watch=false`, the first test
+without `handleKeyboardGlobally`, tests nobody asked for); for each v1 run,
+the places it was shown (its hand-over log) against where its edits went (its
+diff).
+
+## Rules during the runs
+
+As in `PREREGISTRATION-local-memory.md`: a run cut off at its time limit is
+rerun in one lane; a run whose task-start hook didn't finish or logged an
+error measured no memory and is rerun once (more than two such runs stop the
+measurement); a failed selection call falls back to words and counts as the
+product's behavior. Within each pass the setups take turns going first.
+
+## Not measured here
+
+- **Learning from results** isn't measured here: v1 stays as built from the
+  six seed runs. A later round can let it learn from these runs
+  (`workflows evolve`) and run the similar tasks again.
