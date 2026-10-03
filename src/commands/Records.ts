@@ -28,11 +28,13 @@ const importRuns = Command.make(
       Argument.withDescription("eval run output dirs (each with results.jsonl)")
     ),
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo, if a run's workspace no longer exists")),
+    tasks: Flag.String("task").pipe(Flag.atLeast(0), Flag.withDescription("only runs of this eval task (repeatable)")),
     home: homeFlag
   },
   Effect.fn(function*(args) {
     const result = yield* importRunDirs(args.dirs, {
       repo: Option.getOrUndefined(args.repo),
+      taskIds: args.tasks,
       onRecord: (id, line) => Console.error(`added ${id} (${line.setup} ${line.task_id})`)
     })
     yield* Console.log(`${result.added} records added, ${result.existing} already there, ${result.skipped} runs skipped`)

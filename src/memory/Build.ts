@@ -90,6 +90,28 @@ interface LessonSource {
 export const namesValue = (text: string, r: WorkflowRecord): boolean =>
   valuePatterns(r).some(({ pattern }) => pattern.test(text))
 
+/** The parts of a value the model wrote with details: "Alt+K (CODES.K / KeyK)" is three. A path stays whole. */
+const valueParts = (value: string): Array<string> => value.split(/[(),;]|\s\/\s/).map((part) => part.trim())
+
+/** Words in identifiers and paths: "actionToggleZenMode.tsx" is action, toggle, zen, mode, tsx. */
+const identifierWords = (s: string): Array<string> =>
+  s.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w !== "")
+
+/**
+ * Whether a file is the task's own: its name holds one of the record's
+ * values as words (`actionToggleZenMode.tsx` for "zen mode",
+ * `actionToggleMinimap.tsx` for "minimap"). Another task edits its own file
+ * there, so the file isn't where the step happens for other tasks.
+ */
+export const namesValueFile = (file: string, r: WorkflowRecord): boolean => {
+  const name = identifierWords(file.replace(/\\/g, "/").split("/").pop() ?? file)
+  return (r.model?.values ?? []).flatMap((v) => valueParts(v.value)).some((part) => {
+    const words = identifierWords(part)
+    if (words.length === 0 || words.join("").length < 3) return false
+    return name.some((_, i) => words.every((w, j) => name[i + j] === w))
+  })
+}
+
 /**
  * Each of the record's values (each part, for values like "Alt+K (CODES.K)")
  * as a whole-word pattern, with its name. Single letters count only as
@@ -97,7 +119,7 @@ export const namesValue = (text: string, r: WorkflowRecord): boolean =>
  */
 const valuePatterns = (r: WorkflowRecord): Array<{ readonly pattern: RegExp; readonly name: string }> =>
   (r.model?.values ?? []).flatMap((v) =>
-    v.value.split(/[(),;]/).map((part) => part.trim()).filter((part) => part.length >= 2 || /^[A-Z0-9]$/.test(part))
+    valueParts(v.value).filter((part) => part.length >= 2 || /^[A-Z0-9]$/.test(part))
       .map((part) => ({
         pattern: new RegExp(
           `(^|[^A-Za-z0-9])${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^A-Za-z0-9])`,
@@ -246,8 +268,13 @@ export const buildGraph = (records: ReadonlyArray<WorkflowRecord>, options: Buil
         }
       }
       const runs = new Set(us.map((u) => u.record.id)).size
+      // Where the step happens: files its runs edited, but not a task's own (named after its feature).
       const fileCounts = new Map<string, Set<string>>()
-      for (const u of us) for (const f of u.step.files) fileCounts.set(f, (fileCounts.get(f) ?? new Set()).add(u.record.id))
+      for (const u of us) {
+        for (const f of u.step.files) {
+          if (!namesValueFile(f, u.record)) fileCounts.set(f, (fileCounts.get(f) ?? new Set()).add(u.record.id))
+        }
+      }
       where[subject] = {
         runs,
         files: [...fileCounts.entries()]

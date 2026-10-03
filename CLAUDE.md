@@ -80,6 +80,10 @@ records use those keys.
 - Commit only when the user asks. Work on a feature branch, not `main`.
 - Eval runs spend real money on the user's Claude account. Use `--dry-run`
   first and keep `max_budget_usd` set in suites.
+- Compare runs only with runs of the same Claude Code version: it updates
+  itself, and each turn rereads its own prompt. Pin a measurement with
+  `--claude` and a copy of the version its baselines used (Claude Code keeps
+  a few in `~/.local/share/claude/versions/`); runs never update it.
 - The user needs their computer during runs: suites cap vitest workers and the
   harness runs everything below normal priority. Keep it that way.
 - Heavy folders (workspaces, node_modules of target repos) live outside this

@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { annotateRecord, type Reading, unread, verifyReading, vocabularyOf } from "../../src/records/Annotate.ts"
+import { annotateRecord, type Reading, triggerValue, unread, verifyReading, vocabularyOf } from "../../src/records/Annotate.ts"
 import { buildRecord } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
@@ -111,6 +111,19 @@ describe("verifyReading", () => {
       "test file tests/a.test.tsx doesn't exist"
     ])
     assert.deepStrictEqual(part.dropped, dropped)
+  })
+
+  it("drops a trigger with the task's own values, which couldn't fire on another task", () => {
+    const values = [{ name: "action", value: "zen mode (actionToggleZenMode)" }, { name: "default", value: "false" }]
+    const edit = (all: Array<string>) => ({ on: "edit" as const, all, none: ["handleKeyboardGlobally"], file: "tests/excalidraw.test.tsx" })
+    assert.strictEqual(triggerValue(edit(["zen mode with Alt+M", "render(<Excalidraw />)"]), values), "zen mode")
+    assert.isUndefined(triggerValue(edit(["fireEvent.keyDown(document", "altKey"]), values))
+    // A literal like `false` is no one task's value; the doubled flag stays a trigger.
+    assert.isUndefined(triggerValue({ on: "command", all: ["test:update", "--watch=false"], none: [], file: null }, values))
+    const reading = { ...READING, values: [...READING.values, { name: "flag", value: "--watch=false" }], lessons: [READING.lessons[0]] }
+    const { dropped, part } = verifyReading(reading, { record: record(), trace: session(PROMPT, TURNS), diff: DIFF, fileAtBase: (p) => BASE[p] })
+    assert.isNull(part.lessons[0].trigger)
+    assert.isTrue(dropped.some((d) => d.includes("names this task's own value \"--watch=false\", so it couldn't fire on another task")))
   })
 })
 
