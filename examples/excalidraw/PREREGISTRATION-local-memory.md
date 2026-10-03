@@ -232,6 +232,12 @@ what the six existing tasks get, never at the new tasks.
    M" (the seed tasks' key); a false lead about the Z key goes to every
    shortcut task; a prettier warning from one minimap run comes with the final
    check step.
+4. **Normal priority** (2026-10-03, at the user's request, after this was
+   committed and before any run): every run goes at normal priority instead
+   of below normal, to finish sooner (`PRIORITY=normal` in the script,
+   `--priority normal`). Priority changes wall time, which decides nothing;
+   the vitest cap stays. The 2.1.286 baselines also ran at normal priority:
+   the priority was lowered after them.
 
 ## What this can't show
 
@@ -242,3 +248,201 @@ what the six existing tasks get, never at the new tasks.
   stage 5).
 - Three runs per existing task and five per new one, as before: a 4× swing
   from one choice (writing a test) is within reach of one run.
+
+## Results (2026-10-03)
+
+All 50 runs passed their checks: the 2 smoke runs, the 6 runs of the gate and
+the 42 measured runs. They ran 15:09–17:56 local time at normal priority
+(amendment 4) on the pinned 2.1.286 and 2.1.287, and cost $12.02, of which the
+route selection was $0.33. No agent command reached its time limit (longest
+318 s of 600 s) and no hook failed, so no run was rerun. The memories' hashes
+are unchanged. Scores: `score-local-memory.ts`; run checks: `check-runs.ts`.
+
+**The smoke check** passed on both versions: the route arrived at the first
+prompt, its model call was counted, and no hook logged an error.
+
+**The gate passed.** Saved-scripts on `altkey-viewmode-j` (2.1.286): 146k
+(145–150k) against 140k, +4%. Saved-scripts with warnings on `altkey-zen-m`
+(2.1.287): 117k (117–118k) against 118k, −1%. So the earlier runs are the
+baselines.
+
+| Rule | Result | Verdict |
+|---|---|---|
+| 1. Close to saved-scripts | median of the per-task changes +132% (+45% to +223%) | fails |
+| 2. Never worse than no memory | 1 of 12 worse: the zen-only memory on `toggle-rulers`, 969k (554–1,021k) against 563k (446–754k), +72% | fails |
+| 3. Success no worse | 0 of 42 runs failed | holds |
+| 4a. The doubled flag | 4 of 42: 0 of 33 with the seed memory, 4 of 9 with the zen-only memory | fails |
+| 4b. `handleKeyboardGlobally` | 0 of 5 `stats-shortcut-k` runs wrote their first test without it | holds |
+| 4c. No tests nobody asked for | 2 of 11 changed a test file (zen mode 1, snap 1, midpoint 0) | holds |
+| 5. The graph's claim | 1 of 4 kinds won: `stats-shortcut-k` 266k (185–288k) against saved-scripts' 491k (218–833k), −46%, within run-to-run noise | like the graph, 1 of 4 |
+
+**Stage 4's goal is not met.** We decide again from what failed.
+
+Median total tokens, turns (model calls) and tokens per turn:
+
+| Task | No memory | Saved-scripts | Graph | Hooks (seed memory) |
+|---|---|---|---|---|
+| `altkey-zen-m` | 1,165k, 25 turns, 42k | 120k, 4, 30k | 221k, 7, 32k | 324k, 10, 32k |
+| `altkey-viewmode-j` | 315k, 10, 32k | 140k, 5, 28k | 277k, 8, 35k | 204k, 7, 30k |
+| `altkey-snap-u` | 213k, 7, 30k | 180k, 6, 30k | 224k, 7, 32k | 260k, 8, 32k |
+| `toggle-minimap` | 787k, 16, 47k | 312k, 8, 39k | 499k, 11, 45k | 619k, 14, 44k |
+| `toggle-rulers` | 563k, 13, 43k | 187k, 5, 37k | 399k, 9, 43k | 604k, 14, 43k |
+| `toggle-presenter` | 673k, 15, 45k | 221k, 6, 37k | 398k, 9, 44k | 586k, 13, 41k |
+| `midpoint-snap-n` | 386k, 12, 34k | 322k, 9, 36k; top2 271k | 432k, 11, 39k | 395k, 10, 37k |
+| `page-breaks` | 324k, 10, 33k | 304k, 8, 38k | 336k, 9, 37k | 300k, 9, 35k |
+| `stats-shortcut-k` | 801k, 22, 36k | 491k, 15, 33k | 252k, 8, 32k | 266k, 8, 32k |
+
+The zen-only memory on the toggle tasks: minimap 691k (606–745k), rulers 969k
+(554–1,021k), presenter 764k (629–877k).
+
+Observations, not part of the rules:
+
+- **Turns make the gap.** Every setup reads 30–45k tokens per turn; they
+  differ in how many turns they take. On the toggle tasks the seed memory's
+  runs took as many turns as no memory (13–14), against the graph's 9–11 and
+  saved-scripts' 5–8.
+- **The route says what to do, not how.** It names the steps and the files,
+  not the edits, and its landmarks are few. So the agent still spends its
+  first 5–9 turns reading existing toggles (`actionToggleGridMode.tsx`,
+  `actionToggleObjectsSnapMode.tsx`) and the files to change, to learn how
+  they are written. A saved-scripts run makes all 19 edits in its second turn,
+  from the saved diff. The graph's checklist, with its guidance on each step,
+  sat in between.
+- **Against no memory it mostly helped**: zen mode −72%, stats −67%, view
+  mode −35%, minimap −21%, presenter −13%, page breaks −7%; rulers +7%,
+  midpoint +3% and snap +22% are within run-to-run noise.
+- **A trap outside the route.** One snap run wrote a test nobody asked for,
+  in a new file (`snapMode.test.tsx`), without `handleKeyboardGlobally`, and
+  spent about 20 turns and 900k tokens finding out why the key never fired.
+  The memory's trigger for this trap watches only `excalidraw.test.tsx`, where
+  the zen runs made the mistake, so it never fired. In the zen run that wrote
+  its test in `excalidraw.test.tsx`, it fired.
+- **The warnings at the start worked; the triggers came too late.** No seed
+  memory run doubled the flag (0 of 33). The zen-only memory hands nothing
+  over at the start, and its trigger fires only after the failing command, as
+  expected for this mistake: 4 of 9 runs made it.
+- **The failed cell of rule 2 isn't advice that misled.** The zen-only memory
+  found no kind that fits in all 9 toggle runs and handed nothing over at the
+  start, so those runs behaved like runs without memory: 6–9 turns of
+  reading, then the edits. Rulers' 969k is run-to-run variance in that. The
+  zen-only graph, which did hand over steps, was 42% worse.
+- The route selection cost $0.002–0.013 and 2–3k tokens per run, about 1% of
+  a run's tokens (at most 1.8%).
+
+## Follow-up: the code at the route's places (2026-10-03)
+
+Written after the results above and before any run of it.
+
+**Why.** Stage 4 failed on turns, and `check-turns.ts` shows where they go on
+the toggle tasks. Every run without a saved diff (27 of 27: no memory, the
+graph, the seed memory) already searches for an existing toggle in its first
+turn, then takes 5-7 turns before its first edit, reading the places a few at
+a time; a saved-scripts run takes 1. An edit to `App.tsx` then fails in 8 of
+9 seed-memory runs, as in 8 of 9 without memory, although the route warns
+about it: the agent writes the import list's neighbouring lines without having
+read them. So the agent lacks the lines at the places, not the pattern.
+
+**What changes.** With the route, the hook hands over the code at its places
+as the working tree has it at task start. Memory keeps, for each step, the
+existing lines its runs added theirs between (spots, from the runs' diffs;
+never the runs' new lines), and the hand-over looks them up: a place counts
+when two runs of the kind, and most of them, put an edit there. A step that
+writes a new file also gets the file most of its runs read first. A file whose
+lines are shown isn't listed with its step as well. Everything stays under
+10,000 characters, where Claude Code cuts a hook's text.
+
+**Memory.** `runs/excalidraw/memory/local-seed-spots`: a copy of `local-seed`
+(the same six records and readings), built again with the current code
+(`memory build`, no model call). Its graph, version 2, is version 1 plus the
+spots and the files to read first, and nothing else (compared field by field).
+`local-seed` itself is unchanged (same hash as above), and with it the
+hand-over is still byte for byte the one measured.
+
+    local-seed-spots  d00751f4ab8633c01f406dc27b94658cbf3735259b8e731b43a8f526f101e2c7
+
+What each of the nine tasks would get is in
+`runs/excalidraw/previews-local-memory/spots-*.md`. `toggle-rulers`: the same
+8 steps and 3 warnings, 18 places in 11 files and one file whole, 9,376
+characters (2,867 before).
+
+**Runs.** `toggle-rulers`, 3 runs, hooks with this memory, the pinned 2.1.286,
+everything else as above: `run-local-memory-measurement.sh spots 0 2`, output
+in `runs/excalidraw/hooks-spots-1`. About $1. The gate isn't run again: it
+passed on this version earlier the same day.
+
+**What counts**, against the seed memory's runs on this task above (604k, 14
+turns, 7 turns before the first edit) and saved-scripts (187k, 5 turns, 1):
+
+1. **The reading turns go.** The median of turns before the first edit is at
+   most 2.
+2. **Tokens.** The idea works if the median of total tokens is at most 362k
+   (40% below the seed memory's 604k). It meets stage 4's bar on this task at
+   215k or less (within 15% of saved-scripts).
+3. **Success.** All 3 runs pass their checks.
+
+Counted without a verdict: turns; runs with a failed edit (3 of 3 before);
+whether a run reads a file whose lines it was shown.
+
+**Rules during the runs.** As above, and one more: if the hand-over didn't
+arrive whole in the first run (Claude Code put a file path in its place), the
+runs stop there; that run measured something else.
+
+**What this can't show.** One task, three runs. The other toggle tasks, the
+shortcut tasks (they get the key table, 2k characters) and the new tasks come
+after it, with the never-worse rule: `page-breaks` is shown places it must
+leave alone (the right-click menus), as its route already named them.
+
+### Results of the follow-up (2026-10-03)
+
+The 3 runs passed their checks. They ran 20:30-20:46 local time at below
+normal priority on the pinned 2.1.286 and cost $0.65, of which the route
+selection was $0.03. The hand-over arrived whole in each (9,376 characters),
+no hook failed, and no command reached its time limit (longest 252 s of 600
+s). Both memories' hashes are unchanged. Scores: `check-turns.ts` and
+`check-runs.ts` on `runs/excalidraw/hooks-spots-1`.
+
+| Rule | Result | Verdict |
+|---|---|---|
+| 1. The reading turns go: at most 2 before the first edit | 3 (2-3); 7 (5-7) before | fails |
+| 2. Tokens: works at 362k or less; stage 4's bar at 215k | 328k (225-400k); 604k (587-740k) before | works: 46% less, below the earlier runs' range; the bar isn't met |
+| 3. Success | 3 of 3 | holds |
+
+Counted: 8 turns (6-10), 14 before. No run had a failed edit (3 of 3 before):
+the `App.tsx` import went in at the first try each time. Every run read or
+searched files whose lines it had been shown: 2, 10 and 4 of the 12.
+
+Observations, not part of the rules:
+
+- **The agent reads the lines it was shown again.** In the second run its
+  first turn was eight reads at the line ranges in the hand-over
+  (`appState.ts` 125-134, `types.ts` 544-548, ...), and it read the `App.tsx`
+  and `DefaultItems.tsx` ranges again before its second batch of edits. The
+  first run didn't, made 20 edits in one turn, and was the cheapest (225k).
+  The Edit tool says a file must be read first; this version doesn't enforce
+  it, and the model follows it or not from run to run.
+- **It still looks at other examples.** All three runs read the zen-mode or
+  grid-mode action although the snap-mode action came whole, and all three
+  looked through the icons. One added an icon nobody asked for (the file
+  handed over whole has one); 3 of 18 toggle runs without that file did.
+- **The edits come in one to three batches** (20; 11 and 8; 11, 7 and 1),
+  none failing, against 3-5 turns of edits with a failed one before.
+
+**How well the places fit other tasks** (`check-places.ts`, no runs: memory
+from the seed tasks only, compared with where each other task's own no-memory
+runs added their lines; medians per run):
+
+| Task | Added blocks | At the lines shown | In the same list, at other lines | Not shown | Places shown | Left alone |
+|---|---|---|---|---|---|---|
+| `toggle-rulers` (the twin) | 17 | 15 | 1 | 0 | 19 | 1 |
+| `toggle-presenter` (a variant) | 16 | 9 | 7 | 0 | 19 | 2, the view-mode menu in every run |
+| `page-breaks` (a subset) | 7 | 1 | 6 | 0 | 16 | 9: the key table, the action, the menus |
+| `midpoint-snap-n` (recombined) | 7 | 0 | 0 | 7 | 0 | 0 |
+
+So the follow-up measured the best case: the places are those of one task,
+and they fit its twin. A variant and a subset are shown places they must
+leave alone, a recombined task gets none, and runs of different tasks agree
+on the list an edit goes into, not on the line: with every other task in
+memory, fewer places reach agreement (13 instead of 19 for rulers) and 4 of
+its 17 additions are no longer shown. (The check hands over the route's
+required steps and the optional ones a run needed; the model at task start
+drops more: `page-breaks` got 14 places in its preview, not 16.)

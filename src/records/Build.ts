@@ -3,13 +3,14 @@
  * ended. No model is involved; `Annotate.ts` adds the model's reading later.
  *
  * A failed run keeps only its verifiable mistakes: detours (a failure and the
- * fix the run found) and the commands that failed. What it changed or read
- * isn't evidence of how the task gets done.
+ * fix the run found) and the commands that failed. What it changed or read,
+ * and where, isn't evidence of how the task gets done.
  */
 import type { Trace } from "../traces/index.ts"
 import { extractMechanical } from "./Extract.ts"
 import type { Check, MemoryUse, RunInfo, WorkflowRecord } from "./Models.ts"
 import { RECORD_FORMAT } from "./Models.ts"
+import { spotsOfDiff } from "./Spots.ts"
 
 /** One record per session: the subject, then the start of the session id. */
 export const recordId = (subject: string, sessionId: string): string => `${subject}-${sessionId.slice(0, 8)}`
@@ -48,6 +49,7 @@ export const buildRecord = (input: BuildInput): WorkflowRecord => {
     },
     task: { prompt: first ?? "", followups: rest },
     files: success ? m.files : [],
+    spots: success ? spotsOfDiff(input.diff) : [],
     files_read: success ? m.filesRead : [],
     commands: success ? m.commands : m.commands.filter((c) => !c.ok),
     detours: m.detours,

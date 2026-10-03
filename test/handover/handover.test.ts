@@ -166,6 +166,50 @@ describe("a session with memory", () => {
     assert.deepStrictEqual(outcome.log.trim().split("\n").map((l) => JSON.parse(l).moment), ["start", "trigger"])
   })
 
+  it("is handed the code at its route's spots as the working tree has it now", async () => {
+    const root = tempDir()
+    const repo = makeRepo(root)
+    mkdirSync(join(repo, "src"))
+    // Not committed, and with Windows line endings: the hand-over reads the working tree as it is.
+    writeFileSync(join(repo, "src", "menu.ts"), ["export const items = [", "  actionCopy,", "  actionToggleGrid,", "  actionToggleZen,", "  actionPaste,", "]", ""].join("\r\n"))
+    const task = "Add a Rulers toggle setting to the right-click menu"
+
+    const outcome = await withEnv({ SINGULARITY_HOME: join(root, "home") }, () =>
+      run(Effect.gen(function*() {
+        const home = yield* loadHome()
+        const stores = Layer.merge(
+          JsonRecordStore.layer(home.tenantDir, home.tenant),
+          JsonMemoryStore.layer(join(home.tenantDir, "memory"), home.tenant)
+        )
+        return yield* Effect.gen(function*() {
+          const subject = (yield* (yield* RecordStore).subjectFor((yield* identifyRepo(repo))!, { create: true }))!
+          // Two runs put their line between these two; one spot's line has left the code since.
+          const spots = [
+            { file: "src/menu.ts", above: "actionToggleGrid,", below: "actionToggleZen," },
+            { file: "src/menu.ts", above: "actionToggleGone,", below: null }
+          ]
+          const records = [0, 1].map(() => ({
+            ...readRecord(task, "add a toggle setting", [step("add the action to the menu", "asked", ["src/menu.ts"])], { subject: subject.id }),
+            spots
+          }))
+          const memory = yield* MemoryStore
+          yield* memory.commit((yield* memory.propose(diffGraphs(emptyGraph, buildGraph(records, { tenant: home.tenant })), { rationale: "test", records: [] })).id)
+          const start = yield* taskStart({ sessionId: "s3", prompt: task, cwd: repo }, { tenantDir: home.tenantDir })
+          return { start, log: readFileSync(join(home.tenantDir, "handovers.jsonl"), "utf-8") }
+        }).pipe(Effect.provide(stores))
+      })))
+
+    // The file's lines are shown with the step, so the step doesn't list the file as well.
+    assert.notInclude(outcome.start.text, "Usually edits")
+    assert.include(
+      outcome.start.text,
+      "`src/menu.ts` (step 1):\n```\n@@ lines 1-6 @@\nexport const items = [\n  actionCopy,\n  actionToggleGrid,\n  actionToggleZen,\n  actionPaste,\n]\n```\n"
+    )
+    assert.notInclude(outcome.start.text, "\r")
+    assert.notInclude(outcome.start.text, "actionToggleGone")
+    assert.deepStrictEqual(JSON.parse(outcome.log.trim()).excerpts, [{ file: "src/menu.ts", from: 1, to: 6, steps: [1] }])
+  })
+
   it("isn't recorded when nothing was committed", async () => {
     const root = tempDir()
     const repo = makeRepo(root)

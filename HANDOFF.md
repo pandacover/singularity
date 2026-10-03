@@ -1,9 +1,261 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-03, in the fifth session. Start here, then see
+Last updated 2026-10-04, in the seventh session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
 
-## Status: the measurement is prepared, not run (2026-10-03)
+## Status: memory v0 frozen, v1 being built from scratch (2026-10-04, seventh session)
+
+**Why.** The user rejected the direction of the sessions before
+(2026-10-03): memory that stores copies of the repo (the lines next to past
+edits) goes stale when the repo changes, and work on detecting that change
+was "tunnel visioning". Address the root, not the side effect. The same root
+makes memory fit only twins: a copy of one task's lines fits that task at
+that commit.
+
+**The user's vision**, from two papers they named as the memory layer's two
+main components: "from the AWM paper we establish atomic workflows and from
+Procedural Graphs we establish graphs of those atomic workflows."
+
+- Agent Workflow Memory (https://arxiv.org/html/2409.07429v1): small reusable
+  workflows induced from past runs, the task's specifics replaced by blanks
+  ({product-name}), filled from the environment the agent is in. In its tests
+  abstract workflows beat concrete past examples (agents lean toward what
+  they were shown), and workflows run as fixed macros broke when the page
+  changed.
+- Procedural Graphs (https://arxiv.org/html/2609.09153v1, the reference
+  paper): a graph whose edges say when to take a transition (condition,
+  guidance, pitfalls), evolved from results by a refiner, every candidate
+  checked before commit, rejected edits remembered. It repaired a hand-made
+  graph that had made the agent worse.
+
+**v0 and v1** (confirmed by the user, 2026-10-04):
+
+- v0, the memory up to the sixth session, frozen as commit tag `memory-v0`
+  with its memory homes in `runs/excalidraw/memory/` (`local-seed`,
+  `local-zen`, `local-seed-spots`): a route of steps per kind of past task,
+  steps pointing to exact lines copied from past runs, rebuilt by hand, never
+  learning whether its advice worked.
+- v1, built from scratch: small reusable workflows written with blanks, no
+  copied code (the blanks are filled from the code as it is when used); a
+  graph connecting them, with when to take each transition and the traps;
+  learning from results (keep what helped, fix or drop what misled, check
+  every change before keeping it).
+- The same in both: the goal (correct results for fewer tokens, tool calls
+  and dollars) and memory arriving by itself: a hook hands it over or the
+  agent looks it up. The harness never pastes it into the prompt.
+- The user's correction: surviving code changes is one risk v1 handles, not
+  its purpose. The purpose stays correct results at lower cost.
+
+**The comparison** (agreed in principle, to be pre-registered with its cost
+for the user's go): no memory, exact script (saved-scripts), v0 and v1,
+measured as always (does the task come out right; tokens, tool calls,
+dollars). Kinds of task:
+
+- exact repeat: the very same task again (minimap twice);
+- twin: the same task with only names and values changed, same steps at the
+  same places (rulers after minimap);
+- similar: shares only some steps (page breaks, a subset; presenter, other
+  rules; the midpoint shortcut, a mix of two past tasks);
+- code that changed: memory learned on one version of excalidraw, used on
+  another.
+
+The win: v1 close to the exact script on exact repeats and twins, better than
+it on similar tasks and changed code, and never worse than no memory (the
+user's "yes"). Order: build v1, the free checks (a task held out of memory;
+older code), then the pre-registered paid runs.
+
+The sixth session's open question (rework what a place is) is replaced by v1.
+
+## Status: the code at the route's places was tested; it helps a twin task and is too targeted (2026-10-03, sixth session)
+
+**Where things stand.** With the route, the hook now hands over the code at
+its places (built, tested, described in the next section). A 3-run test on
+`toggle-rulers` cut the tokens by 46% but failed its own rule on reading
+turns, and a free check showed the places fit only a task that is the twin of
+the one memory learned from, as the user suspected. A rework of what a place
+is was proposed to the user (below) and is **not yet answered**; nothing more
+should be built or run before they answer. Nothing of this session is
+committed. Spent in the session: $0.65 on the 3 runs and about $0.13 on route
+selections for previews.
+
+**The test ran** (3 runs of `toggle-rulers`, $0.65, all passed; results at the
+end of `examples/excalidraw/PREREGISTRATION-local-memory.md`):
+
+- Tokens 328k (225-400k) against 604k, turns 8 (6-10) against 14, and no
+  failed edit in any run (3 of 3 before). The hand-over arrived whole.
+- Its rule 1 fails: 3 turns before the first edit (2-3), not 2. The agent
+  reads lines it was shown again (in one run, 10 of the 12 files), reads
+  other toggles than the one handed over, and looks through the icons.
+- Stage 4's bar on this task (215k) isn't met; the best run was 225k.
+
+**The user's doubt, and what the logs say** (`examples/excalidraw/check-places.ts`,
+no runs). The user asked whether these results aren't too targeted, as the
+ideas before them were too naive. Holding each task out (memory from the
+seed tasks only, compared with where the task's own no-memory runs edited):
+
+- `toggle-rulers`, minimap's twin: 16 of its 17 additions go where memory
+  shows; 1 of 19 places shown is left alone.
+- `toggle-presenter`: all 16, but 7 at other lines of the same list; the
+  view-mode menu is shown in every run, and the task must leave it alone.
+- `page-breaks`: all 7, 6 at other lines; 9 of the 16 places shown are
+  things the task says not to do (key table, action, right-click menus).
+- `midpoint-snap-n`: none of its 7; memory has no place for it.
+- With every other task in memory it gets worse for rulers (13 of 17): runs
+  agree on the list an edit goes into, not on the line, so fewer places
+  reach agreement.
+
+So the test measured the best case.
+
+**Proposed to the user, waiting for their answer** (not built):
+
+- A place becomes the list or block an edit goes into (the storage config,
+  the menu), not the lines next to one task's edit.
+- A place is required or conditional, learned by comparing the tasks that
+  used it with those that didn't, as optional steps already are. The four
+  toggle-like tasks' runs are there to learn from (`toggle-minimap`,
+  `toggle-rulers`, `toggle-presenter`, `page-breaks`).
+- The hold-one-out check is the free test, before any paid run. Target:
+  presenter is no longer shown the view-mode menu, `page-breaks` no longer
+  its nine places, and rulers keeps 16 of 17.
+- Only then a paid run, on presenter and `page-breaks`: the tasks that can
+  show whether it holds beyond a twin.
+
+**Also seen, not proposed yet:**
+
+- Since the agent reads again what it is shown in most runs, line ranges
+  alone (which file, which lines, looked up at task start) may do what the
+  code does for a sixth of the characters. Not tested.
+- A place shown should say which list it is: all three runs read from ten
+  lines above the menus in `App.tsx`, where the view-mode condition is, and
+  one searched `en.json` for the section its lines were in.
+
+**The size limit** (the user asked how to deal with it; nothing decided).
+Claude Code cuts a hook's text at 10,000 characters. For rulers everything
+found fits. The answer given:
+
+- It is partly a limit we would want: everything handed over is reread each
+  turn, so 10,000 characters cost about 17k tokens over a 6-turn task, under
+  half a turn, and 20,000 about a whole turn. More text pays only if it
+  removes a turn.
+- First choice: spend the room by evidence. A run's log says what was shown
+  and its transcript what the agent read anyway; a place it read again was
+  wasted room, a file it had to open was missing.
+- For more room: a second hook for the same event (each hook's text is
+  measured on its own and the agent gets all of them; they run in parallel,
+  so the second must wait for the first's choice of route, and their order
+  isn't documented; needs a check in a real session).
+- As a fallback: put what doesn't fit in a file named at the end of the
+  hand-over, which costs the agent one read when it needs it.
+- No help: rewriting the prompt (hooks can't), squeezing the text, or the
+  system prompt (only in eval runs).
+
+## Built in the sixth session: the code at the route's places
+
+**What the logs said** (`examples/excalidraw/check-turns.ts`, no new runs).
+The user asked about another session's idea (`examples/excalidraw/why-14-turns.html`:
+add "do it like grid mode" pointers to the route) and judged it as naive as a
+saved diff. The logs agree, on the toggle tasks:
+
+- Every run without a saved diff (27 of 27: no memory, the graph, the seed
+  memory) searches for an existing toggle by name in its first turn. A
+  pointer hands over what the agent already has.
+- It then takes 5-7 turns before its first edit, reading the places a few at
+  a time (about 10 files). With a saved diff: 1 turn, since the diff shows
+  the lines around every edit.
+- An edit to `App.tsx` fails in 8 of 9 seed-memory runs and in 8 of 9
+  no-memory runs, nearly always the import list, though all 9 seed-memory
+  runs were warned ("the name appears twice, include neighbouring lines").
+  The agent never read the import list, so it guesses the neighbouring line.
+  Advice about lines it hasn't seen can't be followed.
+
+So the agent lacks the lines at the places, not the pattern.
+
+**The user's decision** (2026-10-03): go ahead with the hook reading those
+lines from the working tree at task start, with memory keeping only where to
+look. This is close to the exact locations the user ruled out in step 2, and
+was put to them as such. What memory keeps: the existing lines just above and
+below where runs added their own (never the new lines), handed over only
+where two runs of the kind, and most of them, agree.
+
+**Built** (not committed; `npm test`: 151 passed; typecheck clean):
+
+- `src/records/Spots.ts`: a record's spots, from its diff. Only pure
+  additions to files that were there; changed or removed lines were the
+  task's own target. Records keep them (`spots`); for records built before,
+  a graph build reads them from the run's diff (`withSpots` in `Merge.ts`).
+- The graph: a step's place gets `spots` (with the records behind each; none
+  in a task's own files or naming its values) and `examples` (for a step
+  that writes a new file: files next to it that its runs read and left alone).
+- `src/handover/Excerpts.ts`: at task start each spot is looked up in the
+  working tree, as a pair of lines (one line alone only where it is the single
+  one of its kind in the file). Close ones are one place; a place counts with
+  two runs of the task's kind and 60% of those that took the step. It shows a
+  line on each side, a small list around it whole, and a small block a spot's
+  line opens. A step that writes a new file gets the file most of its runs
+  read first, whole if small. A file whose lines are shown isn't listed with
+  its step as well.
+- **Claude Code cuts a hook's text at 10,000 characters** (its docs: over
+  that it hands the agent a file path and the first 2,000). So the hand-over
+  has a budget (9,800): places first, largest files first, then the file to
+  read first, then whole blocks.
+- `runs/excalidraw/memory/local-seed-spots`: a copy of the seed memory, its
+  graph (version 2) the same plus spots and examples. `local-seed` is
+  unchanged, and with it the hand-over is byte for byte the one measured.
+- Previews for all nine tasks: `runs/excalidraw/previews-local-memory/spots-*.md`.
+  `toggle-rulers` gets the same 8 steps and 3 warnings, 18 places in 11
+  files (the key table whole, both right-click menus, the import list's two
+  spots, a whole Preferences item) and `actionToggleObjectsSnapMode.tsx`
+  whole: 9,376 characters (2,867 before). The shortcut tasks get the key
+  table (2k characters).
+
+**Its test** was pre-registered at the end of
+`examples/excalidraw/PREREGISTRATION-local-memory.md` and run with the user's
+go (`run-local-memory-measurement.sh spots 0 2`, output in
+`runs/excalidraw/hooks-spots-1`); the status above has the results.
+`check-turns.ts` scores runs by turns; `check-places.ts` holds each task out
+and compares the places memory would show with where its runs edited.
+
+**Known weak spots**: the file handed over whole has details of its own (snap
+mode's action also turns the grid off and has an icon; one run of three added
+an icon); the route still says "(browser only)" and "CODES lacked M", from
+the seed tasks; a place shown starts at its list, without the line that says
+which list it is (all three runs read above the menus in `App.tsx` to see the
+view-mode condition).
+
+## Status: stage 4 measured, its goal isn't met (2026-10-03)
+
+The measurement ran (50 runs, $12.02, 15:09–17:56 at normal priority, at the
+user's request). Full results at the end of
+`examples/excalidraw/PREREGISTRATION-local-memory.md`; scores with
+`examples/excalidraw/score-local-memory.ts`, run checks with `check-runs.ts`.
+
+- **The goal isn't met.** Rule 1 fails: +132% tokens against saved-scripts on
+  the six existing tasks (the graph was +82%). Rule 2 fails on one cell of 12:
+  the zen-only memory on `toggle-rulers` (+72% against no memory), though that
+  memory handed nothing over there, so it is variance among runs that behaved
+  like no memory. Rule 3 holds: no failed run.
+- **Turns make the gap**: every setup reads 30–45k tokens per turn. On the
+  toggle tasks the route's runs took 13–14 turns, as many as no memory,
+  against saved-scripts' 5–8: the route names steps and files but not how to
+  write the edits, so the agent reads existing toggles first.
+- **What worked**: the warnings handed over at the start (the doubled flag in
+  0 of 33 seed-memory runs; `handleKeyboardGlobally` avoided in 5 of 5 stats
+  runs, −46% against saved-scripts); no unasked test step was handed over (2
+  of 11 runs wrote one on their own, as without memory).
+- **What missed**: a trigger tied to one file. A snap run wrote an unasked
+  test in a new file without `handleKeyboardGlobally` and lost about 900k
+  tokens; the trigger watches only `excalidraw.test.tsx`.
+- The gate passed (+4% and −1% against the earlier runs), so the comparisons
+  are between runs of the same Claude Code version and are clean.
+- Not committed: the results, amendment 4 (normal priority, `--priority
+  normal`), `check-runs.ts` and `score-local-memory.ts`.
+
+Next: decide with the user, from what failed. The data points at the route's
+missing "how" for multi-file steps, and at triggers that watch the mistake
+rather than one file. (The sixth session took up the first: see the status
+at the top. The second is untouched.)
+
+### How the measurement was prepared
 
 The user asked whether runs had been made and whether they could be compared
 cleanly with the earlier ones. None had: the fifth session built memory from
@@ -14,8 +266,8 @@ prepare the paid measurement (build stage 4) for them to read before anything
 is spent.
 
 - **The pre-registration**: `examples/excalidraw/PREREGISTRATION-local-memory.md`
-  (memory, runs, the gate, the rules). Waiting for the user's OK; commit it
-  before the first counted run. About 50 runs, $10, 3½ hours.
+  (memory, runs, the gate, the rules), committed by the user as `832ea34`
+  before any counted run.
 - **A `hooks` setup** (`src/eval/HooksMemory.ts`): the local memory handed
   over by its own hooks during the run (`--settings`), from a copy of a frozen
   memory home in the run's directory; the route selection's cost counts toward
@@ -32,12 +284,7 @@ is spent.
   amendments): a trigger may not contain the task's own values (it could never
   fire on another task), and a task's own files (`actionToggleZenMode.tsx`)
   don't count as where a step happens.
-- `npm test`: 131 passed. `npm run typecheck`: clean. Not committed, on
-  `local-memory` after `835c8de`.
-
-Next: the user reads the pre-registration. With their OK, commit it, then
-`bash examples/excalidraw/run-local-memory-measurement.sh smoke`, then
-`drift 0 2`; if the gate passes, the two lanes (the plan is in the script).
+- `npm test`: 131 passed. `npm run typecheck`: clean.
 
 ## Status (fifth session): the local version is built
 
@@ -134,6 +381,25 @@ step at a time, each the foundation for the next:
 - Tasks that combine parts of several past tasks are unsolved.
 - Runs vary a lot: medians with ranges, 5 runs on risky tasks, rules first.
 
+Added in the sixth session, from the logs and its test:
+
+- The agent lacks the lines at the places, not the pattern. On the toggle
+  tasks every run finds an existing toggle to copy from in its first turn
+  (27 of 27), then spends 5-7 turns reading the places. Pointing it to an
+  example hands over what it has.
+- Advice about lines the agent hasn't seen can't be followed: the warning
+  about the import list didn't change how often that edit failed (8 of 9
+  with it, 8 of 9 without). Showing the lines did (0 of 3).
+- Shown the code, the agent often reads it again before editing, at the very
+  line ranges it was given. Line numbers get used.
+- A file handed over as an example is copied in its details too (an icon
+  nobody asked for).
+- Runs of different tasks agree on the list an edit goes into, not on the
+  line. What one task's runs agree on is that task's choice.
+- A result on a task that is the twin of the one memory learned from says
+  nothing about other tasks. Holding a task out, for free, before a paid
+  run, tells how targeted a memory is.
+
 **Step 2, so far:**
 
 - Agreed: extract from successful runs (path and detours), from failed runs
@@ -148,6 +414,9 @@ step at a time, each the foundation for the next:
   share ("a setting appears in two right-click menus in `App.tsx`, one for
   view mode"). Proposed rule: a fact earns its place only if more than one
   kind of task can use it, or if it's a warning. Not yet agreed.
+  - Revisited in the sixth session (2026-10-03), after stage 4: the user
+    agreed to memory keeping the existing lines edits went between, looked up
+    in the code at task start (see the status at the top).
 - Storing many facts is cheap; handing over ones that don't apply is not,
   because the agent acts on them. So nodes can hold a lot, as long as
   retrieval hands over only what applies (step 5).
@@ -614,13 +883,29 @@ Test on both exact repeats and similar-but-different tasks. The graph should be 
   - The hook entry point is a separate script that loads only what each
     event needs: the tool-call hook takes about 0.1 s without memory for the
     session and 0.4 s with it, against 1.3 s for the full CLI.
+- **The code at the route's places, sixth session:**
+  - Decided by the user (2026-10-03): the hook reads the lines at a route's
+    places from the working tree at task start, and memory keeps only where
+    to look. They were told it is close to the exact locations they had
+    ruled out. After its test they doubted it as too targeted, and the logs
+    agreed; whether to rework it is theirs to decide (status at the top).
+  - Decided by Claude within it: a spot is the pair of existing lines above
+    and below an added block, since one line can stand in several places;
+    only pure additions count; a place needs two runs of the task's own kind
+    and 60% of those that took the step, counted over that kind's records
+    only; one line of context, small lists and blocks whole; the hand-over
+    stays under 9,800 characters and gives room first to places, then to
+    the file to read first, then to whole blocks; a file whose lines are
+    shown isn't listed with its step.
+  - Records keep spots from now on; older records get them from their run's
+    diff when a graph is built, and are not rewritten.
 
 ## What's built
 
 All code is TypeScript + Effect 4 under `src/`, with tests under `test/`.
 Run things with `node src/cli.ts ...` (see README.md).
 
-### Local memory (the redesign, fifth session)
+### Local memory (the redesign, fifth session; places added in the sixth)
 
 - **`src/local/`**: `Home.ts` (`~/.singularity` or `$SINGULARITY_HOME`, the
   tenant in `config.json`, created with tenant `local`), `Git.ts` (a repo's
@@ -650,6 +935,11 @@ Run things with `node src/cli.ts ...` (see README.md).
     matching the failure (an edit trigger: an edit before it) but not the
     fix, and free of the task's own values (`triggerValue`). Dropped claims
     are listed in the record.
+  - `Spots.ts` (sixth session): where a run's edits went, from its diff: for
+    each block added to a file that was there, the nearest existing lines
+    above and below that say something (not `});`), within three lines.
+    Blocks next to changed or removed lines don't count, nor new files or
+    snapshots. Kept in the record as `spots` (absent in older records).
   - `RecordStore.ts` (interface), `JsonRecordStore.ts`, `Subjects.ts`
     (subjects matched by root commit, remote, then path), `Build.ts`,
     `FromRuns.ts` (eval run dirs), `Keys.ts` (exact keys and text for search).
@@ -679,6 +969,13 @@ Run things with `node src/cli.ts ...` (see README.md).
   - `MemoryStore.ts`, `JsonMemoryStore.ts`: versions and candidates, like
     `GraphStore`, with reads by subject and reach. `Merge.ts`: build,
     replay, propose, commit or reject.
+  - Places (sixth session): `Build.ts` gives a step, per subject, its `spots`
+    (each with the records behind it; none in a task's own files, none whose
+    lines name its values) and its `examples` (for a step whose runs created
+    a file: files in the same directory that they read and didn't change).
+    Both keys are left out when empty, so other steps read as before.
+    `Merge.ts` (`withSpots`) reads the spots of older records from their
+    run's `diff.patch`, or from the session's two commits.
 - **`src/search/`**: BM25 over words (identifiers split, plural `s`
   dropped), exact substring search, over records and graph items.
 - **`src/handover/`** (step 5, local part):
@@ -691,6 +988,21 @@ Run things with `node src/cli.ts ...` (see README.md).
     used them; warnings of the chosen steps and kind come along. The
     warnings with triggers that reach the subject are kept in the session's
     state, and every hand-over is logged in `handovers.jsonl`.
+  - `Excerpts.ts` (sixth session): the code at the route's places, looked up
+    in the working tree at task start and appended to the route. A spot is
+    found where its two lines stand (the lower within four lines of the
+    upper; found in more than three places, it marks none); a spot with one
+    line only where that line is the single one of its kind in the file.
+    Spots within a few lines are one place, kept with two runs of the task's
+    kind and 60% of those that took the step. A place shows a line on each
+    side of the spots enough runs agree on; then, as room allows, the file
+    most runs read before writing a new one (whole up to 1,600 characters,
+    else by name), a small block a spot's line opens, and the small list
+    around a place (each up to 700 characters). `TaskStart.ts` keeps the
+    whole hand-over under `MAX_HANDOVER_CHARS` (9,800), drops a file from
+    its step's "Usually edits" when its lines are shown, and logs what was
+    shown (`excerpts`, `examples`, `left_out`). A memory without spots gives
+    the same hand-over as before, byte for byte.
   - `OnTool.ts`: a warning per trigger, once a session. `SessionEnd.ts`:
     the record of a session whose HEAD moved and whose last test run passed,
     with what became of its memory (a step whose usual files changed was
@@ -1020,16 +1332,36 @@ These come from inspecting real session logs and the CLI binary
 - **Home-folder CLAUDE.md:** runs in workspaces under the home folder load `C:\Users\luvma\CLAUDE.md` (the One CLI instructions) as project instructions. This is confirmed in the toy run's log, and it's why workspaces now default to `C:\singularity-workspaces`. Excalidraw's own `CLAUDE.md`/`AGENTS.md` are part of the repo and are still loaded, which is realistic.
 - **Result JSON:** the harness reads these fields from `--output-format json`: `subtype`, `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd`, `modelUsage` and `permission_denials`.
 - **Log cleanup:** Claude Code deletes old session logs after a while, so the harness keeps a copy of each run's log.
+- **Hook text** (sixth session; from Claude Code's hooks documentation, read 2026-10-03, and the three `hooks-spots-1` runs):
+  - A hook's `additionalContext` (and its plain stdout) is cut at 10,000 characters. Over that, Claude Code saves it to a file and hands the model the path and the first 2,000 characters; it doesn't ask the model to read the file. No setting raises the limit.
+  - Each hook's text is measured on its own, even when several hooks run for one event. They run in parallel, and the model receives all of their texts; the order isn't documented.
+  - A `UserPromptSubmit` hook can add context or block the prompt. It can't rewrite it.
+  - In 2.1.286 a hand-over of 9,376 characters arrived whole in all three runs; the transcript keeps it as an attachment of type `hook_additional_context` (`check-turns.ts` compares it with what was handed).
+- **Edit without Read** (sixth session): the Edit tool's description says a file must be read first, but 2.1.286 doesn't enforce it. One run made 20 edits in one turn, 16 of them in 11 files it had never read, none failing, as the saved-scripts runs did. The model still reads first in most runs.
 
 ## Next steps
 
-**From the fifth session on** (the local version is built; these replace
-the older items below where they overlap):
+**From the sixth session on:**
 
-1. **The measurement on excalidraw** (build stage 4; paid, pre-registered
-   first, needs the user's go): prepared, see the status at the top and
-   `examples/excalidraw/PREREGISTRATION-local-memory.md`. Goal: tokens close
-   to saved-scripts, success no worse.
+1. **Wait for the user's answer** on reworking what a place is (the status at
+   the top): the list an edit goes into instead of the lines next to it, and
+   required or conditional by comparing tasks. If they agree: build it, then
+   run `check-places.ts` (free) until presenter isn't shown the view-mode
+   menu, `page-breaks` isn't shown what it must leave alone, and rulers
+   keeps what it needs. Only then pre-register and run presenter and
+   `page-breaks` (paid, needs a go).
+2. **Smaller things the test showed**, to fold into that work or decide with
+   the user: say which list a place is (the line that opens it); line ranges
+   instead of code, since the agent often reads again; the file handed over
+   whole brings details of its own.
+3. **The size limit**: spend the room by what runs show was used; a second
+   hook or an overflow file only if a real task doesn't fit.
+
+**From the fifth session** (still open):
+
+1. **The measurement on excalidraw** (build stage 4): done; the goal (tokens
+   close to saved-scripts, success no worse) isn't met. The sixth session's
+   test on `toggle-rulers` came to 328k against the bar of 215k.
 2. **Read more records** if the measurement needs them: 91 records have no
    model reading yet (`record annotate --all --per-task N`). Re-reading the
    55 read ones would also restore the check commands the first, too strict
@@ -1107,6 +1439,14 @@ copes with, since it reads both.
 
 ## Open questions for the user
 
+- **Asked in the sixth session, not yet answered:** rework what a place is
+  (the list, required or conditional across tasks) and check it for free
+  with `check-places.ts` before any paid run?
+- Commit the sixth session's work? Nothing of it is committed (see Working
+  notes). The follow-up's rule was written before its runs but, unlike the
+  first pre-registration, wasn't committed before them.
+- Keep handing over code, or line ranges only? And should the file handed
+  over whole stay, given it brings details of its own?
 - Install the hooks for daily work? `node src/cli.ts hooks install` puts
   them in `~/.claude/settings.json` (every session; a model call of about
   $0.03 at each session's first prompt in a repo memory knows); `--scope
@@ -1128,6 +1468,26 @@ copes with, since it reads both.
 
 - Commit only when the user asks, and work on a feature branch (currently
   `local-memory`), not `main`.
+  - Not committed, from the fifth session: the stage 4 results, amendment 4,
+    `check-runs.ts`, `score-local-memory.ts`, and another session's page
+    `why-14-turns.html` (its idea, a pointer to grid mode, rests on a
+    premise the logs contradict: see the status at the top).
+  - Not committed, from the sixth session: `src/records/Spots.ts`,
+    `src/handover/Excerpts.ts` and the changes around them (records, graph
+    build, merge, task start, the hooks setup's record of what was shown),
+    their tests (`test/records/spots.test.ts`, `test/handover/excerpts.test.ts`,
+    `test/memory/merge.test.ts`, and additions to the build and hand-over
+    tests), `examples/excalidraw/check-turns.ts` and `check-places.ts`, the
+    `spots` mode of `run-local-memory-measurement.sh`, the follow-up and its
+    results in `PREREGISTRATION-local-memory.md`, and the notes in README.md,
+    CLAUDE.md and here.
+  - `runs/` isn't in git: `runs/excalidraw/memory/local-seed-spots`,
+    `runs/excalidraw/hooks-spots-1` and the previews exist only on this
+    machine.
+- `check-places.ts` reads the real memory home (`~/.singularity`, 146
+  records, 55 read) without changing it, and needs `--repo` pointed at the
+  excalidraw clone for the code at the base commit. The eval workspace's
+  tree changes during runs, so don't read code from it while one is going.
 - Runs cost real money on the user's account. Use `--dry-run` first, and set
   `max_budget_usd` in suites.
 - Keep heavy folders (workspaces, target repos' node_modules) out of this repo

@@ -101,6 +101,60 @@ describe("buildGraph", () => {
     const g = buildGraph([r], { tenant: "local" })
     assert.deepStrictEqual(g.steps[0].where.repo.files.map((f) => f.path), ["src/actions/shortcuts.ts"])
   })
+
+  it("keeps where a step's edits went: the spots in its files, with the runs behind each", () => {
+    const MINIMAP = "Add a Minimap toggle setting, with Alt+M, in the right-click menu."
+    const menus = step("add the action to the menus", "asked", ["src/App.tsx", "src/actions/actionToggleMinimap.tsx"])
+    const values = [{ name: "action name", value: "minimap" }]
+    const afterSnap = { file: "src/App.tsx", above: "actionToggleSnapMode,", below: "actionToggleStats," }
+    const afterGrid = { file: "src/App.tsx", above: "actionToggleGridMode,", below: null }
+    const first = {
+      ...readRecord(MINIMAP, "add a toggle setting", [menus], { values }),
+      spots: [
+        afterSnap,
+        // Names the task's own value: its place, not the step's.
+        { file: "src/App.tsx", above: `label: "labels.minimap",`, below: "viewMode: true," },
+        // The task's own file, and a file the step doesn't edit.
+        { file: "src/actions/actionToggleMinimap.tsx", above: "export const somethingElse = 1", below: null },
+        { file: "src/other.ts", above: null, below: "registerEverything()," }
+      ]
+    }
+    const second = { ...readRecord(MINIMAP, "add a toggle setting", [menus], { values }), spots: [afterSnap, afterGrid] }
+    const place = buildGraph([first, second], { tenant: "local" }).steps[0].where.repo
+    assert.deepStrictEqual(place.spots, [
+      { ...afterSnap, records: [first.id, second.id] },
+      { ...afterGrid, records: [second.id] }
+    ])
+    // A step no run has spots for reads as it did before spots existed.
+    const without = buildGraph(shortcutRecords(), { tenant: "local" }).steps[0].where.repo
+    assert.deepStrictEqual(Object.keys(without), ["runs", "files", "landmarks", "checks"])
+  })
+
+  it("keeps, for a step that writes a new file, the files next to it that its runs read and left alone", () => {
+    const create = step("create the action and register it", "asked", ["src/actions/actionToggleMinimap.tsx", "src/actions/index.ts"])
+    const run = (read: Array<string>) => {
+      const r = readRecord("Add a Minimap toggle setting", "add a toggle setting", [create])
+      return {
+        ...r,
+        files: [
+          { path: "src/actions/actionToggleMinimap.tsx", status: "added" as const, added: 27, removed: 0, snapshot: false },
+          { path: "src/actions/index.ts", status: "modified" as const, added: 1, removed: 0, snapshot: false }
+        ],
+        files_read: read
+      }
+    }
+    const first = run(["src/actions/actionToggleSnapMode.tsx", "src/actions/index.ts", "src/App.tsx"])
+    const second = run(["src/actions/actionToggleSnapMode.tsx", "src/actions/actionToggleGridMode.tsx"])
+    const place = buildGraph([first, second], { tenant: "local" }).steps[0].where.repo
+    // Not index.ts, which they changed, and not App.tsx, which is somewhere else.
+    assert.deepStrictEqual(place.examples, [
+      { path: "src/actions/actionToggleSnapMode.tsx", records: [first.id, second.id] },
+      { path: "src/actions/actionToggleGridMode.tsx", records: [second.id] }
+    ])
+    // A step that only edits files that were there has none.
+    const edits = buildGraph([{ ...first, files: first.files.map((f) => ({ ...f, status: "modified" as const })) }], { tenant: "local" })
+    assert.isUndefined(edits.steps[0].where.repo.examples)
+  })
 })
 
 describe("mechanicalTrigger and causes", () => {

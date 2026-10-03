@@ -17,10 +17,10 @@ Layout: `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
 procedural graph store of the first graph setup), `src/eval/` (the eval
 harness and memory setups), `src/cli.ts` (the command line). The local memory
 from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
-`src/records/` (workflow records: extraction, the model's reading, the
-store), `src/memory/` (the memory graph: build, replay, store), `src/search/`
-(exact and word search), `src/handover/` (task start, triggers, session end,
-hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
+`src/records/` (workflow records: extraction, where edits went, the model's
+reading, the store), `src/memory/` (the memory graph: build, replay, store),
+`src/search/` (exact and word search), `src/handover/` (task start and the
+code at its places, triggers, session end, hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
 hook entry point). Tests mirror it under `test/`.
 
 ## Writing Effect 4 code
@@ -85,7 +85,8 @@ records use those keys.
   `--claude` and a copy of the version its baselines used (Claude Code keeps
   a few in `~/.local/share/claude/versions/`); runs never update it.
 - The user needs their computer during runs: suites cap vitest workers and the
-  harness runs everything below normal priority. Keep it that way.
+  harness runs everything below normal priority. Keep it that way; `eval run
+  --priority normal` only when the user asks for it.
 - Heavy folders (workspaces, node_modules of target repos) live outside this
   repo, in `C:\singularity-workspaces`.
 - Hooks run in the user's own sessions once installed. They must never break
@@ -94,5 +95,9 @@ records use those keys.
   file with plain `node:fs` and loads modules only for the event at hand.
   Keep it fast (about 0.1 s without memory, 0.4 s with). Tests use a temporary
   `SINGULARITY_HOME`, never the real one.
+- Claude Code cuts a hook's text at 10,000 characters and hands the agent a
+  file path instead. The hand-over at task start stays under
+  `MAX_HANDOVER_CHARS` (`src/handover/TaskStart.ts`); anything added to it
+  takes room from the code it shows.
 - Model calls that build memory (`record annotate`, `memory build
   --conditions`) cost a few cents each; run them on a few records first.

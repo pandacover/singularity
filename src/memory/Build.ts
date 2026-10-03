@@ -6,8 +6,9 @@
  *   names it has seen, so the same kind keeps its name).
  * - Steps come from the records' steps, merged by name across kinds. Where
  *   they happen is collected per subject: the files they edit, landmarks
- *   (each counted by the records that found it) and the commands that
- *   checked them.
+ *   (each counted by the records that found it), the commands that checked
+ *   them, the spots in those files their edits went next to, and, for a step
+ *   that writes a new file, the files next to it that its runs read first.
  * - A kind's route lists the steps its records took, in their usual order.
  *   A step is required if every record of the kind took it and none did it
  *   on its own initiative; otherwise it is optional, with a condition.
@@ -67,6 +68,12 @@ const byCount = (xs: ReadonlyArray<string>, min = 1): Array<string> => {
 }
 
 const subjectReach = (subjects: Iterable<string>): Reach => ({ scope: "subject", subjects: [...new Set(subjects)].sort(), tools: [] })
+
+/** A file's directory, with its trailing slash; empty at the top. */
+const dirOf = (file: string): string => file.slice(0, file.lastIndexOf("/") + 1)
+
+/** Spots kept per step and subject. */
+const MAX_SPOTS = 60
 
 /** How a candidate warning came about. */
 interface LessonSource {
@@ -275,6 +282,37 @@ export const buildGraph = (records: ReadonlyArray<WorkflowRecord>, options: Buil
           if (!namesValueFile(f, u.record)) fileCounts.set(f, (fileCounts.get(f) ?? new Set()).add(u.record.id))
         }
       }
+      // Where in those files: the existing lines its runs added theirs between. A line
+      // that names one task's values marks that task's place, not the step's.
+      const spots = new Map<string, { file: string; above: string | null; below: string | null; records: Set<string> }>()
+      for (const u of us) {
+        for (const s of u.record.spots ?? []) {
+          if (!u.step.files.includes(s.file) || namesValueFile(s.file, u.record)) continue
+          if ([s.above, s.below].some((l) => l !== null && namesValue(l, u.record))) continue
+          const key = `${s.file}\u0000${s.above}\u0000${s.below}`
+          const seen = spots.get(key) ?? { file: s.file, above: s.above, below: s.below, records: new Set<string>() }
+          spots.set(key, seen)
+          seen.records.add(u.record.id)
+        }
+      }
+      // For a step that writes a new file: the files next to it that its runs read and left as they were.
+      const examples = new Map<string, Set<string>>()
+      for (const u of us) {
+        const status = new Map(u.record.files.map((f) => [f.path, f.status]))
+        const dirs = new Set(u.step.files.filter((f) => status.get(f) === "added").map(dirOf))
+        for (const f of u.record.files_read) {
+          if (dirs.has(dirOf(f)) && !status.has(f)) examples.set(f, (examples.get(f) ?? new Set()).add(u.record.id))
+        }
+      }
+      const lines = (s: { above: string | null; below: string | null }) => `${s.above ?? ""}\u0000${s.below ?? ""}`
+      const spotList = [...spots.values()]
+        .map((s) => ({ file: s.file, above: s.above, below: s.below, records: [...s.records].sort() }))
+        .sort((a, b) => b.records.length - a.records.length || a.file.localeCompare(b.file) || (lines(a) < lines(b) ? -1 : 1))
+        .slice(0, MAX_SPOTS)
+      const exampleList = [...examples.entries()]
+        .map(([path, ids]) => ({ path, records: [...ids].sort() }))
+        .sort((a, b) => b.records.length - a.records.length || a.path.localeCompare(b.path))
+        .slice(0, 4)
       where[subject] = {
         runs,
         files: [...fileCounts.entries()]
@@ -283,7 +321,10 @@ export const buildGraph = (records: ReadonlyArray<WorkflowRecord>, options: Buil
           .slice(0, 8),
         landmarks: landmarks.sort((a, b) => b.seen - a.seen || a.file.localeCompare(b.file)).slice(0, 4),
         // A check two runs used isn't tied to one task's test names or files.
-        checks: byCount(us.flatMap((u) => (u.step.check === null ? [] : [checksOf(u.step.check)])), 2).slice(0, 3)
+        checks: byCount(us.flatMap((u) => (u.step.check === null ? [] : [checksOf(u.step.check)])), 2).slice(0, 3),
+        // Left out when empty, so a step without them reads as it did before they existed.
+        ...(spotList.length > 0 ? { spots: spotList } : {}),
+        ...(exampleList.length > 0 ? { examples: exampleList } : {})
       }
     }
     const name = mostCommon(uses.map((u) => u.step.name))!
