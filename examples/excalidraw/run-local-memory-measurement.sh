@@ -19,12 +19,18 @@
 #       with the zen-only memory on the three toggle tasks (2.1.286)
 #   bash examples/excalidraw/run-local-memory-measurement.sh new FIRST LAST
 #       passes 0-4: hooks with the seed memory on the three new tasks (2.1.287)
+#   bash examples/excalidraw/run-local-memory-measurement.sh spots FIRST LAST
+#       the follow-up, passes 0-2: hooks with the seed memory and its spots
+#       (the code at the route's places goes along) on toggle-rulers (2.1.286)
 #
 # Two lanes, as in run-graph-measurement.sh: LANE=2 gives a lane its own clone
 # and output directories (suffix -lane2). The plan:
 #   gate, one lane:  smoke, then drift 0 2
 #   then             lane 1: existing 0 1, then new 4 4
 #                    lane 2 (LANE=2): new 0 3, then existing 2 2
+#
+# PRIORITY=normal runs everything at normal priority instead of below normal
+# (the user asked for it for this measurement, to finish sooner).
 #
 # DRY_RUN=1 prints each run's plan instead of running it.
 set -u
@@ -33,6 +39,7 @@ cd "$(dirname "$0")/../.."
 SUITE=examples/excalidraw/suite.toml
 SEED=runs/excalidraw/memory/local-seed
 ZEN=runs/excalidraw/memory/local-zen
+SPOTS=runs/excalidraw/memory/local-seed-spots
 SAVED=runs/excalidraw/memory/saved-scripts
 SAVED2=runs/excalidraw/memory/saved-scripts-2
 GRAPH=runs/excalidraw/memory/graph
@@ -56,6 +63,7 @@ if [ "$LANE" != 1 ]; then
   SUFFIX="-lane$LANE"
 fi
 [ -n "${DRY_RUN:-}" ] && LANE_ARGS+=(--dry-run)
+[ "${PRIORITY:-}" = normal ] && LANE_ARGS+=(--priority normal)
 
 run() {
   node src/cli.ts eval run "$SUITE" --frozen --reps 1 "${LANE_ARGS[@]}" "$@" || echo "!! run failed: $*" >&2
@@ -94,5 +102,10 @@ case "${1:-}" in
   drift) for ((rep = $2; rep <= $3; rep++)); do pass_drift "$rep"; done ;;
   existing) for ((rep = $2; rep <= $3; rep++)); do pass_existing "$rep"; done ;;
   new) for ((rep = $2; rep <= $3; rep++)); do pass_new "$rep"; done ;;
-  *) echo "usage: $0 smoke | drift|existing|new FIRST LAST" >&2; exit 2 ;;
+  spots)
+    for ((rep = $2; rep <= $3; rep++)); do
+      run --first-rep "$rep" --claude "$CC286" --setup hooks --memory "$SPOTS" --task toggle-rulers --out "runs/excalidraw/hooks-spots-1$SUFFIX"
+    done
+    ;;
+  *) echo "usage: $0 smoke | drift|existing|new|spots FIRST LAST" >&2; exit 2 ;;
 esac

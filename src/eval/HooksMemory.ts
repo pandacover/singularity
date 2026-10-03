@@ -67,6 +67,9 @@ export const HandoverLine = Schema.Struct({
     error: Schema.NullOr(Schema.String)
   }))),
   selection_tokens: Schema.optionalKey(Schema.NullOr(UsageJson)),
+  excerpts: Schema.optionalKey(Schema.Array(Schema.Struct({ file: Schema.String, from: Schema.Number, to: Schema.Number }))),
+  examples: Schema.optionalKey(Schema.Array(Schema.Struct({ path: Schema.String, whole: Schema.Boolean }))),
+  left_out: Schema.optionalKey(Schema.Number),
   text: Schema.optionalKey(Schema.NullOr(Schema.String)),
   tool: Schema.optionalKey(Schema.String)
 })
@@ -103,6 +106,10 @@ export const deliveredFrom = (lines: ReadonlyArray<HandoverLine>, hookErrors: nu
       proposed: start?.proposed ?? [],
       reasons: start?.reasons ?? [],
       selection: start?.selection ?? null,
+      // The code that went along: places shown, files handed over whole, and what didn't fit.
+      places: start?.excerpts?.length ?? 0,
+      files_whole: (start?.examples ?? []).filter((e) => e.whole).map((e) => e.path),
+      left_out: start?.left_out ?? 0,
       chars: start?.text?.length ?? 0,
       hook_errors: hookErrors
     },

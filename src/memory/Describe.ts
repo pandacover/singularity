@@ -37,6 +37,11 @@ export const describeMemory = (g: MemoryGraph, version: number | string): string
       if (p.files.length > 0) lines.push(`  - ${subject} files (of ${p.runs} runs): ${p.files.map((f) => `${f.path} (${f.seen})`).join(", ")}`)
       for (const l of p.landmarks) lines.push(`  - ${subject}: ${l.fact} (${l.file}; seen ${l.seen})`)
       if (p.checks.length > 0) lines.push(`  - ${subject} checked by: ${p.checks.map((c) => `\`${c.slice(0, 100)}\``).join("; ")}`)
+      for (const s of p.spots ?? []) {
+        const between = [s.above, s.below].map((l) => (l === null ? "-" : `\`${l.slice(0, 70)}\``)).join(" and ")
+        lines.push(`  - ${subject} spot in ${s.file}: between ${between} (${s.records.length} runs)`)
+      }
+      for (const e of p.examples ?? []) lines.push(`  - ${subject} read first: ${e.path} (${e.records.length} runs)`)
     }
   }
   lines.push("", "## Warnings", "")

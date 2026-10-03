@@ -6,8 +6,9 @@
  *   optional, with the condition for taking an optional one.
  * - Steps: each merged from every record that took it. A step shared by
  *   several kinds is one item (an implicit skill, such as "list the shortcut
- *   in the help dialog"). Where it happens (files, landmarks, the commands
- *   that check it) is kept per subject and never shared between subjects.
+ *   in the help dialog"). Where it happens (files, landmarks, the spots its
+ *   edits went next to, the commands that check it) is kept per subject and
+ *   never shared between subjects.
  * - Warnings: mistakes from detours, merged across records, each tied to the
  *   step or kind it happened in, with an exact trigger when one held up.
  *
@@ -15,7 +16,7 @@
  * and its evidence: the records behind it. Persisted as JSON with snake_case keys.
  */
 import { Schema } from "effect"
-import { Landmark } from "../records/Models.ts"
+import { Landmark, Spot } from "../records/Models.ts"
 import { Trigger } from "../records/Triggers.ts"
 
 export const Reach = Schema.Struct({
@@ -68,6 +69,21 @@ export type SeenLandmark = typeof SeenLandmark.Type
 export const SeenFile = Schema.Struct({ path: Schema.String, seen: Schema.Int })
 export type SeenFile = typeof SeenFile.Type
 
+/**
+ * Lines of existing code that a step's runs added their own lines between
+ * (records/Spots.ts), and the records that did. The hand-over finds them in
+ * the code as it is then and shows what is around them.
+ */
+export const SeenSpot = Schema.Struct({
+  ...Spot.fields,
+  records: Schema.Array(Schema.String)
+})
+export type SeenSpot = typeof SeenSpot.Type
+
+/** A file a step's runs read, and left as it was, before writing a new file next to it; and the records that did. */
+export const SeenExample = Schema.Struct({ path: Schema.String, records: Schema.Array(Schema.String) })
+export type SeenExample = typeof SeenExample.Type
+
 /** Where a step happens in one subject. */
 export const Place = Schema.Struct({
   /** Records of the step in this subject. */
@@ -76,7 +92,11 @@ export const Place = Schema.Struct({
   files: Schema.Array(SeenFile),
   landmarks: Schema.Array(SeenLandmark),
   /** Commands that verified it, most often first. */
-  checks: Schema.Array(Schema.String)
+  checks: Schema.Array(Schema.String),
+  /** Where in those files its edits went, best supported first. Absent when no record has any. */
+  spots: Schema.optionalKey(Schema.Array(SeenSpot)),
+  /** For a step that creates a file: existing files next to it that its runs read first. Absent when there are none. */
+  examples: Schema.optionalKey(Schema.Array(SeenExample))
 })
 export type Place = typeof Place.Type
 

@@ -12,6 +12,12 @@
  * whose anchors are gone isn't handed over. Files are listed only when most
  * runs of the step edited them; the rest belong to one task's feature.
  *
+ * The places themselves come along as they are now (Excerpts.ts): the lines
+ * around each spot where the kind's runs made a step's edits, read from the
+ * working tree, so the agent doesn't have to read for them. Memory holds only
+ * which lines to look for; a spot the code no longer has shows nothing. A
+ * file whose lines are shown for a step isn't listed with the step as well.
+ *
  * The warnings with exact triggers that the subject may get are kept in the
  * session's state, so hooks can match them on every tool call without asking.
  */
@@ -23,9 +29,15 @@ import { MemoryStore } from "../memory/MemoryStore.ts"
 import { rankKinds } from "../memory/Replay.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { type Usage, usageToJson } from "../traces/index.ts"
+import { type ExampleSource, type Excerpts, makeExcerpts, type SpotSource } from "./Excerpts.ts"
 import { logHandover, type SessionState, writeSession } from "./Session.ts"
 import { repoTools } from "./Tools.ts"
 
+/**
+ * The most a hand-over may hold. Claude Code cuts a hook's text off at 10,000
+ * characters and hands the agent a file path and the first 2,000 instead.
+ */
+export const MAX_HANDOVER_CHARS = 9800
 /** Without a model to confirm, a kind is taken only on a clearer match. */
 export const MIN_COVERAGE_ALONE = 0.4
 /** A file is "usually edited" by a step when at least this share of its runs edited it (and at least two). */
@@ -149,6 +161,8 @@ export interface TaskStartResult {
   /** The kinds word search proposed, and the model's reason for each step. */
   readonly proposals?: ReadonlyArray<{ readonly kind: string; readonly coverage: number }>
   readonly reasons?: ReadonlyArray<string>
+  /** The code that went along: which lines of which files. */
+  readonly excerpts?: Excerpts | undefined
 }
 
 export const taskStart = Effect.fn("taskStart")(function*(
@@ -212,11 +226,12 @@ export const taskStart = Effect.fn("taskStart")(function*(
   const steps = yield* memory.steps(stepIds)
   const ordered = stepIds.map((id) => steps.find((s) => s.id === id)).filter((s): s is Step => s !== undefined)
 
-  // Landmarks still in the code, read from the working tree.
+  // Landmarks still in the code, read from the working tree. Memory names files inside the repo only.
   const texts = new Map<string, string | undefined>()
   const textOf = Effect.fnUntraced(function*(file: string) {
     if (!texts.has(file)) {
-      texts.set(file, Option.getOrUndefined(yield* fs.readFileString(path.join(repo.root, file)).pipe(Effect.option)))
+      const inside = !path.isAbsolute(file) && !file.split(/[\\/]/).includes("..")
+      texts.set(file, inside ? Option.getOrUndefined(yield* fs.readFileString(path.join(repo.root, file)).pipe(Effect.option)) : undefined)
     }
     return texts.get(file)
   })
@@ -238,7 +253,60 @@ export const taskStart = Effect.fn("taskStart")(function*(
     .filter((w) => w.moment !== "trigger" && ((w.step !== null && stepIds.includes(w.step)) || (w.kind !== null && w.kind === kind?.id)))
     .sort((a, b) => b.cost.tokens - a.cost.tokens)
     .slice(0, MAX_WARNINGS)
-  const text = kind === undefined || ordered.length === 0 ? undefined : renderHandover(kind, ordered, places, atStart)
+  const routeKind = ordered.length === 0 ? undefined : kind
+  /** The route's text. A file whose lines are shown for a step isn't listed with that step as well. */
+  const renderRoute = (shown: ReadonlySet<string> = new Set()) =>
+    routeKind === undefined ? undefined : renderHandover(
+      routeKind,
+      ordered,
+      new Map(ordered.flatMap((s, i) => {
+        const p = places.get(s.id)
+        return p === undefined ? [] : [[s.id, { ...p, files: p.files.filter((f) => !shown.has(`${i + 1} ${f}`)) }] as const]
+      })),
+      atStart
+    )
+  let route = renderRoute()
+
+  // The code at the route's places, as the working tree has it now, in the room the route leaves.
+  let excerpts: Excerpts | undefined
+  if (route !== undefined && kind !== undefined) {
+    const ofKind = new Set(kind.evidence)
+    const spots: Array<SpotSource> = []
+    const examples: Array<ExampleSource> = []
+    ordered.forEach((s, i) => {
+      const p = s.where[subject.id]
+      if (p === undefined) return
+      // Counted over this kind's runs: another kind's runs of a shared step edit other places.
+      const runs = s.evidence.filter((id) => ofKind.has(id)).length
+      for (const spot of p.spots ?? []) {
+        const records = spot.records.filter((id) => ofKind.has(id))
+        if (records.length > 0) spots.push({ step: i + 1, file: spot.file, above: spot.above, below: spot.below, records, runs })
+      }
+      for (const e of p.examples ?? []) {
+        const records = e.records.filter((id) => ofKind.has(id))
+        if (records.length > 0) examples.push({ step: i + 1, path: e.path, records, runs })
+      }
+    })
+    const live = new Map<string, string>()
+    for (const file of new Set([...spots.map((s) => s.file), ...examples.map((e) => e.path)])) {
+      const text = yield* textOf(file)
+      if (text !== undefined) live.set(file, text.replace(/\r\n?/g, "\n"))
+    }
+    excerpts = makeExcerpts(spots, examples, live, MAX_HANDOVER_CHARS - route.length)
+    // What the shorter route frees goes to the code, as long as every file dropped from the route is still shown.
+    const pairs = (e: Excerpts) => new Set(e.shown.flatMap((x) => x.steps.map((step) => `${step} ${x.file}`)))
+    const shown = pairs(excerpts)
+    const shorter = renderRoute(shown)
+    if (shorter !== undefined && shorter.length < route.length) {
+      const more = makeExcerpts(spots, examples, live, MAX_HANDOVER_CHARS - shorter.length)
+      const still = pairs(more)
+      if ([...shown].every((pair) => still.has(pair))) {
+        route = shorter
+        excerpts = more
+      }
+    }
+  }
+  const text = route === undefined ? undefined : route + (excerpts?.text ?? "")
 
   const state: SessionState = {
     session_id: input.sessionId,
@@ -257,7 +325,7 @@ export const taskStart = Effect.fn("taskStart")(function*(
   }
   const reasons = answer?.steps.map((s) => `${s.applies ? "" : "not "}${s.id}: ${s.why}`) ?? []
   const proposals = proposed.map((p) => ({ kind: p.kind.id, coverage: Math.round(p.coverage * 1000) / 1000 }))
-  if (options.persist === false) return { text, state, proposals, reasons } satisfies TaskStartResult
+  if (options.persist === false) return { text, state, proposals, reasons, excerpts } satisfies TaskStartResult
   yield* writeSession(options.tenantDir, state)
   yield* logHandover(options.tenantDir, {
     at: now,
@@ -273,8 +341,12 @@ export const taskStart = Effect.fn("taskStart")(function*(
     selection,
     // What the selection's model call used, so a measurement can count it with the run.
     selection_tokens: selectionUsage === undefined ? null : usageToJson(selectionUsage),
+    // The code that went along: which lines of which files, and what was found but didn't fit.
+    excerpts: excerpts?.shown ?? [],
+    examples: excerpts?.examples ?? [],
+    left_out: excerpts?.leftOut ?? 0,
     chars: text?.length ?? 0,
     text: text ?? null
   })
-  return { text, state, proposals, reasons } satisfies TaskStartResult
+  return { text, state, proposals, reasons, excerpts } satisfies TaskStartResult
 })

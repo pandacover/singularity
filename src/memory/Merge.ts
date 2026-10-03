@@ -7,13 +7,15 @@
  * rejected, with the reason, if it doesn't. A build that changes nothing
  * makes no candidate.
  */
-import { Effect } from "effect"
+import { Effect, FileSystem, Option, Path } from "effect"
 import type { ToolCall, Trace } from "../traces/index.ts"
 import { parseSession } from "../traces/index.ts"
+import { git } from "../local/Git.ts"
 import { triggerMismatch } from "../records/Annotate.ts"
 import { relativizer } from "../records/Extract.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
+import { spotsOfDiff } from "../records/Spots.ts"
 import { eventOfCall, type Trigger } from "../records/Triggers.ts"
 import { applyAliases, decideCloseCalls, type MergeConfig, noAliases } from "./Aliases.ts"
 import { buildGraph } from "./Build.ts"
@@ -54,6 +56,31 @@ export const loadTraces = Effect.fn("loadTraces")(function*(records: ReadonlyArr
   return traces
 })
 
+/**
+ * Records with their spots. A record built before spots were kept gets them
+ * from its run's diff, where that still is: an eval run's `diff.patch`, or a
+ * session's two commits. The stored record isn't changed.
+ */
+export const withSpots = Effect.fn("withSpots")(function*(records: ReadonlyArray<WorkflowRecord>) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const out: Array<WorkflowRecord> = []
+  for (const r of records) {
+    if (r.spots !== undefined || r.run.outcome !== "success") {
+      out.push(r)
+      continue
+    }
+    const run = r.run
+    const diff = run.run_dir !== null && run.run_id !== null
+      ? yield* fs.readFileString(path.join(run.run_dir, "runs", run.run_id, "diff.patch")).pipe(Effect.option)
+      : run.repo !== null && run.base_commit !== null && run.head_commit !== null
+      ? yield* git(run.repo, ["diff", run.base_commit, run.head_commit]).pipe(Effect.option)
+      : Option.none<string>()
+    out.push(Option.isSome(diff) ? { ...r, spots: spotsOfDiff(diff.value) } : r)
+  }
+  return out
+})
+
 export interface MergeResult {
   readonly graph: MemoryGraph
   readonly report: ReplayReport
@@ -86,7 +113,7 @@ export const mergeRecords = Effect.fn("mergeRecords")(function*(options: {
     aliases = decided.aliases
     costUsd += decided.costUsd
   }
-  const records = applyAliases(stored, aliases)
+  const records = yield* withSpots(applyAliases(stored, aliases))
   const traces = yield* loadTraces(records)
   let graph = buildGraph(records, { tenant: memory.tenant, previous: current, fits: traceFit(traces) })
   if (options.conditions !== undefined) {

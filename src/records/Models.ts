@@ -11,8 +11,8 @@
  * - `run`: where and how it ran (subject, commits, cost, outcome, and a
  *   pointer to its log, which stays where the run happened);
  * - `task`: what it was asked;
- * - `files`, `files_read`, `commands`, `detours`, `checks`: the mechanical
- *   part, read from the log and the diff without any model;
+ * - `files`, `spots`, `files_read`, `commands`, `detours`, `checks`: the
+ *   mechanical part, read from the log and the diff without any model;
  * - `memory`: for runs that were given memory, what each piece was;
  * - `model`: a model's reading (task kind, steps, landmarks, lessons), every
  *   claim checked against the code and the run before it is kept.
@@ -33,6 +33,18 @@ export const FileChange = Schema.Struct({
   snapshot: Schema.Boolean
 })
 export type FileChange = typeof FileChange.Type
+
+/**
+ * Where an edit went, told by code that was already there: the lines just
+ * above and below a block the run added (see Spots.ts), without their
+ * indentation. One of them may be missing; never one of the run's new lines.
+ */
+export const Spot = Schema.Struct({
+  file: Schema.String,
+  above: Schema.NullOr(Schema.String),
+  below: Schema.NullOr(Schema.String)
+})
+export type Spot = typeof Spot.Type
 
 export const CommandRun = Schema.Struct({
   command: Schema.String,
@@ -218,6 +230,8 @@ export const WorkflowRecord = Schema.Struct({
   run: RunInfo,
   task: Schema.Struct({ prompt: Schema.String, followups: Schema.Array(Schema.String) }),
   files: Schema.Array(FileChange),
+  /** Records built before spots were kept lack them; a graph build reads them from the run's diff then (Merge.ts). */
+  spots: Schema.optionalKey(Schema.Array(Spot)),
   files_read: Schema.Array(Schema.String),
   commands: Schema.Array(CommandRun),
   detours: Schema.Array(Detour),

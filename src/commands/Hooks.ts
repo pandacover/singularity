@@ -134,6 +134,13 @@ export const handoverCommand = Command.make(
     yield* Console.error(`proposed: ${(result.proposals ?? []).map((p) => `${p.kind} (${p.coverage})`).join(", ") || "none"}`)
     yield* Console.error(`kind: ${state.kind ?? "none"}; ${state.steps.length} steps, ${state.warnings.length} warnings at the start, ${state.triggers.length} warnings on triggers`)
     for (const r of result.reasons ?? []) yield* Console.error(`  ${r}`)
+    const code = result.excerpts
+    if (code !== undefined && code.shown.length + code.examples.length + code.leftOut > 0) {
+      yield* Console.error(
+        `code: ${code.shown.length} places in ${new Set(code.shown.map((e) => e.file)).size} files, ` +
+          `${code.examples.length} files to read first, ${code.leftOut} left out for room; ${result.text?.length ?? 0} characters in all`
+      )
+    }
     if (state.selection?.error) yield* Console.error(`model call failed: ${state.selection.error}`)
     if (state.selection?.cost_usd != null) yield* Console.error(`selection cost $${state.selection.cost_usd.toFixed(4)}`)
     yield* Console.log(result.text === undefined ? "(nothing handed over)" : `\n${result.text}`)

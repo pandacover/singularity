@@ -74,15 +74,26 @@ const stripCwd = (cwd: string | undefined) => {
   return (s: string) => s.replace(pattern, "")
 }
 
-/** Files a diff changes, with line counts. */
-export const parseDiff = (diff: string): Array<FileChange> => {
-  const files: Array<FileChange> = []
+/** A test snapshot (`.snap`, `__snapshots__/`): regenerated, not written. */
+export const isSnapshot = (path: string): boolean => path.endsWith(".snap") || path.includes("/__snapshots__/")
+
+/** A diff split by file: each file's path and its part of the diff, as lines (the `diff --git` line first). */
+export const diffFiles = (diff: string): Array<{ readonly path: string; readonly lines: ReadonlyArray<string> }> => {
+  const files: Array<{ path: string; lines: Array<string> }> = []
   for (const chunk of diff.replace(/\r\n?/g, "\n").split(/^(?=diff --git )/m)) {
     if (!chunk.startsWith("diff --git ")) continue
     const lines = chunk.split("\n")
     const header = lines[0]
     const at = header.lastIndexOf(" b/")
-    const path = at >= 0 ? header.slice(at + 3) : header.slice("diff --git ".length)
+    files.push({ path: at >= 0 ? header.slice(at + 3) : header.slice("diff --git ".length), lines })
+  }
+  return files
+}
+
+/** Files a diff changes, with line counts. */
+export const parseDiff = (diff: string): Array<FileChange> => {
+  const files: Array<FileChange> = []
+  for (const { path, lines } of diffFiles(diff)) {
     let status: FileChange["status"] = "modified"
     let added = 0
     let removed = 0
@@ -95,7 +106,7 @@ export const parseDiff = (diff: string): Array<FileChange> => {
       else if (!binary && l.startsWith("+") && !l.startsWith("+++")) added++
       else if (!binary && l.startsWith("-") && !l.startsWith("---")) removed++
     }
-    files.push({ path, status, added, removed, snapshot: path.endsWith(".snap") || path.includes("/__snapshots__/") })
+    files.push({ path, status, added, removed, snapshot: isSnapshot(path) })
   }
   return files
 }

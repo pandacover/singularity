@@ -39,8 +39,10 @@ node src/cli.ts record list | show ID
 ```
 
 A record holds what the log and the diff show without any model: files
-changed, every shell command and whether it worked, and detours (a call that
-failed, the later call that fixed it, and the tokens in between). The model's
+changed, where in them the run added its lines (the existing lines just above
+and below, never the new ones), every shell command and whether it worked,
+and detours (a call that failed, the later call that fixed it, and the tokens
+in between). The model's
 reading adds the task's kind, its steps (each asked for, needed, or the
 agent's own choice), landmarks in the code, and what each detour teaches, with
 an exact trigger. Every claim is checked against the code at the run's commit
@@ -81,7 +83,12 @@ node src/cli.ts hooks status | uninstall
 
 At a session's first prompt, the hook hands over the route for the task and
 the warnings on its steps: word search proposes up to three task kinds, and a
-model confirms one and picks its steps (about $0.03 and a few seconds). After
+model confirms one and picks its steps (about $0.03 and a few seconds). With
+the route comes the code at its places: the hook looks up, in the working
+tree, the lines that earlier runs of the kind made each step's edits next to,
+and hands over what is around them now, so the agent can edit without reading
+for the places first. Memory holds which lines to look for, not the code. It
+all stays under 10,000 characters, where Claude Code cuts a hook's text. After
 each shell command or edit, a warning whose exact trigger appears is handed
 over, once a session. When a session ends with a committed change and passing
 tests, it becomes a record. `SINGULARITY_HOOKS=off` turns the hooks off; the
@@ -111,8 +118,9 @@ never touched, and no branches, tags or reflog, so later commits (which may
 hold hidden tests) stay out of the agent's sight.
 
 Claude Code runs headless with its auto-memory off and no MCP servers. The
-harness runs everything below normal priority, and a suite's `env` table can
-cap test workers, so the machine stays usable. Each run records cost, tokens,
+harness runs everything below normal priority (`--priority normal` when
+nothing else needs the machine), and a suite's `env` table can cap test
+workers, so the machine stays usable. Each run records cost, tokens,
 wall time, tool calls, and check results to `results.jsonl`, and saves the
 transcript and diff alongside. Use `--dry-run` to see the exact `claude`
 command without running anything.

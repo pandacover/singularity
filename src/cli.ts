@@ -125,13 +125,18 @@ const run = Command.make(
     out: Flag.String("out").pipe(Flag.optional, Flag.withDescription("output dir (default runs/<suite>/<time>-<setup>)")),
     workspaces: workspacesFlag,
     claude: claudeFlag,
+    priority: Flag.Literals("priority", ["below-normal", "normal"]).pipe(
+      Flag.withDefault("below-normal"),
+      Flag.withDescription("below-normal keeps the machine usable during runs; normal when nothing else needs it")
+    ),
     dryRun: Flag.Boolean("dry-run").pipe(
       Flag.withDefault(false),
       Flag.withDescription("resolve tasks and print the agent command without running")
     )
   },
   Effect.fn(function*(args) {
-    yield* lowerPriority
+    // Children inherit it: the agent, its tool calls and hooks, the checks.
+    if (args.priority === "below-normal") yield* lowerPriority
     const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
