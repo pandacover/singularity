@@ -68,7 +68,7 @@ const WorkflowsInjection = Schema.Struct({
 export const evalMemory = (setup: string, injection: unknown): MemoryUse | null => {
   if (setup === "no-memory") return null
   const item = (id: string, kind: string, moment: "start" | "trigger" = "start"): MemoryItem => ({ id, kind, moment, outcome: "unknown", note: null })
-  if (setup === "workflows") {
+  if (setup === "workflows" || setup === "workflows-draft" || setup === "workflows-cues") {
     // The same kinds of item v1's own session records carry (workflows/Feedback.ts); what became of them is judged when learning.
     const v1 = Option.getOrUndefined(Schema.decodeUnknownOption(WorkflowsInjection)(injection ?? {}))
     if (v1 === undefined) return { setup, version: null, items: [] }

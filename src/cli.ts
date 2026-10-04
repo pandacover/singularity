@@ -69,7 +69,7 @@ const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescriptio
  * harness. The hooks setup does neither: its hooks hand memory over during the
  * run (preview with `handover --home`), and memory is built with `memory build`.
  */
-const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows")
+const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows" && s !== "workflows-draft" && s !== "workflows-cues")
 
 const graphVersionFlag = Flag.Int("graph-version").pipe(
   Flag.optional,

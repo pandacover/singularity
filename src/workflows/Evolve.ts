@@ -32,7 +32,7 @@ export interface Shown {
 
 /** What memory showed a run, from its record: v1's own feedback (sessions) or the eval setup's info. */
 export const shownInRecord = (r: WorkflowRecord): Shown | undefined => {
-  if (r.memory === null || r.memory.setup !== "workflows") return undefined
+  if (r.memory === null || !["workflows", "workflows-draft", "workflows-cues"].includes(r.memory.setup)) return undefined
   return {
     workflows: r.memory.items.filter((i) => i.kind === "workflow").map((i) => i.id),
     places: r.memory.items.filter((i) => i.kind === "place").map((i) => i.id),
