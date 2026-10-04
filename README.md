@@ -100,7 +100,8 @@ That memory is v0 (tag `memory-v0`). Memory v1 lives in the same home, under
 ```
 node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)
 node src/cli.ts workflows show [AT] [--json]                                 # print it
-node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT]          # preview a task's hand-over
+node src/cli.ts workflows cues [--repo DIR]                                   # write cues, so tasks are picked without a model (one model call or two)
+node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--draft] # preview a task's hand-over
 node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR]   # learn from new runs
 node src/cli.ts workflows candidates                                         # proposals and what became of them
 ```
@@ -110,11 +111,31 @@ from runs, and a graph of them whose edges say when one leads to another. A
 step's place is kept as the blocks that enclose the edit (`class App ›
 getContextMenuItems › if (this.state.viewModeEnabled) › return [`), never as
 code; at task start its hooks (`src/workflows/hook.ts`) pick the workflows the
-task needs (a model call, about two cents), find each place in the code as it
-is (in the file it moved to, if it moved) and hand them over with current line
-numbers. `evolve` revises memory from what new runs did and what it showed
-them, and keeps the revision only if, replayed over the runs, it shows more of
-the places they edited and fewer they left alone.
+task needs, find each place in the code as it is (in the file it moved to, if
+it moved) and hand them over with current line numbers. `evolve` revises
+memory from what new runs did and what it showed them, and keeps the revision
+only if, replayed over the runs, it shows more of the places they edited and
+fewer they left alone.
+
+**Local first** (tag `memory-local-first`): picking makes no model call. Each
+workflow carries cues, phrases that say a task needs it and where a task
+states its blanks' values, written once by `workflows cues`
+(`src/workflows/CueWriter.ts`); at task start they are matched exactly against
+the task, its negated clauses ("don't add a shortcut") left out, and the
+blanks the task states are filled in (`src/workflows/Cues.ts`). That is the
+hook's default and `workflows handover`'s; memory without cues is picked by
+words. `SINGULARITY_SELECTOR=model` (or `--pick model`) has a model call pick
+instead, as v1 was first measured. A build or a learning round writes
+workflows without cues: run `workflows cues` after it.
+
+Tested and dropped (the user's call: memory helps the agent do the task, it
+doesn't do the task): with `--draft` (and in the `workflows-draft` setup), a
+second model call at task start fills the blanks the only way that leaves nothing open: it writes
+the change itself for this task, from those workflows and the code at their
+places (about 5-10 cents, half a minute). Each edit is checked against the
+code before it is handed over (its old lines are in their file exactly once),
+and the agent gets the complete change instead of the steps
+(`src/workflows/Draft.ts`). Memory still keeps no code.
 
 ## Run an evaluation
 
@@ -180,6 +201,13 @@ command without running anything.
   its trigger appears, and the selection's model call counts toward the run.
   Each run keeps its hand-over log (what was shown, at which lines), which
   `workflows evolve` learns from. Preview with `workflows handover`.
+  This setup keeps v1 as it was measured: a model call picks the workflows.
+- `workflows-cues`: the local-first memory: the same hooks, with no model call
+  at task start; memory's cues pick the workflows and fill the blanks the task
+  states (`workflows handover --pick cues`).
+- `workflows-draft` (tested and dropped): the same, but the agent gets the
+  change itself, drafted at task start from the workflows and the code
+  (`workflows handover --draft`); the drafting call counts toward the run too.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs so memory doesn't change while it's being measured.

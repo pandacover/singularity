@@ -101,5 +101,5 @@ export const combine = (name: string, first: MemorySetup, second: MemorySetup, k
   afterRun: (outcome) => Effect.andThen(first.afterRun(outcome), second.afterRun(outcome))
 })
 
-export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "saved-scripts-warnings", "graph", "hooks", "workflows"] as const
+export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "saved-scripts-warnings", "graph", "hooks", "workflows", "workflows-draft", "workflows-cues"] as const
 export type SetupName = (typeof SETUPS)[number]

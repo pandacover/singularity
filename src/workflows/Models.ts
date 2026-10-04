@@ -61,12 +61,53 @@ export const WorkflowStep = Schema.Struct({
 })
 export type WorkflowStep = typeof WorkflowStep.Type
 
+/**
+ * Where a task's text states a blank's value (Cues.ts): the n-th name in
+ * backticks, the n-th quoted name, the n-th key combination or its key, or
+ * the word right after a phrase.
+ */
+export const Fill = Schema.Struct({
+  /** The placeholder as the steps write it: `{field}`, `<text>`. */
+  placeholder: Schema.String,
+  from: Schema.Literals(["code", "quoted", "key", "key-letter", "after"]),
+  /** Which one, from 1; unused for `after`. */
+  n: Schema.Int,
+  /** For `after`: the phrase the value follows. */
+  phrase: Schema.NullOr(Schema.String)
+})
+export type Fill = typeof Fill.Type
+
+/** A conditional step's cues: it applies when the task says one of `any` and none of `none`. */
+export const StepCue = Schema.Struct({
+  /** The step, numbered from 1. */
+  step: Schema.Int,
+  any: Schema.Array(Schema.String),
+  none: Schema.Array(Schema.String)
+})
+export type StepCue = typeof StepCue.Type
+
+/**
+ * What in a task's text says a workflow is needed, which of its conditional
+ * steps apply, and where its blanks' values are: plain phrases, matched in
+ * any case at task start without a model (Cues.ts). Written once, when
+ * memory is built.
+ */
+export const WorkflowCues = Schema.Struct({
+  any: Schema.Array(Schema.String),
+  none: Schema.Array(Schema.String),
+  steps: Schema.Array(StepCue),
+  fills: Schema.Array(Fill)
+})
+export type WorkflowCues = typeof WorkflowCues.Type
+
 export const Workflow = Schema.Struct({
   id: Schema.String,
   subject: Schema.String,
   name: Schema.String,
   /** When a task needs it. */
   use_when: Schema.String,
+  /** The same in exact phrases, for picking without a model; absent in memory built before cues. */
+  cues: Schema.optionalKey(WorkflowCues),
   /**
    * Learned from what runs did unasked (a test nobody asked for): handed over
    * only when a task explicitly asks for that very thing.

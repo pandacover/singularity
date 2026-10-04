@@ -5,6 +5,8 @@
  *     node examples/excalidraw/score-v1.ts gate
  *     node examples/excalidraw/score-v1.ts
  *     node examples/excalidraw/score-v1.ts fit --repo REPO
+ *     node examples/excalidraw/score-v1.ts examples
+ *     node examples/excalidraw/score-v1.ts cues
  *
  * `gate` checks the gate runs against the earlier runs they repeat. Without an
  * argument: rules 1-4, then v1 against v0 (reported). `fit`: for each v1 run,
@@ -19,6 +21,7 @@ import { Console, Effect, FileSystem } from "effect"
 import { median } from "../../src/eval/PyFormat.ts"
 import { field, loadRecords, type RunRecord } from "../../src/eval/Report.ts"
 import { fileAt, git } from "../../src/local/Git.ts"
+import { EDIT_TOOLS, parseSession, SHELL_TOOLS, SHELL_WRITE } from "../../src/traces/index.ts"
 import { editsOfDiff, placeOfEdit } from "../../src/workflows/Edits.ts"
 import { placeIdOf } from "../../src/workflows/Evidence.ts"
 import { placeKey, sharedNameStart } from "../../src/workflows/Places.ts"
@@ -205,5 +208,127 @@ const fit = Effect.gen(function*() {
   }
 })
 
-const program = args[0] === "gate" ? gate : args[0] === "fit" ? fit : rules
+const TOGGLES = ["toggle-minimap", "toggle-rulers", "toggle-presenter"]
+
+/** The turn of a run's first edit (its own, not a subagent's), from its transcript. */
+const firstEditTurn = Effect.fn("firstEditTurn")(function*(r: RunRecord) {
+  const fs = yield* FileSystem.FileSystem
+  const dir = `${String(r._dir)}/runs/${String(r.run_id)}/transcript`
+  if (!(yield* fs.exists(dir))) return NaN
+  const file = (yield* fs.readDirectory(dir)).find((f) => f.endsWith(".jsonl"))
+  if (file === undefined) return NaN
+  const trace = yield* parseSession(`${dir}/${file}`)
+  const turnOf = new Map<string, number>()
+  trace.responses.filter((x) => x.agentId === undefined).forEach((resp, i) => resp.toolCallIds.forEach((id) => turnOf.set(id, i + 1)))
+  const first = trace.toolCalls.find((c) =>
+    c.agentId === undefined &&
+    (EDIT_TOOLS.has(c.name) || (SHELL_TOOLS.has(c.name) && typeof c.input.command === "string" && SHELL_WRITE.test(c.input.command)))
+  )
+  return first === undefined ? NaN : (turnOf.get(first.id) ?? NaN)
+})
+
+/**
+ * After the measurement, on the toggle tasks: v1 handing over the change
+ * drafted at task start (workflows-draft), and v1 with one existing example at
+ * each place (not kept; runs/excalidraw/v1ex-toggles/example-change.patch),
+ * against v1 as measured, v0, the exact script and no memory: tokens, turns,
+ * the first edit's turn, and whether runs added an icon (a detail an example
+ * can carry over).
+ */
+const examples = Effect.gen(function*() {
+  const fs = yield* FileSystem.FileSystem
+  const setups: ReadonlyArray<readonly [string, ReadonlyArray<RunRecord>]> = [
+    ["v1 + draft", yield* load("v1draft-toggles")],
+    ["v1 + example", yield* load("v1ex-toggles")],
+    ["v1", yield* load("v1-existing")],
+    ["v0", yield* load("v0spots-existing", "hooks-spots-1")],
+    ["exact script", yield* load("saved-scripts-1")],
+    ["no memory", yield* load("baseline-2-toggle")]
+  ]
+  const changes: [Array<number>, Array<number>] = [[], []]
+  for (const t of TOGGLES) {
+    yield* Console.log(t)
+    for (const [name, all] of setups) {
+      const rs = of(all, t)
+      if (rs.length === 0) continue
+      const turns = median(rs.map((r) => Number(field(r, "trace", "api_calls") ?? 0)))
+      const first: Array<number> = []
+      let icons = 0
+      for (const r of rs) {
+        first.push(yield* firstEditTurn(r))
+        const diff = `${String(r._dir)}/runs/${String(r.run_id)}/diff.patch`
+        if ((yield* fs.exists(diff)) && /^\+\s*icon:/m.test(yield* fs.readFileString(diff))) icons++
+      }
+      const edits = first.filter((x) => Number.isFinite(x))
+      yield* Console.log(
+        `  ${name.padEnd(13)} ${show(cell(rs))}; ${turns} turns, first edit in turn ${edits.length > 0 ? median(edits) : "-"} (${first.join(", ")})` +
+          `${icons > 0 ? `; ${icons} added an icon` : ""}`
+      )
+    }
+    // Each change against v1 as measured (the third setup).
+    for (const i of [0, 1] as const) changes[i].push(change(cell(of(setups[i][1], t)), cell(of(setups[2][1], t))))
+  }
+  yield* Console.log("")
+  for (const [i, name] of [[0, "v1 + draft"], [1, "v1 + example"]] as const) {
+    yield* Console.log(`${name} against v1, per task: ${changes[i].map(pct).join(", ")}; median ${pct(median(changes[i]))}`)
+  }
+})
+
+/**
+ * PREREGISTRATION-v1-cues.md: v1 without a model call at task start, its
+ * cues picking the workflows and filling the blanks the task states
+ * (workflows-cues), against v1 as measured, on six tasks. Rule 1: at most 1
+ * failed run of the 18. Rule 2: median tokens and dollars within +15% of v1's
+ * on at least 5 of the 6 tasks. Also reported: turns, the first edit's turn,
+ * and how many runs labelled the setting as the task names it.
+ */
+const CUES_TASKS = ["toggle-minimap", "toggle-rulers", "toggle-presenter", "midpoint-snap-n", "page-breaks", "stats-shortcut-k"]
+
+const cues = Effect.gen(function*() {
+  const fs = yield* FileSystem.FileSystem
+  // Each task's prompt, from the suite (records don't keep it), for the name it quotes.
+  const suite = (yield* fs.readFileString("examples/excalidraw/suite.toml")).replace(/\r\n/g, "\n")
+  const quotedName = new Map([...suite.matchAll(/id = "([^"]+)"[\s\S]*?prompt = """\n([\s\S]*?)"""/g)].map((m) => [m[1], /"([^"]+)"/.exec(m[2])?.[1]]))
+  const now = yield* load("v1cues-toggles", "v1cues-new")
+  const v1 = yield* load("v1-existing", "v1-new")
+  let failed = 0
+  let runs = 0
+  let within = 0
+  for (const t of CUES_TASKS) {
+    const [a, b] = [cell(of(now, t)), cell(of(v1, t))]
+    runs += a.n
+    failed += a.failed
+    const tokens = change(a, b)
+    const dollars = (a.cost - b.cost) / b.cost
+    const ok = a.n > 0 && tokens <= 0.15 && dollars <= 0.15
+    if (ok) within++
+    const turns = (rs: ReadonlyArray<RunRecord>) => median(rs.map((r) => Number(field(r, "trace", "api_calls") ?? 0)))
+    // The first edit's turn, and whether the run labelled the setting as the task names it (an added `"…": "<name>"`).
+    const watched = Effect.fnUntraced(function*(rs: ReadonlyArray<RunRecord>) {
+      const firsts: Array<number> = []
+      let labelled = 0
+      const quoted = quotedName.get(t)
+      for (const r of rs) {
+        firsts.push(yield* firstEditTurn(r))
+        const diff = `${String(r._dir)}/runs/${String(r.run_id)}/diff.patch`
+        if (quoted !== undefined && (yield* fs.exists(diff))) {
+          const added = (yield* fs.readFileString(diff)).split(/\r?\n/).filter((l) => l.startsWith("+"))
+          if (added.some((l) => l.includes(`": "${quoted}"`))) labelled++
+        }
+      }
+      const edits = firsts.filter((x) => Number.isFinite(x))
+      const label = t.startsWith("toggle-") || t === "page-breaks" ? `, ${labelled} of ${rs.length} labelled as the task names it` : ""
+      return `${turns(rs)} turns, first edit in turn ${edits.length > 0 ? median(edits) : "-"}${label}`
+    })
+    yield* Console.log(t)
+    yield* Console.log(`  v1 + cues  ${show(a)}; ${yield* watched(of(now, t))}`)
+    yield* Console.log(`  v1         ${show(b)}; ${yield* watched(of(v1, t))}`)
+    yield* Console.log(`  tokens ${pct(tokens)}, dollars ${pct(dollars)}: ${ok ? "within" : "outside"} +15%`)
+  }
+  yield* Console.log("")
+  yield* Console.log(`Rule 1. At most 1 failed run of 18: ${failed} of ${runs} failed: ${failed <= 1 && runs === 18 ? "holds" : runs < 18 ? "not all runs in" : "fails"}`)
+  yield* Console.log(`Rule 2. Tokens and dollars within +15% of v1 on at least 5 of 6 tasks: ${within} of 6: ${within >= 5 ? "holds" : "fails"}`)
+})
+
+const program = args[0] === "gate" ? gate : args[0] === "fit" ? fit : args[0] === "examples" ? examples : args[0] === "cues" ? cues : rules
 program.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

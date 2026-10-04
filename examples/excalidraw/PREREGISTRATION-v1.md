@@ -217,3 +217,67 @@ v1 against v0: a median of +11% (from -10% on snap to +62% on rulers).
   0 of 33 runs; all 5 stats runs wrote their test with
   `handleKeyboardGlobally`; no test nobody asked for (the one test edit on a
   shortcut task updated the existing view-mode test, as its task asks).
+
+## After the results: an existing example at each place (2026-10-04)
+
+The explanation above ("what it lacked is an example to copy") was tested
+with the user's go, and it is wrong. The same memory, with the hand-over
+changed to show at every place one whole entry of a single existing thing,
+picked from the code at task start (zen mode: its action file whole, its
+Preferences item, its help-dialog row, its line in each list), ran on the
+three toggle tasks, 3 runs each, with Claude Code 2.1.286, for $2.99
+(`run-v1-measurement.sh examples`, `score-v1.ts examples`). The change isn't
+kept; it is in `runs/excalidraw/v1ex-toggles/example-change.patch`.
+
+| Task | v1 + example | v1 | v0 | exact script | no memory |
+|---|---|---|---|---|---|
+| `toggle-minimap` | 432k, 10 turns | 441k, 10 | 314k, 8 | 312k, 8 | 787k, 16 |
+| `toggle-rulers` | 584k, 12 | 531k, 12 (1 failed) | 328k, 8 | 187k, 5 | 563k, 13 |
+| `toggle-presenter` | 621k, 12 | 385k, 10 | 407k, 10 | 221k, 6 | 673k, 15 |
+
+All 9 runs passed. The first edit came no earlier (turns 3-8). Every run began
+by searching the repository for the example (`zenMode`) and reading where it
+appears, including wiring the task doesn't need (zen mode is also a prop of
+the component), then compared it with the toggles the steps name (grid mode,
+objects snap mode); presenter, whose rules differ from zen mode's, went on
+looking for a closer one. All 3 rulers runs copied zen mode's icon.
+
+So the turns don't go to finding an example. The agent checks and completes
+whatever the hand-over leaves to it, and a named example gave it one more
+thing to check. The exact script's runs edit everything in their second turn,
+mostly without reading the files first, because it is the complete change in
+concrete lines, with the lines around each edit.
+
+## After that: the change drafted at task start (2026-10-04)
+
+Next, with the user's go, the agent got the change itself: at task start a
+second model call (Sonnet) wrote every edit the task needs, from the same
+memory's chosen workflows and the code at their places, and each edit was
+checked against the files before it was handed over (its old lines there
+exactly once). New setup `workflows-draft` (`src/workflows/Draft.ts`), kept;
+plain `workflows` is unchanged. The same three toggle tasks, 3 runs each,
+Claude Code 2.1.286, $3.17 (`run-v1-measurement.sh draft`, `score-v1.ts
+examples`). Before the runs, the three drafts were applied to the base commit
+and passed the typecheck.
+
+| Task | v1 + draft | v1 | exact script | draft call |
+|---|---|---|---|---|
+| `toggle-minimap` | 421k, 10 turns, $0.39 | 441k, 10, $0.29 | 312k, 8, $0.18 | $0.04-0.10 |
+| `toggle-rulers` | 379k, 9, $0.37 | 531k, 12, $0.33 (1 failed) | 187k, 5, $0.16 | $0.04-0.10 |
+| `toggle-presenter` | 394k, 9, $0.36 | 385k, 10, $0.29 | 221k, 6, $0.17 | $0.04-0.09 |
+
+All 9 runs passed and none added an icon; every draft held 17-18 edits and
+the new file, none left out by the checks, written in 20-24 s (one took
+108 s). Tokens: -4% against v1 (median per task; rulers -29%, its first edit
+in turn 2 in all three runs). Dollars: up by a quarter, because the drafting
+call (4-10 cents) cost about what the agent saved (its own part fell from
+$0.27-0.32 to $0.26-0.27).
+
+Why the agent didn't save more: it checked the draft before using it. It read
+a few lines around each edit in a file before editing that file, so the edits
+took three turns instead of one, and it ran the finishing steps the workflows
+list (prettier, the snapshot update, a look at the changed snapshots) one per
+turn. With the exact script, agents made every edit in one turn without
+reading the files first, then ran one chained command. Haiku as the drafter
+(checked for free on the same three tasks) costs about half as much per draft
+but wrote edits that weren't in the files and left out whole parts.

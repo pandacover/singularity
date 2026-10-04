@@ -64,11 +64,19 @@ export const makeSetup = (
       ? Effect.fail(new MemoryError({ message: "hooks needs the claude command for its model call" }))
       : Effect.succeed(makeHooksMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
   }
-  if (name === "workflows") {
-    // Like hooks: a memory home, handed over by v1's own hooks; their model call runs the agent's Claude Code.
+  if (name === "workflows" || name === "workflows-draft" || name === "workflows-cues") {
+    // Like hooks: a memory home, handed over by v1's own hooks; their model calls run the agent's Claude Code.
+    // workflows-draft hands over the change itself, drafted at task start (workflows/Draft.ts);
+    // workflows-cues makes no model call: memory's cues pick, and fill the blanks the task states (workflows/Cues.ts).
     return context.selector === undefined
-      ? Effect.fail(new MemoryError({ message: "workflows needs the claude command for its model call" }))
-      : Effect.succeed(makeWorkflowsMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
+      ? Effect.fail(new MemoryError({ message: `${name} needs the claude command for its model call` }))
+      : Effect.succeed(makeWorkflowsMemory({
+        home: memoryDir,
+        claude: context.selector.claude,
+        selectorModel: context.selector.model,
+        draft: name === "workflows-draft",
+        cues: name === "workflows-cues"
+      }))
   }
   if (name === "graph") {
     return context.graphId === undefined

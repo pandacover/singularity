@@ -20,6 +20,23 @@
 #       its toggle-rulers runs from the sixth session) (2.1.286)
 #   bash examples/excalidraw/run-v1-measurement.sh new FIRST LAST
 #       passes 0-4: v1 and v0 on the three new tasks (2.1.287)
+#   bash examples/excalidraw/run-v1-measurement.sh examples FIRST LAST
+#       after the measurement, passes 0-2: v1 with one existing example at
+#       each place on the three toggle tasks (2.1.286), against v1's runs of
+#       them in v1-existing; the same memory, only the hand-over's code
+#       differs. That change wasn't kept: apply
+#       runs/excalidraw/v1ex-toggles/example-change.patch first
+#   bash examples/excalidraw/run-v1-measurement.sh draft FIRST LAST
+#       after that, passes 0-2: v1 handing over the change itself, drafted at
+#       task start from the same memory and the code (`--setup
+#       workflows-draft`, src/workflows/Draft.ts), on the three toggle tasks
+#       (2.1.286)
+#   bash examples/excalidraw/run-v1-measurement.sh cues FIRST LAST
+#       after that, passes 0-2: v1 without a model call at task start, its
+#       cues picking the workflows and filling the blanks the task states
+#       (`--setup workflows-cues`, src/workflows/Cues.ts), from the v1-cues
+#       home (v1-seed plus cues, version 2), on the three toggle tasks
+#       (2.1.286) and the three new ones (2.1.287)
 #
 # Two lanes, as before: LANE=2 gives a lane its own clone and output
 # directories (suffix -lane2). The plan:
@@ -35,6 +52,7 @@ cd "$(dirname "$0")/../.."
 
 SUITE=examples/excalidraw/suite.toml
 V1=runs/excalidraw/memory/v1-seed
+V1CUES=runs/excalidraw/memory/v1-cues
 V0=runs/excalidraw/memory/local-seed-spots
 SAVED=runs/excalidraw/memory/saved-scripts
 SAVED2=runs/excalidraw/memory/saved-scripts-2
@@ -94,6 +112,26 @@ pass_new() {
   done
 }
 
+pass_examples() {
+  local rep=$1
+  run --first-rep "$rep" --claude "$CC286" --setup workflows --memory "$V1" \
+    --task toggle-minimap --task toggle-rulers --task toggle-presenter --out "runs/excalidraw/v1ex-toggles$SUFFIX"
+}
+
+pass_draft() {
+  local rep=$1
+  run --first-rep "$rep" --claude "$CC286" --setup workflows-draft --memory "$V1" \
+    --task toggle-minimap --task toggle-rulers --task toggle-presenter --out "runs/excalidraw/v1draft-toggles$SUFFIX"
+}
+
+pass_cues() {
+  local rep=$1
+  run --first-rep "$rep" --claude "$CC286" --setup workflows-cues --memory "$V1CUES" \
+    --task toggle-minimap --task toggle-rulers --task toggle-presenter --out "runs/excalidraw/v1cues-toggles$SUFFIX"
+  # shellcheck disable=SC2086
+  run --first-rep "$rep" --claude "$CC287" --setup workflows-cues --memory "$V1CUES" ${NEW[*]} --out "runs/excalidraw/v1cues-new$SUFFIX"
+}
+
 pass_drift() {
   local rep=$1
   run --first-rep "$rep" --claude "$CC286" --setup saved-scripts --memory "$SAVED" --task altkey-viewmode-j \
@@ -110,5 +148,8 @@ case "${1:-}" in
   drift) for ((rep = $2; rep <= $3; rep++)); do pass_drift "$rep"; done ;;
   existing) for ((rep = $2; rep <= $3; rep++)); do pass_existing "$rep"; done ;;
   new) for ((rep = $2; rep <= $3; rep++)); do pass_new "$rep"; done ;;
-  *) echo "usage: $0 smoke | drift|existing|new FIRST LAST" >&2; exit 2 ;;
+  examples) for ((rep = $2; rep <= $3; rep++)); do pass_examples "$rep"; done ;;
+  draft) for ((rep = $2; rep <= $3; rep++)); do pass_draft "$rep"; done ;;
+  cues) for ((rep = $2; rep <= $3; rep++)); do pass_cues "$rep"; done ;;
+  *) echo "usage: $0 smoke | drift|existing|new|examples|draft|cues FIRST LAST" >&2; exit 2 ;;
 esac

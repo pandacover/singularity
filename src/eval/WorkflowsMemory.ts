@@ -28,7 +28,7 @@ import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import { CLAUDE_ENV } from "./Agent.ts"
 import { HOOK_SETTINGS, RUN_HOME } from "./HooksMemory.ts"
 import type { Delivered, Injection, MemorySetup } from "./Setups.ts"
-import { MemoryError } from "./Setups.ts"
+import { addSpent, MemoryError } from "./Setups.ts"
 import type { Task } from "./Suite.ts"
 
 /** Memory v1's hook entry point. */
@@ -39,9 +39,19 @@ export interface WorkflowsMemoryOptions {
   readonly home: string
   /** The Claude Code the agent runs, for the hooks' own model call. */
   readonly claude: ReadonlyArray<string>
-  /** The model that picks the workflows. */
+  /** The model that picks the workflows, and drafts the change. */
   readonly selectorModel: string
+  /** Hand over the change itself, drafted at task start (Draft.ts): the `workflows-draft` setup. */
+  readonly draft?: boolean | undefined
+  /**
+   * Pick without a model, by memory's cues, and fill the blanks the task
+   * states (Cues.ts): the `workflows-cues` setup.
+   */
+  readonly cues?: boolean | undefined
 }
+
+/** Seconds the task-start hook may take when it drafts the change: the selection's call, then the draft's. */
+const DRAFT_HOOK_TIMEOUT = 420
 
 const UsageJson = Schema.Struct({ input: Schema.Number, output: Schema.Number, cache_creation: Schema.Number, cache_read: Schema.Number })
 
@@ -60,6 +70,18 @@ export const WorkflowHandoverLine = Schema.Struct({
     error: Schema.NullOr(Schema.String)
   }))),
   selection_tokens: Schema.optionalKey(Schema.NullOr(UsageJson)),
+  draft: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    model: Schema.String,
+    cost_usd: Schema.NullOr(Schema.Number),
+    duration_s: Schema.NullOr(Schema.Number),
+    error: Schema.NullOr(Schema.String),
+    used: Schema.Boolean,
+    edits: Schema.Number,
+    files: Schema.Array(Schema.String),
+    dropped: Schema.Array(Schema.String),
+    unsure: Schema.Array(Schema.String)
+  }))),
+  draft_tokens: Schema.optionalKey(Schema.NullOr(UsageJson)),
   chars: Schema.optionalKey(Schema.Number),
   text: Schema.optionalKey(Schema.NullOr(Schema.String)),
   tool: Schema.optionalKey(Schema.String)
@@ -87,6 +109,14 @@ export const workflowsDeliveredFrom = (lines: ReadonlyArray<WorkflowHandoverLine
     .filter((l) => l.moment === "trigger")
     .flatMap((l) => (l.pitfalls ?? []).map((pitfall) => ({ pitfall, tool: l.tool ?? null })))
   const cost = start?.selection?.cost_usd
+  const draftCost = start?.draft?.cost_usd
+  // The hooks' model calls count with the run: the selection's, and the draft's when there was one.
+  const selectionSpent = cost === undefined || cost === null
+    ? undefined
+    : { costUsd: cost, usage: start?.selection_tokens ? usageOf(start.selection_tokens) : emptyUsage }
+  const draftSpent = draftCost === undefined || draftCost === null
+    ? undefined
+    : { costUsd: draftCost, usage: start?.draft_tokens ? usageOf(start.draft_tokens) : emptyUsage }
   return {
     info: {
       task_start: start !== undefined,
@@ -99,12 +129,11 @@ export const workflowsDeliveredFrom = (lines: ReadonlyArray<WorkflowHandoverLine
       pitfalls_at_start: start?.pitfalls ?? [],
       fired,
       selection: start?.selection ?? null,
+      ...(start?.draft === undefined ? {} : { draft: start.draft }),
       chars: start?.chars ?? 0,
       hook_errors: hookErrors
     },
-    spent: cost === undefined || cost === null
-      ? undefined
-      : { costUsd: cost, usage: start?.selection_tokens ? usageOf(start.selection_tokens) : emptyUsage }
+    spent: addSpent(selectionSpent, draftSpent)
   }
 }
 
@@ -181,7 +210,8 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
       return { version, sources }
     }).pipe(Effect.provide(stores))
     const settings = path.join(runDir, HOOK_SETTINGS)
-    yield* fs.writeFileString(settings, JSON.stringify(hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT), null, 2) + "\n")
+    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT)
+    yield* fs.writeFileString(settings, JSON.stringify(options.draft === true ? withStartTimeout(hooks, DRAFT_HOOK_TIMEOUT) : hooks, null, 2) + "\n")
     return {
       systemPrompt: undefined,
       info: { memory: source, version, sources },
@@ -190,12 +220,27 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
         SINGULARITY_HOOKS: "on",
         [HOME_ENV]: runHome,
         [CLAUDE_ENV]: JSON.stringify(options.claude),
-        SINGULARITY_SELECTOR: "on",
-        SINGULARITY_SELECTOR_MODEL: options.selectorModel
+        SINGULARITY_SELECTOR: options.cues === true ? "cues" : "on",
+        SINGULARITY_SELECTOR_MODEL: options.selectorModel,
+        SINGULARITY_DRAFTER: options.draft === true ? "on" : "off",
+        SINGULARITY_DRAFTER_MODEL: options.selectorModel
       },
       delivered: collect(runDir, runHome, home.tenantDir)
     } satisfies Injection
   }, Effect.mapError(toMemoryError))
 
-  return { name: "workflows", beforeRun, afterRun: () => Effect.void }
+  const name = options.draft === true ? "workflows-draft" : options.cues === true ? "workflows-cues" : "workflows"
+  return { name, beforeRun, afterRun: () => Effect.void }
+}
+
+/** The settings with the task-start hook given `seconds`. */
+const withStartTimeout = (settings: Record<string, unknown>, seconds: number): Record<string, unknown> => {
+  const hooks = settings.hooks as Record<string, Array<{ hooks: Array<Record<string, unknown>> }>>
+  return {
+    ...settings,
+    hooks: {
+      ...hooks,
+      UserPromptSubmit: (hooks.UserPromptSubmit ?? []).map((e) => ({ ...e, hooks: e.hooks.map((h) => ({ ...h, timeout: seconds })) }))
+    }
+  }
 }

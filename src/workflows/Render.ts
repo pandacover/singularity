@@ -11,6 +11,7 @@
  * Claude Code cuts a hook's text at 10,000 characters, so the hand-over keeps
  * to a budget: when it doesn't fit, excerpts get shorter, then go.
  */
+import { applyFills } from "./Cues.ts"
 import { shapeOf } from "./Evidence.ts"
 import type { Located } from "./Locate.ts"
 import type { Pitfall, Place, WorkflowMemory } from "./Models.ts"
@@ -66,8 +67,8 @@ interface Rendered {
 /** A step's place as found (Locate.ts): where it is now and an excerpt of up to `max` lines. */
 const renderPlace = (p: Place, at: Located, max: number): Rendered => {
   if (at.kind === "new-file") {
-    const short = [...at.siblings].sort((a, b) => a.lines - b.lines)
-    const names = short.slice(0, 6).map((f) => `${f.name} (${f.lines} lines)`).join(", ")
+    const short = [...at.siblings].sort((a, b) => a.lines.length - b.lines.length)
+    const names = short.slice(0, 6).map((f) => `${f.name} (${f.lines.length} lines)`).join(", ")
     return {
       header: `a new file in ${code(at.dir + "/")}, named like the ${at.siblings.length} there that start with ${code(at.prefix)}; shortest first: ${names}`,
       excerpt: [],
@@ -92,11 +93,26 @@ const HEADER = [
   ""
 ].join("\n")
 
+const FILLED_HEADER = [
+  "# Workflows from earlier work in this repository",
+  "",
+  "Reusable steps learned from earlier tasks here. Values your task states are filled in; blanks in braces stand for " +
+  "the rest of your task's own names and values. " +
+  "Places are found in the code as it is now (current line numbers); the lines shown are excerpts.",
+  ""
+].join("\n")
+
+/**
+ * The hand-over. `fills`, when given (Cues.ts), holds for each workflow the
+ * values the task states for its placeholders: they are written into its
+ * steps, and only the blanks left are listed.
+ */
 export const renderHandover = (
   memory: WorkflowMemory,
   chosen: ReadonlyArray<Selected>,
   located: ReadonlyMap<string, Located>,
-  budget = MAX_HANDOVER_CHARS
+  budget = MAX_HANDOVER_CHARS,
+  fills?: ReadonlyMap<string, ReadonlyMap<string, string>>
 ): Handover => {
   const places = new Map(memory.places.map((p) => [p.id, p]))
   const pitfalls = new Map(memory.pitfalls.map((p) => [p.id, p]))
@@ -109,19 +125,23 @@ export const renderHandover = (
   }
 
   const build = (maxLines: number) => {
-    const out: Array<string> = [HEADER]
+    const out: Array<string> = [fills === undefined ? HEADER : FILLED_HEADER]
     const shown: Array<Shown> = []
     const missing: Array<string> = []
     const warned = new Set<string>()
     chosen.forEach((c, k) => {
       const w = c.workflow
+      const values = fills?.get(w.id) ?? new Map<string, string>()
+      const fill = (text: string) => (values.size === 0 ? text : applyFills(text, values))
       out.push(`## ${k + 1}. ${w.name}`)
-      if (w.blanks.length > 0) out.push(`Blanks: ${w.blanks.map((b) => `{${b.name}} ${b.meaning}`).join("; ")}`)
+      if (values.size > 0) out.push(`Filled from your task: ${[...values].map(([b, v]) => `${b} = ${code(v)}`).join(", ")}`)
+      const open = w.blanks.filter((b) => !values.has(`{${b.name}}`))
+      if (open.length > 0) out.push(`Blanks: ${open.map((b) => `{${b.name}} ${b.meaning}`).join("; ")}`)
       let n = 0
       w.steps.forEach((s, i) => {
         if (c.skip.includes(i + 1)) return
         n++
-        out.push(`${n}. ${s.do}${s.when === null ? "" : ` (${s.when})`}`)
+        out.push(`${n}. ${fill(s.do)}${s.when === null ? "" : ` (${fill(s.when)})`}`)
         const p = s.place === null ? undefined : places.get(s.place)
         if (p === undefined) return
         const at = located.get(p.id)

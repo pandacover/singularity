@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A map, or the finished change? memory_x and the applied draft</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --wash: rgba(42, 120, 214, 0.07);
+    /* phases of a run: an ordinal ramp, most avoidable part most prominent */
+    --ph-look: #104281;
+    --ph-edit: #2a78d6;
+    --ph-check: #86b6ef;
+    /* where the dollars go: categorical slots 1-3 */
+    --s-1: #2a78d6;
+    --s-2: #eb6834;
+    --s-3: #1baf7a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --wash: rgba(57, 135, 229, 0.10);
+      --ph-look: #86b6ef;
+      --ph-edit: #3987e5;
+      --ph-check: #184f95;
+      --s-1: #3987e5;
+      --s-2: #d95926;
+      --s-3: #199e70;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --wash: rgba(57, 135, 229, 0.10);
+    --ph-look: #86b6ef;
+    --ph-edit: #3987e5;
+    --ph-check: #184f95;
+    --s-1: #3987e5;
+    --s-2: #d95926;
+    --s-3: #199e70;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root {
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 20px 72px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; font-weight: 650; }
+  h2 { font-size: 20px; line-height: 1.3; margin: 0 0 6px; font-weight: 650; }
+  h3 { font-size: 16px; margin: 0 0 4px; font-weight: 650; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--ink-2); font-size: 17px; max-width: 760px; margin-bottom: 28px; }
+  .muted { color: var(--muted); }
+  .ink-2 { color: var(--ink-2); }
+  code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13.5px; }
+
+  section.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    margin: 0 0 20px;
+  }
+  .caption { color: var(--ink-2); margin: 0 0 16px; max-width: 760px; }
+  .takeaway {
+    margin: 16px 0 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--wash);
+    color: var(--ink);
+  }
+
+  /* Section 1: the two ideas */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  .idea { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; background: var(--page); }
+  .eyebrow { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+  .idea h3 { font-size: 19px; margin-bottom: 12px; }
+  .label { font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+  .handed {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    white-space: pre-wrap;
+  }
+  .handed b { color: var(--ink); font-weight: 600; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 10px 4px 9px; background: var(--surface); font-size: 13.5px; white-space: nowrap;
+  }
+  .arrow { color: var(--muted); }
+  .foot { margin-top: 12px; font-size: 14px; color: var(--ink-2); }
+
+  /* swatches (mirror the mark: rect) */
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .ph-look { --c: var(--ph-look); }
+  .ph-edit { --c: var(--ph-edit); }
+  .ph-check { --c: var(--ph-check); }
+  .s-1 { --c: var(--s-1); }
+  .s-2 { --c: var(--s-2); }
+  .s-3 { --c: var(--s-3); }
+  .sw, .seg, .turn { background: var(--c); }
+  .est.seg, .est.turn, .sw.est {
+    background: color-mix(in srgb, var(--c) 16%, transparent);
+    outline: 1.5px dashed var(--c);
+    outline-offset: -1.5px;
+  }
+  .sw.est { --c: var(--muted); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+
+  /* Section 2: timeline */
+  .tl { display: grid; grid-template-columns: 210px 1fr; gap: 14px 16px; align-items: start; }
+  .tl-name { font-weight: 600; line-height: 1.3; }
+  .tl-name small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+  .tl-turns { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 24px; }
+  .turn { width: 24px; height: 24px; border-radius: 4px; cursor: default; }
+  .turn:hover, .turn:focus-visible, .seg:hover, .seg:focus-visible { filter: brightness(1.12); }
+  .turn:focus-visible, .seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .tl-meta { font-size: 14px; color: var(--ink-2); margin-left: 10px; white-space: nowrap; }
+  .tl-note { font-size: 14px; color: var(--ink-2); margin-top: 6px; }
+  @media (max-width: 640px) { .tl { grid-template-columns: 1fr; gap: 4px 0; } .tl-name { margin-top: 10px; } }
+
+  /* Sections 3 and 4: stacked bars */
+  .chart { position: relative; --label-w: 210px; --value-w: 112px; }
+  @media (max-width: 640px) { .chart { --label-w: 118px; --value-w: 92px; } }
+  .gridlayer {
+    position: absolute; top: 0; bottom: 26px;
+    left: calc(var(--label-w) + 16px); right: var(--value-w);
+    pointer-events: none;
+  }
+  .gridlayer i { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
+  .gridlayer i.base { background: var(--axis); }
+  .brow { position: relative; display: grid; grid-template-columns: var(--label-w) 1fr; gap: 16px; align-items: center; min-height: 44px; }
+  .blabel { line-height: 1.25; }
+  .blabel small { display: block; color: var(--muted); font-size: 12.5px; }
+  .plot { position: relative; padding-right: var(--value-w); height: 24px; }
+  .plot-inner { position: relative; height: 100%; }
+  .bar { position: absolute; left: 0; top: 2px; height: 20px; display: flex; gap: 2px; }
+  .seg { height: 100%; min-width: 2px; }
+  .bar .seg:last-child { border-radius: 0 4px 4px 0; }
+  .bval { position: absolute; top: 50%; transform: translateY(-50%); white-space: nowrap; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .bval small { color: var(--muted); font-size: 12.5px; }
+  .axis { display: grid; grid-template-columns: var(--label-w) 1fr; gap: 16px; height: 26px; }
+  .axis .plot { height: 26px; }
+  .axis span { position: absolute; top: 6px; transform: translateX(-50%); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* Section 4: price tiles */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 14px; }
+  @media (max-width: 700px) { .tiles { grid-template-columns: 1fr; } }
+  .tile { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--page); }
+  .tile .t-label { font-size: 14px; color: var(--ink-2); }
+  .tile .t-value { font-size: 24px; font-weight: 650; margin: 2px 0; }
+  .tile .t-value small { font-size: 14px; font-weight: 500; color: var(--ink-2); }
+  .tile .t-note { font-size: 13px; color: var(--muted); }
+  .stat { font-size: 17px; margin: 4px 0 16px; }
+
+  /* Section 5: side by side */
+  table.side { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.side th, table.side td { text-align: left; vertical-align: top; padding: 10px 12px; border-top: 1px solid var(--grid); }
+  table.side thead th { border-top: 0; font-size: 14px; color: var(--muted); font-weight: 600; }
+  table.side td:first-child { color: var(--ink-2); width: 22%; }
+  table.side td small { color: var(--muted); }
+
+  /* Section 6 */
+  .take { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 760px) { .take { grid-template-columns: 1fr; } }
+  .take div { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--page); }
+  .take p { color: var(--ink-2); font-size: 15px; margin: 0; }
+  .next {
+    margin-top: 16px; border-radius: 10px; padding: 16px 18px;
+    border: 1px solid var(--border); background: var(--wash);
+  }
+  .next p { margin: 0 0 6px; }
+
+  details.tv { margin-top: 12px; font-size: 14px; }
+  details.tv summary { cursor: pointer; color: var(--ink-2); }
+  details.tv table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  details.tv th, details.tv td { padding: 5px 12px 5px 0; text-align: right; border-bottom: 1px solid var(--grid); }
+  details.tv th:first-child, details.tv td:first-child { text-align: left; }
+  details.tv th { color: var(--muted); font-weight: 600; }
+
+  footer { margin-top: 26px; font-size: 13px; color: var(--muted); max-width: 820px; }
+
+  #tip {
+    position: fixed; z-index: 10; max-width: 300px;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+    padding: 8px 10px; font-size: 13.5px; line-height: 1.4; pointer-events: none;
+  }
+  #tip strong { display: block; font-size: 15px; }
+  #tip .tip-label { display: block; color: var(--ink-2); }
+  #tip .tip-desc { display: block; color: var(--ink); margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<main class="wrap">
+
+  <header>
+    <h1>A map, or the finished change?</h1>
+    <p class="lede">memory_x gives the agent a map of what worked last time. Our applied draft would give it the
+      finished change and ask it to check it. This page shows what our runs say about each, on the three toggle
+      tasks (minimap, rulers, presenter).</p>
+    <p class="next"><b>Update, 2026-10-04: the applied draft is dropped.</b> Memory is there to help the agent do the
+      task, not to write the change for it. The turn and dollar charts below still show where runs spend their effort.</p>
+  </header>
+
+  <!-- 1. The two ideas -->
+  <section class="card" aria-labelledby="s1">
+    <h2 id="s1">Two ways to help the agent</h2>
+    <p class="caption">The difference is what's left for the agent to do.</p>
+    <div class="two">
+      <div class="idea">
+        <div class="eyebrow">memory_x</div>
+        <h3>A map of last time</h3>
+        <div class="label">What the agent gets (an illustration, from the comparison you shared)</div>
+        <div class="handed">Last time, these files, in this order:
+  <b>appState.ts, types.ts, App.tsx, …</b>
+Checked with:
+  <b>yarn test:update</b>   (exit 0)</div>
+        <div class="label">What's left to the agent</div>
+        <div class="flow">
+          <span class="chip"><i class="sw ph-look"></i>Read the files</span><span class="arrow">→</span>
+          <span class="chip"><i class="sw ph-edit"></i>Write the edits</span><span class="arrow">→</span>
+          <span class="chip"><i class="sw ph-check"></i>Run the check</span>
+        </div>
+        <p class="foot">No model call. Nothing is written for the new task.</p>
+      </div>
+      <div class="idea">
+        <div class="eyebrow">Our applied draft</div>
+        <h3>The finished change</h3>
+        <div class="label">What the agent gets (how the hand-over would read)</div>
+        <div class="handed">This task's change is already in the files:
+  <b>18 edits in 11 files, plus 1 new file</b>
+  written at task start from our workflows
+  and today's code; every edit checked
+Check it with one command:
+  <b>yarn test:typecheck &amp;&amp; yarn test:update</b></div>
+        <div class="label">What's left to the agent</div>
+        <div class="flow">
+          <span class="chip"><i class="sw ph-check"></i>Run the check</span><span class="arrow">→</span>
+          <span class="chip"><i class="sw ph-check"></i>Fix what it finds</span>
+        </div>
+        <p class="foot">Two model calls: picking the workflows (1-2¢) and drafting the change (about 10¢).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Timeline -->
+  <section class="card" aria-labelledby="s2">
+    <h2 id="s2">One rulers run of each, turn by turn</h2>
+    <p class="caption">Each box is one turn: the agent rereads the whole conversation so far, then acts. Hover or tab
+      to a box to see what it did. Each real run shown is the middle one of its three.</p>
+    <div class="legend" id="tl-legend"></div>
+    <div class="tl" id="timeline"></div>
+    <p class="takeaway">With a map, the agent still reads its way to every edit, as it does with no memory. With the
+      exact script it edits at once. The draft handed over as text had the whole change, but the agent re-checked every
+      spot before editing.</p>
+  </section>
+
+  <!-- 3. Phases averaged -->
+  <section class="card" aria-labelledby="s3">
+    <h2 id="s3">Averaged over 9 runs: where the turns go</h2>
+    <p class="caption">Average turns per run on minimap, rulers and presenter, split by part of the work. The applied
+      draft is an estimate.</p>
+    <div class="legend" id="ph-legend"></div>
+    <div class="chart" id="phases" role="img" aria-label="Average turns per run, by part of the work, for six setups"></div>
+    <details class="tv"><summary>Show the numbers as a table</summary><div id="phases-table"></div></details>
+    <p class="takeaway">A map barely touches the first two parts. A finished change shrinks them, but handed over as
+      text the draft still took three turns of editing (the re-checking) and four at the end.</p>
+  </section>
+
+  <!-- 4. Dollars -->
+  <section class="card" aria-labelledby="s4">
+    <h2 id="s4">Why fewer turns didn't mean fewer dollars</h2>
+    <p class="caption">What each kind of token costs, fitted to the bills of 42 of our runs:</p>
+    <div class="tiles">
+      <div class="tile"><div class="t-label">Rereading the conversation</div>
+        <div class="t-value">$0.20 <small>per million tokens</small></div>
+        <div class="t-note">what every turn costs</div></div>
+      <div class="tile"><div class="t-label">New text entering it</div>
+        <div class="t-value">$4 <small>per million · 20×</small></div>
+        <div class="t-note">files read, command output, the hand-over</div></div>
+      <div class="tile"><div class="t-label">The agent's own writing</div>
+        <div class="t-value">$10 <small>per million · 50×</small></div>
+        <div class="t-note">its edits, commands and replies</div></div>
+    </div>
+    <p class="stat">9 in 10 tokens are rereading, but they're only 19-35% of the bill. So cutting turns saves tokens
+      fast and dollars slowly.</p>
+    <div class="legend" id="d-legend"></div>
+    <div class="chart" id="dollars" role="img" aria-label="Average dollars per run, by what they pay for, for six setups"></div>
+    <details class="tv"><summary>Show the numbers as a table</summary><div id="dollars-table"></div></details>
+    <p class="takeaway">Handed over as text, the draft's model call cost about what the agent saved, and the agent typed
+      the whole change a second time. Applied for it, there is nothing left to re-read or re-type.</p>
+  </section>
+
+  <!-- 5. Side by side -->
+  <section class="card" aria-labelledby="s5">
+    <h2 id="s5">Side by side</h2>
+    <table class="side">
+      <thead><tr><th></th><th>memory_x: a map</th><th>Applied draft: the finished change</th></tr></thead>
+      <tbody>
+        <tr><td>The agent gets</td><td>where it worked last time: the files, their order, the check command</td>
+          <td>the change itself, already in the files, plus one check command</td></tr>
+        <tr><td>Model calls per task</td><td>none</td><td>two: picking (1-2¢) and drafting (about 10¢)</td></tr>
+        <tr><td>On our toggle tasks</td>
+          <td>about $0.35 and 14 turns<br><small>measured on our old route memory, the same kind of map with a bit more;
+            no memory: $0.36 and 15 turns</small></td>
+          <td>about $0.20 and 4 turns<br><small>an estimate, not yet run</small></td></tr>
+        <tr><td>After the code changes</td><td>its saved file paths can be out of date</td>
+          <td>written from today's code, every edit checked</td></tr>
+        <tr><td>A task unlike past ones</td><td>replays one past run's steps</td>
+          <td>combines the workflows the task needs; presenter's different rules held up</td></tr>
+        <tr><td>When memory is wrong</td><td>the agent wastes a few reads</td>
+          <td>a wrong change sits in the files, and agents tend to keep what they're given</td></tr>
+        <tr><td>Other coding agents</td><td>works in many</td>
+          <td>needs a Claude Code hook, unless the agent applies a patch file itself (works anywhere)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 6. Take and next -->
+  <section class="card" aria-labelledby="s6">
+    <h2 id="s6">What to take from memory_x</h2>
+    <div class="take">
+      <div><h3>One check command</h3>
+        <p>memory_x keeps the check command whole. Our draft listed four finishing steps, and the end of each run took
+          four turns. Free, no model, and it helps plain v1 too.</p></div>
+      <div><h3>No model call unless it pays</h3>
+        <p>Drafting costs more than half a whole exact-script run. It can pay on big changes like the toggles, not on
+          small ones like the shortcut tasks (11-13¢ a whole run).</p></div>
+      <div><h3>Being wrong costs it less</h3>
+        <p>A wrong map costs a few reads; a wrong applied change stays. So test the applied draft on tasks unlike the
+          ones memory learned from, not only on toggles.</p></div>
+    </div>
+    <div class="next">
+      <p><b>Dropped:</b> the applied draft, the draft as text and the patch variant. Memory helps the agent; it doesn't
+        write the change.</p>
+      <p class="ink-2">Proposed instead: one check command that past runs proved, in place of v1's separate finishing
+        steps, then a list from the logs of what v1's runs still look up before their first edit.</p>
+    </div>
+  </section>
+
+  <footer>
+    Data: our excalidraw runs, 9 per setup (3 each on minimap, rulers, presenter), Sonnet 5.5, Claude Code 2.1.286.
+    No memory: <code>baseline-2-toggle</code>. A map: <code>hooks-1-existing</code>, our old route memory (steps, files,
+    checks and warnings, no code), used here as the closest stand-in for memory_x, which wasn't run. v1:
+    <code>v1-existing</code>. Draft as text: <code>v1draft-toggles</code>. Exact script: <code>saved-scripts-1</code>.
+    Averages, not medians, so the parts add up. The applied draft's numbers are estimates from the draft runs' own
+    turns.
+  </footer>
+</main>
+<div id="tip" role="tooltip" hidden></div>
+</div>
+
+<script>
+(() => {
+  const PHASES = [
+    { key: "look", cls: "ph-look", name: "Looking things up", note: "before the first edit" },
+    { key: "edit", cls: "ph-edit", name: "Making the edits", note: "first edit to last" },
+    { key: "check", cls: "ph-check", name: "Checking and wrapping up", note: "after the last edit" }
+  ];
+  const phaseOf = Object.fromEntries(PHASES.map((p) => [p.key, p]));
+
+  // One real rulers run per setup (the middle of three by tokens); the applied draft is an estimate.
+  const RUNS = [
+    { name: "No memory", sub: "", meta: "13 turns · 563k tokens", note: "Seven turns of reading before the first edit.", turns: [
+      ["look", 24, "Searches the code for an existing toggle to copy (snap mode)."],
+      ["look", 25, "Searches again; reads snap mode's action."],
+      ["look", 27, "Reads grid mode's action; searches everywhere grid mode appears."],
+      ["look", 32, "Reads both right-click menus, the Preferences menu, the app state and the shortcuts."],
+      ["look", 40, "Reads the help dialog, more of the app state, and the types."],
+      ["look", 44, "Checks the key codes, action names, labels and icons."],
+      ["look", 45, "Reads the key codes, an icon, and more of App.tsx."],
+      ["edit", 47, "Makes all 19 changes; one fails because its text appears twice."],
+      ["edit", 53, "Retries that edit; its text isn't found."],
+      ["edit", 53, "Reads the import list it had guessed at."],
+      ["edit", 54, "Fixes the import; runs the typecheck."],
+      ["check", 54, "Runs the tests and updates the snapshots."],
+      ["check", 57, "Writes its summary."]
+    ] },
+    { name: "A map, like memory_x", sub: "our old route memory: files, steps, checks", meta: "14 turns · 604k tokens",
+      note: "Five turns of reading, then six of editing: the map says where, not what.", turns: [
+      ["look", 26, "Searches for an existing toggle (snap mode) and the key codes."],
+      ["look", 27, "Reads snap mode's action and the key codes; searches where snap mode appears."],
+      ["look", 32, "Reads grid mode's action, the shortcuts, the help dialog and the Preferences menu."],
+      ["look", 37, "Reads more of the Preferences menu, the right-click menus, the app state and the labels."],
+      ["look", 40, "Reads the rest of the Preferences menu, the app state and the types."],
+      ["edit", 42, "Makes 11 changes: the field, key, action, shortcut, help row and label."],
+      ["edit", 45, "Makes 7 more; one fails because its text appears twice."],
+      ["edit", 48, "Retries that edit; its text isn't found."],
+      ["edit", 48, "Looks up the import list."],
+      ["edit", 48, "Fixes the import; looks up the menu test."],
+      ["edit", 49, "Updates the menu test."],
+      ["check", 49, "Formats the files."],
+      ["check", 50, "Runs the tests and updates the snapshots."],
+      ["check", 53, "Writes its summary."]
+    ] },
+    { name: "Draft as text", sub: "tested: the change, for the agent to type in", meta: "9 turns · 379k tokens",
+      note: "Opened with “I'll start by reading the files I need to edit,” then re-checked every spot the hook had already checked.", turns: [
+      ["look", 27, "“I'll start by reading the files I need to edit.” Reads 7 small pieces at the draft's line numbers."],
+      ["edit", 31, "Makes 9 of the draft's changes; searches 3 more files for their spots."],
+      ["edit", 35, "Makes 5 more; reads the menu test; searches the Preferences menu."],
+      ["edit", 37, "Makes 1 more; reads the Preferences menu."],
+      ["edit", 38, "Makes the last 4."],
+      ["check", 39, "Formats one file (the formatter prints about 200 file names) and runs the typecheck."],
+      ["check", 45, "Runs the tests; checks that the formatter touched nothing else."],
+      ["check", 46, "Looks through the changed snapshots."],
+      ["check", 49, "Writes its summary."]
+    ] },
+    { name: "Exact script", sub: "the target: a past run's finished diff", meta: "5 turns · 187k tokens",
+      note: "All 19 changes in one turn.", turns: [
+      ["look", 30, "Checks that Alt+U is free; reads the key codes."],
+      ["edit", 33, "Makes all 19 changes in one turn, adapting the past run's diff."],
+      ["check", 38, "Runs the past run's check command, which fails: it copied a doubled test flag."],
+      ["check", 39, "Runs the tests again and updates the snapshots."],
+      ["check", 42, "Writes its summary."]
+    ] },
+    { name: "Applied draft", sub: "estimate, not yet run", meta: "about 4 turns · 150k tokens", est: true,
+      note: "Nothing left to read or type: check, fix, done.", turns: [
+      ["look", 27, "Looks over the change memory applied."],
+      ["check", 29, "Runs the one check command: typecheck, tests, snapshots."],
+      ["check", 32, "Fixes what the check found, or looks at the snapshots."],
+      ["check", 34, "Writes its summary."]
+    ] }
+  ];
+
+  // Averages over 9 runs (3 per toggle task).
+  const SETUPS = [
+    { name: "No memory", sub: "", turns: [6.00, 5.22, 3.67], dollars: [0.125, 0.232, 0] },
+    { name: "A map, like memory_x", sub: "our old route memory", turns: [5.78, 5.22, 3.11], dollars: [0.112, 0.228, 0.010] },
+    { name: "v1 today", sub: "places with current line numbers", turns: [3.44, 3.56, 4.11], dollars: [0.090, 0.199, 0.014] },
+    { name: "Draft as text", sub: "tested", turns: [1.89, 3.33, 4.00], dollars: [0.067, 0.198, 0.088] },
+    { name: "Exact script", sub: "the target", turns: [1.33, 2.44, 3.00], dollars: [0.048, 0.122, 0] },
+    { name: "Applied draft", sub: "estimate, not yet run", est: true, turns: [1, 0, 3], dollars: [0.025, 0.075, 0.100] }
+  ];
+  const DSERIES = [
+    { cls: "s-1", name: "Rereading the conversation" },
+    { cls: "s-2", name: "New text and the agent's writing" },
+    { cls: "s-3", name: "Memory's own model calls" }
+  ];
+
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+
+  // Tooltip: values lead, labels follow; same on hover and keyboard focus.
+  const tip = document.getElementById("tip");
+  const place = (x, y) => {
+    const r = tip.getBoundingClientRect();
+    let left = x + 14, top = y + 14;
+    if (left + r.width > window.innerWidth - 8) left = x - r.width - 14;
+    if (top + r.height > window.innerHeight - 8) top = y - r.height - 14;
+    tip.style.left = Math.max(8, left) + "px";
+    tip.style.top = Math.max(8, top) + "px";
+  };
+  const show = (mark, x, y) => {
+    tip.replaceChildren();
+    tip.append(el("strong", "", mark.dataset.value));
+    if (mark.dataset.label) tip.append(el("span", "tip-label", mark.dataset.label));
+    if (mark.dataset.desc) tip.append(el("span", "tip-desc", mark.dataset.desc));
+    tip.hidden = false;
+    place(x, y);
+  };
+  const hide = () => { tip.hidden = true; };
+  const hoverable = (mark, value, label, desc) => {
+    mark.dataset.value = value;
+    if (label) mark.dataset.label = label;
+    if (desc) mark.dataset.desc = desc;
+    mark.tabIndex = 0;
+    mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", [value, label, desc].filter(Boolean).join(". "));
+    mark.addEventListener("pointermove", (e) => show(mark, e.clientX, e.clientY));
+    mark.addEventListener("pointerleave", hide);
+    mark.addEventListener("focus", () => { const r = mark.getBoundingClientRect(); show(mark, r.right, r.bottom); });
+    mark.addEventListener("blur", hide);
+  };
+
+  const legend = (host, items, withEstimate) => {
+    for (const it of items) {
+      const s = el("span");
+      s.append(el("i", "sw " + it.cls), document.createTextNode(it.name + (it.note ? " (" + it.note + ")" : "")));
+      host.append(s);
+    }
+    if (withEstimate) {
+      const s = el("span");
+      s.append(el("i", "sw est"), document.createTextNode("Estimate, not yet run"));
+      host.append(s);
+    }
+  };
+
+  // 2. Timeline
+  legend(document.getElementById("tl-legend"), PHASES, true);
+  const tl = document.getElementById("timeline");
+  for (const run of RUNS) {
+    const name = el("div", "tl-name", run.name);
+    if (run.sub) name.append(el("small", "", run.sub));
+    const right = el("div");
+    const row = el("div", "tl-turns");
+    run.turns.forEach(([ph, ctx, what], i) => {
+      const box = el("span", "turn " + phaseOf[ph].cls + (run.est ? " est" : ""));
+      hoverable(box, "Turn " + (i + 1) + " · rereads " + (run.est ? "about " : "") + ctx + "k tokens", phaseOf[ph].name, what);
+      row.append(box);
+    });
+    row.append(el("span", "tl-meta", run.meta));
+    right.append(row, el("div", "tl-note", run.note));
+    tl.append(name, right);
+  }
+
+  // 3 and 4. Stacked bars
+  const barChart = (host, rows, series, values, max, ticks, fmtTick, fmtTotal, fmtSeg) => {
+    const grid = el("div", "gridlayer");
+    for (const t of ticks) {
+      const line = el("i", t === 0 ? "base" : "");
+      line.style.left = (t / max) * 100 + "%";
+      grid.append(line);
+    }
+    host.append(grid);
+    for (const r of rows) {
+      const vals = values(r);
+      const total = vals.reduce((a, b) => a + b, 0);
+      const row = el("div", "brow");
+      const label = el("div", "blabel", r.name);
+      if (r.sub) label.append(el("small", "", r.sub));
+      const plot = el("div", "plot");
+      const inner = el("div", "plot-inner");
+      const bar = el("div", "bar");
+      bar.style.width = (total / max) * 100 + "%";
+      vals.forEach((v, i) => {
+        if (v <= 0) return;
+        const seg = el("span", "seg " + series[i].cls + (r.est ? " est" : ""));
+        // Grow factors as shares of the bar: factors summing below 1 would leave the bar part empty.
+        seg.style.flex = (v / total) * 100 + " 1 0";
+        hoverable(seg, fmtSeg(v), series[i].name, r.name + (r.est ? " (estimate)" : ""));
+        bar.append(seg);
+      });
+      const val = el("span", "bval", fmtTotal(total, r));
+      if (r.est) val.append(el("small", "", " estimate"));
+      val.style.left = "calc(" + (total / max) * 100 + "% + 8px)";
+      inner.append(bar, val);
+      plot.append(inner);
+      row.append(label, plot);
+      host.append(row);
+    }
+    const axis = el("div", "axis");
+    const ap = el("div", "plot");
+    const ai = el("div", "plot-inner");
+    for (const t of ticks) {
+      const s = el("span", "", fmtTick(t));
+      s.style.left = (t / max) * 100 + "%";
+      ai.append(s);
+    }
+    ap.append(ai);
+    axis.append(el("div"), ap);
+    host.append(axis);
+  };
+
+  const table = (host, head, rows) => {
+    const t = el("table");
+    const tr = el("tr");
+    for (const h of head) tr.append(el("th", "", h));
+    t.append(tr);
+    for (const r of rows) {
+      const row = el("tr");
+      for (const c of r) row.append(el("td", "", c));
+      t.append(row);
+    }
+    host.append(t);
+  };
+
+  legend(document.getElementById("ph-legend"), PHASES, true);
+  barChart(document.getElementById("phases"), SETUPS, PHASES, (r) => r.turns, 16, [0, 4, 8, 12, 16],
+    (t) => String(t), (total, r) => (r.est ? "about " + Math.round(total) : total.toFixed(1)) + " turns",
+    (v) => v.toFixed(1) + " turns");
+  table(document.getElementById("phases-table"),
+    ["Setup", "Looking things up", "Making the edits", "Checking and wrapping up", "Total turns"],
+    SETUPS.map((r) => [r.name + (r.est ? " (estimate)" : ""), ...r.turns.map((v) => v.toFixed(1)),
+      r.turns.reduce((a, b) => a + b, 0).toFixed(1)]));
+
+  legend(document.getElementById("d-legend"), DSERIES, true);
+  barChart(document.getElementById("dollars"), SETUPS, DSERIES, (r) => r.dollars, 0.40, [0, 0.1, 0.2, 0.3, 0.4],
+    (t) => "$" + t.toFixed(2), (total, r) => (r.est ? "about " : "") + "$" + total.toFixed(2),
+    (v) => "$" + v.toFixed(3));
+  table(document.getElementById("dollars-table"),
+    ["Setup", "Rereading", "New text and writing", "Memory's model calls", "Total"],
+    SETUPS.map((r) => [r.name + (r.est ? " (estimate)" : ""), ...r.dollars.map((v) => "$" + v.toFixed(3)),
+      "$" + r.dollars.reduce((a, b) => a + b, 0).toFixed(2)]));
+})();
+</script>
+</body>
+</html>

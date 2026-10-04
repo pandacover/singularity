@@ -2,7 +2,8 @@
 
 Procedural memory for coding agents: learn from past Claude Code sessions so
 repeated and similar tasks take fewer tokens. `HANDOFF.md` has the design,
-decisions, results and next steps; read it first.
+decisions, results and next steps; read it first. `HANDOFF-v1.md` describes
+memory v1 on its own.
 
 ## Stack
 
@@ -25,7 +26,14 @@ hook entry point). That local memory is v0, frozen at tag `memory-v0`.
 Memory v1 is `src/workflows/`: workflows with blanks induced from runs, a graph
 of them that learns from results, places kept as the blocks around an edit
 and found in the code at use, its own hooks (`src/workflows/hook.ts`) and eval
-setup (`src/eval/WorkflowsMemory.ts`). Keep v0 and v1 apart: v1 reuses the
+setup (`src/eval/WorkflowsMemory.ts`). It is local first (tag
+`memory-local-first`): at task start workflows are picked by cues with no
+model call and the blanks the task states are filled in (`src/workflows/Cues.ts`,
+the `workflows-cues` setup); the cues are written once, when memory is built
+(`src/workflows/CueWriter.ts`). The `workflows` setup keeps v1 as first
+measured, picked by a model call. The change drafted at task start
+(`src/workflows/Draft.ts`, `workflows-draft`) was tested and dropped: memory
+helps the agent do the task, it never writes the change for it. Keep v0 and v1 apart: v1 reuses the
 records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
 ## Writing Effect 4 code

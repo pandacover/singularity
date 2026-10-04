@@ -20,10 +20,27 @@ export type CodeSource =
   | { readonly kind: "tree"; readonly root: string }
   | { readonly kind: "commit"; readonly repo: string; readonly commit: string }
 
+/** A file next to where a new one goes, named alike, with its lines. */
+export interface Sibling {
+  readonly name: string
+  readonly lines: ReadonlyArray<string>
+}
+
 /** A place as found: in its own file or one it moved to, or, for new files, the siblings they go next to. */
 export type Located =
   | { readonly kind: "block"; readonly file: string; readonly lines: ReadonlyArray<string>; readonly region: Region; readonly moved: boolean }
-  | { readonly kind: "new-file"; readonly dir: string; readonly prefix: string; readonly siblings: ReadonlyArray<{ readonly name: string; readonly lines: number }> }
+  | { readonly kind: "new-file"; readonly dir: string; readonly prefix: string; readonly siblings: ReadonlyArray<Sibling> }
+
+/** Whether a file or directory is in the code read from `source`. */
+export const pathExists = Effect.fn("pathExists")(function*(source: CodeSource, file: string) {
+  if (!inside(file)) return false
+  if (source.kind === "commit") {
+    return yield* git(source.repo, ["cat-file", "-e", `${source.commit}:${file}`]).pipe(Effect.as(true), Effect.orElseSucceed(() => false))
+  }
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  return yield* fs.exists(path.join(source.root, file)).pipe(Effect.orElseSucceed(() => false))
+})
 
 /** Other files to look in when a place's own file no longer has it. */
 const MAX_CANDIDATES = 5
@@ -65,10 +82,10 @@ export const locatePlaces = Effect.fn("locatePlaces")(function*(source: CodeSour
   for (const p of places) {
     if (p.new_file !== null) {
       const nf = p.new_file
-      const siblings: Array<{ name: string; lines: number }> = []
+      const siblings: Array<Sibling> = []
       for (const name of (yield* listDir(nf.dir)).filter((n) => n.startsWith(nf.prefix) && n.endsWith(nf.ext)).sort()) {
         const lines = yield* linesOf(`${nf.dir}/${name}`)
-        if (lines !== undefined) siblings.push({ name, lines: lines.length })
+        if (lines !== undefined) siblings.push({ name, lines })
       }
       if (siblings.length > 0) located.set(p.id, { kind: "new-file", dir: nf.dir, prefix: nf.prefix, siblings })
       continue

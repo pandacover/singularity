@@ -4,8 +4,14 @@
  *     workflows build [--task ID ...] [--repo DIR] [--fresh] [--dry-run]   induce from the records
  *     workflows show [AT] [--json]                                         print a version or candidate
  *     workflows candidates                                                 proposals and what became of them
- *     workflows handover TASK... [--cwd REPO] [--at COMMIT] [--no-model]   preview a task's hand-over
+ *     workflows handover TASK... [--cwd REPO] [--at COMMIT] [--pick cues|words|model] [--draft]   preview a task's hand-over
  *     workflows evolve [--task ID ...] [--records-from HOME] [--repo DIR]    learn from new runs
+ *     workflows cues [--repo DIR] [--dry-run]                              write cues for picking without a model
+ *
+ * Local first: at task start memory is picked by its cues, with no model
+ * call (`--pick cues`, the hook's default). Building memory, writing its cues
+ * and learning from runs use a model, once per batch of runs. A build or a
+ * learning round writes workflows without cues: run `workflows cues` after it.
  */
 import { Console, Effect, FileSystem, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
@@ -16,6 +22,7 @@ import { loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
+import { cuesPrompt, writeCues } from "../workflows/CueWriter.ts"
 import { describeMemory } from "../workflows/Describe.ts"
 import { gatherEvidence } from "../workflows/Evidence.ts"
 import { describeReplay, passes, refine, replay } from "../workflows/Evolve.ts"
@@ -125,7 +132,14 @@ const handover = Command.make(
     task: Argument.String("task").pipe(Argument.atLeast(1), Argument.withDescription("the task's text")),
     cwd: Flag.String("cwd").pipe(Flag.optional, Flag.withDescription("the repo the task is in (default: here)")),
     at: Flag.String("at").pipe(Flag.optional, Flag.withDescription("read the code at this commit instead of the working tree")),
-    noModel: Flag.Boolean("no-model").pipe(Flag.withDefault(false), Flag.withDescription("pick workflows by words alone")),
+    pick: Flag.Literals("pick", ["cues", "words", "model"]).pipe(
+      Flag.withDefault("cues"),
+      Flag.withDescription(
+        "how workflows are picked: by memory's cues with no model call, filling the blanks the task states (the default, as the hook does; " +
+          "words when memory has no cues), by shared words, or by a model call (about two cents)"
+      )
+    ),
+    draft: Flag.Boolean("draft").pipe(Flag.withDefault(false), Flag.withDescription("hand over the change itself, drafted by the model (about 10 cents)")),
     model: Flag.String("model").pipe(Flag.withDefault("sonnet")),
     claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
     home: homeFlag
@@ -136,15 +150,23 @@ const handover = Command.make(
     const home = yield* loadHome(Option.getOrUndefined(args.home))
     const cwd = path.join(defaultWorkspaces(), "_learner")
     yield* fs.makeDirectory(cwd, { recursive: true })
-    const selector = args.noModel
-      ? undefined
-      : { claude: Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude(), cwd, model: args.model }
+    const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
+    const selector = args.pick === "model" ? { claude, cwd, model: args.model } : undefined
+    const drafter = args.draft ? { claude, cwd, model: args.model } : undefined
     const result = yield* startTask(
       { sessionId: "preview", prompt: args.task.join(" "), cwd: Option.getOrElse(args.cwd, () => process.cwd()) },
-      { tenantDir: home.tenantDir, selector, persist: false, at: Option.getOrUndefined(args.at) }
+      { tenantDir: home.tenantDir, selector, drafter, cues: args.pick === "cues", persist: false, at: Option.getOrUndefined(args.at) }
     )
     for (const r of result.reasons) yield* Console.log(`# ${r}`)
     if (result.state?.selection?.cost_usd != null) yield* Console.log(`# selection: $${result.state.selection.cost_usd.toFixed(4)}`)
+    const d = result.draft
+    if (d !== null) {
+      yield* Console.log(
+        `# draft: ${d.error ?? `${d.edits} edits, ${d.files.length} new files, ${d.used ? "handed over" : "not handed over"}`}` +
+          `${d.cost_usd === null ? "" : `, $${d.cost_usd.toFixed(4)}`}${d.duration_s === null ? "" : ` in ${Math.round(d.duration_s)}s`}`
+      )
+      for (const x of d.dropped) yield* Console.log(`# left out: ${x}`)
+    }
     if (result.state !== undefined && result.state.missing.length > 0) yield* Console.log(`# not found in the code: ${result.state.missing.join(", ")}`)
     yield* Console.log(result.text === undefined ? "(nothing to hand over)" : `# ${result.text.length} characters\n\n${result.text}`)
   }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
@@ -234,7 +256,55 @@ const evolve = Command.make(
   }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
 ).pipe(Command.withDescription("learn from new runs: revise memory from what they did and what it showed them, kept only if it fits the runs better"))
 
+const cues = Command.make(
+  "cues",
+  {
+    repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("a clone to read files at the runs' base commits from")),
+    model: Flag.String("model").pipe(Flag.withDefault(DEFAULT_INDUCE_MODEL)),
+    effort: Flag.String("effort").pipe(Flag.withDefault(DEFAULT_INDUCE_EFFORT)),
+    dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("show what the model would read, and stop")),
+    claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
+    home: homeFlag
+  },
+  Effect.fn(function*(args) {
+    yield* lowerPriority
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const store = yield* WorkflowStore
+    const baseVersion = yield* store.head()
+    const memory = yield* store.memory()
+    if (memory.workflows.length === 0) return yield* Console.log("memory has no workflows to write cues for")
+    // The tasks memory learned from: the records of its committed candidates.
+    const learned = new Set((yield* store.candidates("committed")).flatMap((c) => c.records))
+    const records = (yield* (yield* RecordStore).find({ outcome: "success" })).filter((r) => learned.has(r.id))
+    const evidence = yield* gatherEvidence(records, { repo: Option.getOrUndefined(args.repo) })
+    yield* Console.log(`${memory.workflows.length} workflows; learned from ${evidence.runs.length} runs of ${new Set(evidence.runs.map((r) => r.task)).size} tasks`)
+    if (args.dryRun) return yield* Console.log(`\n${cuesPrompt(memory, evidence.runs)}`)
+    const cwd = path.join(defaultWorkspaces(), "_learner")
+    yield* fs.makeDirectory(cwd, { recursive: true })
+    const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
+    const result = yield* writeCues({ claude, cwd, model: args.model, effort: args.effort }, memory, evidence.runs)
+    const withCues = result.memory.workflows.filter((w) => (w.cues?.any.length ?? 0) > 0).length
+    yield* Console.log(`cues for ${withCues} of ${result.memory.workflows.length} workflows; ${result.calls} model call${result.calls === 1 ? "" : "s"}, $${result.costUsd.toFixed(3)}`)
+    for (const p of result.problems) yield* Console.log(`  ${p}`)
+    const candidate = yield* store.propose(result.memory, {
+      baseVersion,
+      rationale: result.rationale,
+      records: evidence.runs.map((r) => r.record),
+      model: args.model,
+      costUsd: result.costUsd,
+      report: { problems: result.problems, replay: null }
+    })
+    if (withCues === 0) {
+      yield* store.reject(candidate.id, "no workflow got cues")
+      return yield* Console.log(`rejected ${candidate.id}: no workflow got cues`)
+    }
+    const version = yield* store.commit(candidate.id)
+    yield* Console.log(`committed ${candidate.id} as version ${version}`)
+  }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
+).pipe(Command.withDescription("write cues so tasks can be given workflows without a model: phrases, step conditions and blank values (one model call or two)"))
+
 export const workflowsCommand = Command.make("workflows").pipe(
   Command.withDescription("memory v1: workflows with blanks, connected in a graph that learns from results"),
-  Command.withSubcommands([build, show, candidates, handover, evolve])
+  Command.withSubcommands([build, show, candidates, handover, evolve, cues])
 )

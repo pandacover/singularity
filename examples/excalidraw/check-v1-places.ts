@@ -1,12 +1,14 @@
 /**
  * How well memory v1's places fit each task, from recorded runs (no new runs):
  *
- *     node examples/excalidraw/check-v1-places.ts --repo REPO [--memory HOME] [--records HOME] [--no-model] [--verbose]
+ *     node examples/excalidraw/check-v1-places.ts --repo REPO [--memory HOME] [--records HOME] [--no-model | --cues] [--verbose]
  *
  * For each task with successful no-memory runs (in the `--records` home,
  * default ~/.singularity), memory v1 (the head of the `--memory` home)
  * picks the workflows the task needs, as at task start (a model call, about
- * two cents; `--no-model` picks by words), and each of the task's runs is
+ * two cents; `--no-model` picks by words, `--cues` by memory's cues, both
+ * without a model; with `--verbose`, `--cues` also lists the blanks it
+ * fills), and each of the task's runs is
  * compared with the places it would have been shown, in the code at the run's
  * base commit:
  *
@@ -34,6 +36,7 @@ import { gatherEvidence, shapeOf } from "../../src/workflows/Evidence.ts"
 import { describePlace } from "../../src/workflows/Induce.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { resolvePlace } from "../../src/workflows/Places.ts"
+import { cueChoice, fillsFor } from "../../src/workflows/Cues.ts"
 import { selectWorkflows } from "../../src/workflows/Select.ts"
 import { forSubject } from "../../src/workflows/Start.ts"
 import { WorkflowStore } from "../../src/workflows/WorkflowStore.ts"
@@ -44,6 +47,7 @@ const repoArg = valueOf("--repo")
 const memoryArg = valueOf("--memory") ?? "runs/excalidraw/memory/v1-seed"
 const recordsArg = valueOf("--records") ?? `${homedir()}/.singularity`
 const noModel = args.includes("--no-model")
+const byCues = args.includes("--cues")
 const thinking = args.includes("--thinking")
 const verbose = args.includes("--verbose")
 const only = args.flatMap((a, i) => (a === "--task" && args[i + 1] !== undefined ? [args[i + 1]] : []))
@@ -65,7 +69,7 @@ const program = Effect.gen(function*() {
   const learned = new Set(all.workflows.flatMap((w) => w.tasks))
   const cwd = path.join(defaultWorkspaces(), "_learner")
   yield* fs.makeDirectory(cwd, { recursive: true })
-  const selector = noModel ? undefined : { claude: yield* defaultClaude(), cwd, model: "sonnet", thinking }
+  const selector = noModel || byCues ? undefined : { claude: yield* defaultClaude(), cwd, model: "sonnet", thinking }
   const tasks = [...new Set(records.map((r) => r.run.task_id!))].filter((t) => only.length === 0 || only.includes(t)).sort()
   yield* Console.log(`memory: ${all.workflows.length} workflows from ${[...learned].join(", ")}; ${records.length} no-memory runs of ${tasks.length} tasks\n`)
 
@@ -74,7 +78,15 @@ const program = Effect.gen(function*() {
   for (const task of tasks) {
     const runs = records.filter((r) => r.run.task_id === task)
     const memory = forSubject(all, runs[0].subject)
-    const selection = yield* selectWorkflows(memory, runs[0].task.prompt, selector)
+    const selection = byCues
+      ? { chosen: cueChoice(memory, runs[0].task.prompt), call: null, reasons: [] }
+      : yield* selectWorkflows(memory, runs[0].task.prompt, selector)
+    if (verbose && byCues) {
+      for (const c of selection.chosen) {
+        const filled = [...fillsFor(runs[0].task.prompt, c.workflow)].map(([b, v]) => `${b}=${v}`).join(", ")
+        yield* Console.log(`   ${task}: ${c.workflow.id}${c.skip.length > 0 ? ` (skip ${c.skip.join(", ")})` : ""}${filled ? `; fills ${filled}` : ""}`)
+      }
+    }
     spent += selection.call?.costUsd ?? 0
     const places = new Map(memory.places.map((p) => [p.id, p]))
     const chosenPlaces = [...new Set(selection.chosen.flatMap((c) =>

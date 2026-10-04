@@ -3,6 +3,90 @@
 Last updated 2026-10-04, in the seventh session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
 
+## Status: the local-first memory is sealed (2026-10-04, seventh session)
+
+The user sealed v1 without a model call at task start as **the local-first
+memory**: tag `memory-local-first`. What changed from v1 as measured, and
+nothing else:
+
+- **Picking makes no model call.** Each workflow carries cues: phrases that
+  say a task needs it ("right-click menu", "add a test"), cues for its
+  conditional steps ("view mode"), and where a task states its blanks' values
+  (the name in backticks, the key combination, the word after "default").
+  They are written once, when memory is built (`workflows cues`, one model
+  call and a retry, $0.09 for the seed memory; `src/workflows/CueWriter.ts`,
+  checked against the tasks memory learned from), and matched exactly at task
+  start with the task's negated clauses left out (`src/workflows/Cues.ts`).
+- **Blanks the task states are filled in**: "Add `rulersEnabled: false,` to
+  the default app state". The rest stay blanks for the agent.
+- Local first is the default: the hook and `workflows handover` pick by cues
+  (words when memory has none); `SINGULARITY_SELECTOR=model` or `--pick model`
+  brings the model call back. The `workflows` eval setup still sets it, so it
+  stays v1 as measured; `workflows-cues` is the local-first setup.
+- The sealed memory: `runs/excalidraw/memory/v1-cues`, version 2 (v1-seed's
+  version 1 plus cues), sha256 of `versions/000002.json`
+  `04b51cbb42a63bcc013b79440e8de22f7fd639e6e75198ef236bd78c105ec1f9`. `runs/`
+  isn't in git; the hash says it's unchanged.
+
+**How it did** (pre-registered in `examples/excalidraw/PREREGISTRATION-v1-cues.md`,
+18 runs, $3.73, scores with `score-v1.ts cues`): no failed run (v1: 1 of 24 on
+these tasks); tokens below v1 on 5 of 6 tasks (minimap -17%, rulers -26%,
+midpoint -23%, page breaks -13%, stats -2%; presenter +40%), dollars within a
+few cents. Rule 2 (within +15% on 5 of 6 tasks) failed, 4 of 6: stats' dollars
+came from two runs starting at the same moment in the two lanes (both paid to
+write the prompt cache), presenter's tokens from the App.tsx import edit that
+fails in every setup. The user took it as v1 not needing the model call.
+
+**Before it, also from this session** (results in `PREREGISTRATION-v1.md`):
+an existing example at each place didn't help; the change drafted at task
+start saved tokens but not dollars. The user dropped the drafted change and
+any idea of memory writing or applying code: memory helps the agent do the
+task, it doesn't do it.
+
+**Known weaknesses of the local-first memory:**
+
+- Cues come from two tasks: "toggle it" picks the "create a toggle action"
+  workflow for a task whose action exists (midpoint snapping: 4 places it
+  didn't need, in the free check and the runs).
+- A build or a learning round (`workflows build`, `workflows evolve`) writes
+  workflows without cues; run `workflows cues` after it. `evolve`'s gate still
+  replays with a model pick.
+- Labels aren't filled (the cue model left them to the agent).
+- Measurement runs of the same task shouldn't start at the same moment in two
+  lanes: the first to reach the prompt cache pays for it.
+
+## Status: the change drafted at task start was tested on v1: fewer tokens, more dollars (2026-10-04, seventh session)
+
+With the user's go: a second model call at task start writes the change itself
+from the chosen workflows and the code, checked against the files before the
+agent gets it (`src/workflows/Draft.ts`, setup `workflows-draft`; plain
+`workflows` unchanged). 9 runs on the toggle tasks, $3.17 (results at the end
+of `PREREGISTRATION-v1.md`): tokens -4% against v1 (rulers -29%), all passed,
+no icons, but $0.36-0.39 a run against $0.29-0.33, since the drafting call
+costs about what the agent saves. The agent still read around each edit
+before making it and ran the finishing steps one per turn. The options this
+leaves are at the end of `HANDOFF-v1.md`, for the user to decide. Not
+committed yet.
+
+## Status: an example to copy was tested on v1, and doesn't help (2026-10-04, seventh session)
+
+The fix proposed in the next section ran with the user's go: at every place,
+one whole entry of a single existing thing, read from the code at task start
+(zen mode: its action file, its Preferences item, its help row, its line in
+each list). 9 runs on the toggle tasks, $2.99, Claude Code 2.1.286, the same
+memory (`run-v1-measurement.sh examples`, `score-v1.ts examples`; results at
+the end of `PREREGISTRATION-v1.md`). No better: minimap 432k (v1 441k), rulers
+584k (531k), presenter 621k (385k); all 9 passed; the first edit no earlier.
+Every run searched the repository for the example and read its other wiring,
+and all 3 rulers runs copied its icon. Reverted; the change is kept in
+`runs/excalidraw/v1ex-toggles/example-change.patch`.
+
+So the diagnosis below was wrong in its last step: the turns don't go to
+finding an example. The agent checks and completes whatever the hand-over
+leaves open; the exact script's runs edit everything in turn 2 because it is
+the complete change in concrete lines. The options this leaves are at the end
+of `HANDOFF-v1.md`, for the user to decide.
+
 ## Status: v1 measured; its goal isn't met, and the runs say why (2026-10-04, seventh session)
 
 The comparison of `PREREGISTRATION-v1.md` ran with the user's go (71 runs,
