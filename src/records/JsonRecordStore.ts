@@ -5,13 +5,16 @@
  *     <dir>/records/<subject>/<id>.json   one record per file
  *
  * Queries read the files they need; local stores hold hundreds of records, so
- * this is cheap. Writes go to a temporary file first and are renamed into
- * place. One store makes them one at a time; there's no locking across
- * processes, so two processes writing the same record at once can race (a
- * hook and a CLI command recording the same session, say).
+ * this is cheap. Writes go to a temporary file of their own first and are
+ * renamed into place (Files.ts). One store makes them one at a time; there's
+ * no locking across processes, so of two processes writing the same file at
+ * once the last wins (a hook and a CLI command recording the same session,
+ * say, or the two task-start hooks of a hand-over in two parts each noting
+ * the repo's new path).
  */
 import { DateTime, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect"
 import { Conflict, StoreError } from "../graph/Errors.ts"
+import { writeFileWhole } from "../local/Files.ts"
 import type { RepoIdentity } from "../local/Git.ts"
 import { ID } from "../local/Home.ts"
 import { RecordExists, RecordNotFound } from "./Errors.ts"
@@ -54,8 +57,7 @@ export const make = Effect.fn("JsonRecordStore.make")(function*(dir: string, ten
 
   const write = (file: string, text: string) =>
     fs.makeDirectory(path.dirname(file), { recursive: true }).pipe(
-      Effect.andThen(fs.writeFileString(`${file}.tmp`, text)),
-      Effect.andThen(fs.rename(`${file}.tmp`, file)),
+      Effect.andThen(writeFileWhole(fs, file, text)),
       Effect.mapError(storeError(`can't write ${file}`))
     )
 

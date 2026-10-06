@@ -33,7 +33,14 @@ the `workflows-cues` setup); the cues are written once, when memory is built
 (`src/workflows/CueWriter.ts`). The `workflows` setup keeps v1 as first
 measured, picked by a model call. The change drafted at task start
 (`src/workflows/Draft.ts`, `workflows-draft`) was tested and dropped: memory
-helps the agent do the task, it never writes the change for it. Keep v0 and v1 apart: v1 reuses the
+helps the agent do the task, it never writes the change for it. Since: the
+finish in one command (`src/workflows/Finish.ts`), learning what runs still
+looked up before their first edit (`src/workflows/Lookups.ts`, in
+`workflows evolve`), the hand-over in up to two parts, from two
+task-start hooks (`workflows-split`), and a task that lists several changes
+picked and filled change by change (`partsChoice` in `Cues.ts`; the long task
+is `examples/excalidraw/long.toml`). A second repository's suite is
+`examples/validator/`. Keep v0 and v1 apart: v1 reuses the
 records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
 ## Writing Effect 4 code

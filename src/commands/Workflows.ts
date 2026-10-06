@@ -7,11 +7,16 @@
  *     workflows handover TASK... [--cwd REPO] [--at COMMIT] [--pick cues|words|model] [--draft]   preview a task's hand-over
  *     workflows evolve [--task ID ...] [--records-from HOME] [--repo DIR]    learn from new runs
  *     workflows cues [--repo DIR] [--dry-run]                              write cues for picking without a model
+ *     workflows finish [--repo DIR]                                        learn what the checks rewrite (no model)
  *
  * Local first: at task start memory is picked by its cues, with no model
  * call (`--pick cues`, the hook's default). Building memory, writing its cues
- * and learning from runs use a model, once per batch of runs. A build or a
- * learning round writes workflows without cues: run `workflows cues` after it.
+ * and learning from runs use a model, once per batch of runs. A build writes
+ * workflows without cues: run `workflows cues` after it. A learning round on
+ * memory with cues writes them again for its revision, and its gate replays
+ * with them. Builds and learning rounds learn what each workflow's checks
+ * rewrite (Finish.ts), so the hand-over ends with one command; `workflows
+ * finish` adds that to memory built before.
  */
 import { Console, Effect, FileSystem, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
@@ -25,7 +30,9 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { cuesPrompt, writeCues } from "../workflows/CueWriter.ts"
 import { describeMemory } from "../workflows/Describe.ts"
 import { gatherEvidence } from "../workflows/Evidence.ts"
-import { describeReplay, passes, refine, replay } from "../workflows/Evolve.ts"
+import { hasCues } from "../workflows/Cues.ts"
+import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord } from "../workflows/Evolve.ts"
+import { withSnapshots } from "../workflows/Finish.ts"
 import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL, induce } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { startTask } from "../workflows/Start.ts"
@@ -75,7 +82,7 @@ const build = Command.make(
     yield* fs.makeDirectory(cwd, { recursive: true })
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
     const result = yield* induce({ claude, cwd, model: args.model, effort: args.effort }, evidence, store.tenant, current)
-    const m = result.memory
+    const m = withSnapshots(result.memory, evidence.runs)
     yield* Console.log(`${m.workflows.length} workflows, ${m.places.length} places, ${m.pitfalls.length} pitfalls, ${m.edges.length} edges; ` +
       `${result.calls} model call${result.calls === 1 ? "" : "s"}, $${result.costUsd.toFixed(3)}`)
     for (const p of result.problems) yield* Console.log(`  ${p}`)
@@ -140,6 +147,10 @@ const handover = Command.make(
       )
     ),
     draft: Flag.Boolean("draft").pipe(Flag.withDefault(false), Flag.withDescription("hand over the change itself, drafted by the model (about 10 cents)")),
+    parts: Flag.Int("parts").pipe(
+      Flag.withDefault(1),
+      Flag.withDescription("how many hooks carry the hand-over, each up to 9,800 characters (2 as the workflows-split setup)")
+    ),
     model: Flag.String("model").pipe(Flag.withDefault("sonnet")),
     claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
     home: homeFlag
@@ -155,7 +166,7 @@ const handover = Command.make(
     const drafter = args.draft ? { claude, cwd, model: args.model } : undefined
     const result = yield* startTask(
       { sessionId: "preview", prompt: args.task.join(" "), cwd: Option.getOrElse(args.cwd, () => process.cwd()) },
-      { tenantDir: home.tenantDir, selector, drafter, cues: args.pick === "cues", persist: false, at: Option.getOrUndefined(args.at) }
+      { tenantDir: home.tenantDir, selector, drafter, cues: args.pick === "cues", persist: false, at: Option.getOrUndefined(args.at), parts: args.parts }
     )
     for (const r of result.reasons) yield* Console.log(`# ${r}`)
     if (result.state?.selection?.cost_usd != null) yield* Console.log(`# selection: $${result.state.selection.cost_usd.toFixed(4)}`)
@@ -168,7 +179,8 @@ const handover = Command.make(
       for (const x of d.dropped) yield* Console.log(`# left out: ${x}`)
     }
     if (result.state !== undefined && result.state.missing.length > 0) yield* Console.log(`# not found in the code: ${result.state.missing.join(", ")}`)
-    yield* Console.log(result.text === undefined ? "(nothing to hand over)" : `# ${result.text.length} characters\n\n${result.text}`)
+    const sizes = result.parts.length > 1 ? ` in ${result.parts.length} parts of ${result.parts.map((t) => t.length).join(" and ")}` : ""
+    yield* Console.log(result.text === undefined ? "(nothing to hand over)" : `# ${result.text.length} characters${sizes}\n\n${result.text}`)
   }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
 ).pipe(Command.withDescription("show what a task would be handed at its start, without keeping anything"))
 
@@ -184,7 +196,7 @@ const evolve = Command.make(
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("a clone to read files at the runs' base commits from")),
     model: Flag.String("model").pipe(Flag.withDefault(DEFAULT_INDUCE_MODEL)),
     effort: Flag.String("effort").pipe(Flag.withDefault(DEFAULT_INDUCE_EFFORT)),
-    dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("list the new runs, and stop")),
+    dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("list the new runs and what they looked up before their first edit, and stop")),
     claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
     home: homeFlag
   },
@@ -211,33 +223,55 @@ const evolve = Command.make(
     const newRecords = fresh.filter(pick)
     const learned = (yield* own.find({ outcome: "success" })).filter((r) => learnedIds.has(r.id))
     yield* Console.log(`${newRecords.length} new runs (${[...new Set(newRecords.map((r) => r.run.task_id ?? r.id))].join(", ")}); ${learned.length} learned from before`)
-    if (args.dryRun || newRecords.length === 0) return
+    if (newRecords.length === 0) return
     const repo = Option.getOrUndefined(args.repo)
     const evidence = yield* gatherEvidence(newRecords, { repo })
+    if (args.dryRun) {
+      // What the refining model would read about what the runs handed memory still looked up.
+      const handed = evidence.runs.flatMap((run) => {
+        const r = newRecords.find((x) => x.id === run.record)
+        const shown = r === undefined ? undefined : shownInRecord(r)
+        return shown === undefined ? [] : [{ run, shown }]
+      })
+      return yield* Console.log(`
+${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(newRecords))}`)
+    }
     const before = yield* gatherEvidence(learned, { repo })
     const cwd = path.join(defaultWorkspaces(), "_learner")
     yield* fs.makeDirectory(cwd, { recursive: true })
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-    const selector = { claude, cwd, model: "sonnet" }
     const baseVersion = yield* store.head()
     const current = yield* store.memory()
+    // Local first: memory picked by cues is replayed with cues, written again for the revision.
+    const local = hasCues(current)
+    const selector = local ? "cues" as const : { claude, cwd, model: "sonnet" }
     const refined = yield* refine(
       { claude, cwd, model: args.model, effort: args.effort },
       selector,
       current,
       evidence,
       new Map(newRecords.map((r) => [r.id, r])),
-      yield* store.candidates("rejected")
+      yield* store.candidates("rejected"),
+      { repo, texts: yield* handedTexts(newRecords) }
     )
     for (const p of refined.problems) yield* Console.log(`  ${p}`)
-    // The gate: replayed over every run, old and new, the revision must fit at least as well.
     const runs = [...before.runs, ...evidence.runs]
+    let revision = withSnapshots(refined.memory, runs)
+    let cueCost = 0
+    if (local) {
+      // The tasks memory learned from, old and new, are the examples the cues must pick right.
+      const written = yield* writeCues({ claude, cwd, model: args.model, effort: args.effort }, revision, runs)
+      for (const p of written.problems) yield* Console.log(`  cues: ${p}`)
+      revision = written.memory
+      cueCost = written.costUsd
+    }
+    // The gate: replayed over every run, old and new, the revision must fit at least as well.
     const now = yield* replay(current, runs, selector)
-    const then = yield* replay(refined.memory, runs, selector)
+    const then = yield* replay(revision, runs, selector)
     const verdict = passes(then, now)
-    const costUsd = refined.costUsd + now.costUsd + then.costUsd
-    yield* Console.log(`current:  ${describeReplay(now)}\nrevision: ${describeReplay(then)}\nmodel calls: $${costUsd.toFixed(3)}`)
-    const candidate = yield* store.propose(refined.memory, {
+    const costUsd = refined.costUsd + cueCost + now.costUsd + then.costUsd
+    yield* Console.log(`current:  ${describeReplay(now)}\nrevision: ${describeReplay(then)}\nmodel calls: ${costUsd.toFixed(3)}`)
+    const candidate = yield* store.propose(revision, {
       baseVersion,
       rationale: refined.rationale,
       records: [...learned.map((r) => r.id), ...newRecords.map((r) => r.id)],
@@ -304,7 +338,35 @@ const cues = Command.make(
   }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
 ).pipe(Command.withDescription("write cues so tasks can be given workflows without a model: phrases, step conditions and blank values (one model call or two)"))
 
+const finish = Command.make(
+  "finish",
+  {
+    repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("a clone to read files at the runs' base commits from")),
+    home: homeFlag
+  },
+  Effect.fn(function*(args) {
+    const store = yield* WorkflowStore
+    const baseVersion = yield* store.head()
+    const memory = yield* store.memory()
+    if (memory.workflows.length === 0) return yield* Console.log("memory has no workflows")
+    const learned = new Set((yield* store.candidates("committed")).flatMap((c) => c.records))
+    const records = (yield* (yield* RecordStore).find({ outcome: "success" })).filter((r) => learned.has(r.id))
+    const evidence = yield* gatherEvidence(records, { repo: Option.getOrUndefined(args.repo) })
+    const m = withSnapshots(memory, evidence.runs)
+    for (const w of m.workflows) yield* Console.log(`${w.id}: ${w.snapshots?.length ? w.snapshots.join(", ") : "no snapshots every run rewrote"}`)
+    const candidate = yield* store.propose(m, {
+      baseVersion,
+      rationale: "what each workflow's checks rewrite, from the snapshot files every run it was learned from regenerated",
+      records: evidence.runs.map((r) => r.record),
+      costUsd: 0,
+      report: { problems: [], replay: null }
+    })
+    const version = yield* store.commit(candidate.id)
+    yield* Console.log(`committed ${candidate.id} as version ${version}`)
+  }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
+).pipe(Command.withDescription("learn what each workflow's checks rewrite from the runs memory learned from, so the hand-over ends with one command (no model)"))
+
 export const workflowsCommand = Command.make("workflows").pipe(
   Command.withDescription("memory v1: workflows with blanks, connected in a graph that learns from results"),
-  Command.withSubcommands([build, show, candidates, handover, evolve, cues])
+  Command.withSubcommands([build, show, candidates, handover, evolve, cues, finish])
 )

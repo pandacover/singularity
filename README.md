@@ -101,10 +101,19 @@ That memory is v0 (tag `memory-v0`). Memory v1 lives in the same home, under
 node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)
 node src/cli.ts workflows show [AT] [--json]                                 # print it
 node src/cli.ts workflows cues [--repo DIR]                                   # write cues, so tasks are picked without a model (one model call or two)
-node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--draft] # preview a task's hand-over
-node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR]   # learn from new runs
+node src/cli.ts workflows finish [--repo DIR]                                 # learn what each workflow's checks rewrite (no model)
+node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--parts 2] [--draft] # preview a task's hand-over
+node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR] [--dry-run] # learn from new runs
 node src/cli.ts workflows candidates                                         # proposals and what became of them
 ```
+
+Since the eighth session: the hand-over ends with **one command** that runs
+every check its workflows need, with the snapshot files earlier runs
+regenerated (`src/workflows/Finish.ts`); `evolve` also reads **what each run
+still looked up before its first edit** (`src/workflows/Lookups.ts`;
+`--dry-run` prints it), writes the cues again and replays with them; and the
+`workflows-split` setup carries a hand-over longer than one hook can (Claude
+Code cuts each at 10,000 characters) in two parts, from two task-start hooks.
 
 v1 keeps small workflows written with blanks (`{field}`, `{key}`), learned
 from runs, and a graph of them whose edges say when one leads to another. A
@@ -125,8 +134,12 @@ the task, its negated clauses ("don't add a shortcut") left out, and the
 blanks the task states are filled in (`src/workflows/Cues.ts`). That is the
 hook's default and `workflows handover`'s; memory without cues is picked by
 words. `SINGULARITY_SELECTOR=model` (or `--pick model`) has a model call pick
-instead, as v1 was first measured. A build or a learning round writes
-workflows without cues: run `workflows cues` after it.
+instead, as v1 was first measured. A build writes workflows without cues: run
+`workflows cues` after it (a learning round on memory with cues writes them
+itself). A task that lists several changes (a numbered or bulleted list) is
+picked and filled change by change: each item, with what the task says of
+all of them, states its own values; a workflow several changes need is shown
+once, with each change's values and the changes it is for.
 
 Tested and dropped (the user's call: memory helps the agent do the task, it
 doesn't do the task): with `--draft` (and in the `workflows-draft` setup), a
@@ -205,6 +218,9 @@ command without running anything.
 - `workflows-cues`: the local-first memory: the same hooks, with no model call
   at task start; memory's cues pick the workflows and fill the blanks the task
   states (`workflows handover --pick cues`).
+- `workflows-split`: `workflows-cues` with a hand-over longer than one hook can
+  carry sent in two parts, from two task-start hooks
+  (`workflows handover --parts 2`).
 - `workflows-draft` (tested and dropped): the same, but the agent gets the
   change itself, drafted at task start from the workflows and the code
   (`workflows handover --draft`); the drafting call counts toward the run too.

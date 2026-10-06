@@ -46,6 +46,7 @@ const runEvidence = (record: string, over: Partial<RunEvidence> = {}): RunEviden
   values: ["Alt+M", "minimapEnabled"],
   calls: [],
   cwd: undefined,
+  looking: null,
   ...over
 })
 
@@ -63,6 +64,7 @@ const answer = (over: Partial<InductionAnswer> = {}): InductionAnswer => ({
   }],
   edges: [],
   pitfalls: [],
+  entries: [],
   rationale: "",
   ...over
 })
@@ -183,7 +185,7 @@ describe("picking and handing over", () => {
     assert.include(h.text, "`keys.ts:1-5` in export const CODES = {")
     assert.notInclude(h.text, "Add a test.")
     assert.strictEqual(h.text.split("Watch out:").length - 1, 1)
-    assert.deepStrictEqual(h.shown, [{ place: "p-1", file: "keys.ts", from: 1, to: 5 }])
+    assert.deepStrictEqual(h.shown, [{ place: "p-1", file: "keys.ts", from: 1, to: 5, lines: [1, 2, 3, 4, 5] }])
     // A place the code no longer has is left out quietly, and its step stays.
     const gone = renderHandover(m, chosen, new Map())
     assert.include(gone.text, "Add the key.")

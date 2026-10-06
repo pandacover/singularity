@@ -1,0 +1,36 @@
+diff --git a/packages/element/src/embeddable.ts b/packages/element/src/embeddable.ts
+index 87c7073a..8d938b5a 100644
+--- a/packages/element/src/embeddable.ts
++++ b/packages/element/src/embeddable.ts
+@@ -23,7 +23,7 @@ type IframeDataWithSandbox = MarkRequired<IframeData, "sandbox">;
+ const embeddedLinkCache = new Map<string, IframeDataWithSandbox>();
+ 
+ const RE_YOUTUBE =
+-  /^(?:http(?:s)?:\/\/)?(?:www\.)?youtu(?:be\.com|\.be)\/(embed\/|watch\?v=|shorts\/|playlist\?list=|embed\/videoseries\?list=)?([a-zA-Z0-9_-]+)/;
++  /^(?:http(?:s)?:\/\/)?(?:www\.)?youtu(?:be\.com|\.be)\/(embed\/|watch\?v=|shorts\/|live\/|playlist\?list=|embed\/videoseries\?list=)?([a-zA-Z0-9_-]+)/;
+ 
+ const RE_VIMEO =
+   /^(?:http(?:s)?:\/\/)?(?:(?:w){3}\.)?(?:player\.)?vimeo\.com\/(?:video\/)?([^?\s]+)(?:\?.*)?$/;
+diff --git a/packages/element/tests/embeddable.test.ts b/packages/element/tests/embeddable.test.ts
+index 35870a86..77a16045 100644
+--- a/packages/element/tests/embeddable.test.ts
++++ b/packages/element/tests/embeddable.test.ts
+@@ -95,6 +95,18 @@ describe("YouTube timestamp parsing", () => {
+     expect(result?.intrinsicSize).toEqual({ w: 315, h: 560 });
+   });
+ 
++  it("should handle YouTube live URLs", () => {
++    const url = "https://www.youtube.com/live/dQw4w9WgXcQ?si=abc&t=30";
++    const result = getEmbedLink(url);
++
++    expect(result?.type).toBe("video");
++    if (result?.type === "video" || result?.type === "generic") {
++      expect(result.link).toBe(
++        "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1&start=30",
++      );
++    }
++  });
++
+   it("should handle playlist URLs with timestamps", () => {
+     const url =
+       "https://www.youtube.com/playlist?list=PLrAXtmRdnEQy1KbG5lbfgQ0-PKQY6FKYZ&t=60";

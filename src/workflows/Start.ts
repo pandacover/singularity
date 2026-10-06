@@ -12,7 +12,7 @@ import { DateTime, Effect, FileSystem } from "effect"
 import { identifyRepo } from "../local/Git.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { type Usage, usageToJson } from "../traces/index.ts"
-import { cueChoice, fillsOfChosen, hasCues } from "./Cues.ts"
+import { cueChoice, fillsOfChosen, hasCues, partsChoice } from "./Cues.ts"
 import { type DraftCall, draftChange, type DrafterConfig, renderDraft } from "./Draft.ts"
 import { END, START, type WorkflowMemory } from "./Models.ts"
 import { type CodeSource, locatePlaces, pathExists } from "./Locate.ts"
@@ -44,6 +44,8 @@ export interface StartInput {
 export interface StartResult {
   /** What the agent gets; undefined when memory has nothing for this task. */
   readonly text: string | undefined
+  /** The same in parts, one per hook that carries it (a drafted change comes whole). */
+  readonly parts: ReadonlyArray<string>
   readonly state: WorkflowSession | undefined
   readonly reasons: ReadonlyArray<string>
   readonly shown: ReadonlyArray<Shown>
@@ -93,12 +95,14 @@ export const startTask = Effect.fn("startTask")(function*(
     readonly persist?: boolean | undefined
     /** Read the code at this commit instead of the working tree (previews, checks). */
     readonly at?: string | undefined
+    /** Characters per part, and how many hooks carry a part each (Render.ts). */
     readonly budget?: number | undefined
+    readonly parts?: number | undefined
   }
 ) {
   const records = yield* RecordStore
   const store = yield* WorkflowStore
-  const nothing: StartResult = { text: undefined, state: undefined, reasons: [], shown: [], draft: null }
+  const nothing: StartResult = { text: undefined, parts: [], state: undefined, reasons: [], shown: [], draft: null }
   const repo = yield* identifyRepo(input.cwd)
   const subject = repo === undefined ? undefined : yield* records.subjectFor(repo)
   if (repo === undefined || subject === undefined) return nothing
@@ -107,20 +111,23 @@ export const startTask = Effect.fn("startTask")(function*(
   if (memory.workflows.length === 0) return nothing
 
   const byCues = options.cues === true && hasCues(memory)
+  // A task that lists several changes is picked and filled change by change.
+  const inParts = byCues ? partsChoice(memory, input.prompt) : undefined
   const withoutModel = (): Selection => {
-    const chosen = byCues ? cueChoice(memory, input.prompt) : wordChoice(memory, input.prompt)
+    const chosen = inParts?.chosen ?? (byCues ? cueChoice(memory, input.prompt) : wordChoice(memory, input.prompt))
     return { chosen, call: null, reasons: chosen.map((c) => `${c.workflow.id}: ${c.why}`) }
   }
   const selection: Selection = options.cues === true ? withoutModel() : yield* selectWorkflows(memory, input.prompt, options.selector)
-  const fills = byCues ? fillsOfChosen(input.prompt, selection.chosen) : undefined
+  const fills = byCues && inParts === undefined ? fillsOfChosen(input.prompt, selection.chosen) : undefined
   const places = new Map(memory.places.map((p) => [p.id, p]))
   const needed = selection.chosen.flatMap((c) => c.workflow.steps.flatMap((s, i) => (c.skip.includes(i + 1) || s.place === null ? [] : [places.get(s.place)])))
     .filter((p) => p !== undefined)
   const source: CodeSource = options.at === undefined ? { kind: "tree", root: repo.root } : { kind: "commit", repo: repo.root, commit: options.at }
   const located = yield* locatePlaces(source, needed)
   const budget = options.budget ?? MAX_HANDOVER_CHARS
-  const handover = renderHandover(memory, selection.chosen, located, budget, fills)
+  const handover = renderHandover(memory, selection.chosen, located, budget, fills, options.parts ?? 1, inParts)
   let text = selection.chosen.length === 0 ? undefined : handover.text
+  let parts = selection.chosen.length === 0 ? [] : handover.parts
   let draft: DraftLog | null = null
   let draftUsage: Usage | undefined
   if (options.drafter !== undefined && selection.chosen.length > 0) {
@@ -129,7 +136,10 @@ export const startTask = Effect.fn("startTask")(function*(
     const drafted = yield* draftChange(input.prompt, memory, selection.chosen, located, (p) => pathExists(source, p), options.drafter)
     const d = drafted.draft
     const written = d === undefined || d.edits.length + d.files.length === 0 ? undefined : renderDraft(memory, selection.chosen, d, budget)
-    if (written !== undefined) text = written
+    if (written !== undefined) {
+      text = written
+      parts = [written]
+    }
     draft = draftLog(drafted.call, written !== undefined, d)
     draftUsage = drafted.call.usage ?? undefined
   }
@@ -151,7 +161,7 @@ export const startTask = Effect.fn("startTask")(function*(
     triggers: memory.pitfalls.filter((p) => p.trigger !== null),
     selection: selection.call === null ? null : { model: selection.call.model, cost_usd: selection.call.costUsd, error: selection.call.error }
   }
-  const result: StartResult = { text, state, reasons: selection.reasons, shown: handover.shown, draft }
+  const result: StartResult = { text, parts, state, reasons: selection.reasons, shown: handover.shown, draft }
   if (options.persist === false) return result
   yield* writeSession(options.tenantDir, state)
   yield* logHandover(options.tenantDir, {
@@ -172,7 +182,13 @@ export const startTask = Effect.fn("startTask")(function*(
     ...(options.cues === true
       ? { picked_by: byCues ? "cues" : "words", fills: Object.fromEntries([...(fills ?? new Map())].map(([w, v]) => [w, Object.fromEntries(v)])) }
       : {}),
+    // For a task that lists several changes: how many, and each workflow's changes with their values.
+    ...(inParts === undefined ? {} : {
+      changes: inParts.count,
+      change_fills: Object.fromEntries([...inParts.uses].map(([w, uses]) => [w, Object.fromEntries(uses.map((u) => [u.label, Object.fromEntries(u.values)]))]))
+    }),
     chars: text?.length ?? 0,
+    ...(parts.length > 1 ? { parts: parts.length } : {}),
     text: text ?? null
   })
   return result

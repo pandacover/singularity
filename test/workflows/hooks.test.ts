@@ -33,8 +33,12 @@ const makeKeysRepo = (root: string): string => {
   return repo
 }
 
-/** A memory home with one workflow at the key-code table (with `cues`, if given), and a pitfall that fires on the doubled watch flag. */
-const seedHome = (homeDir: string, repo: string, cues?: WorkflowCues) =>
+/**
+ * A memory home with one workflow at the key-code table (with `cues`, if
+ * given, and `long` more steps of 400 characters), and a pitfall that fires
+ * on the doubled watch flag.
+ */
+const seedHome = (homeDir: string, repo: string, cues?: WorkflowCues, long = 0) =>
   run(Effect.gen(function*() {
     const home = yield* loadHome(homeDir)
     const subject = yield* Effect.gen(function*() {
@@ -54,7 +58,10 @@ const seedHome = (homeDir: string, repo: string, cues?: WorkflowCues) =>
         ...(cues === undefined ? {} : { cues }),
         only_if_asked: false,
         blanks: [{ name: "letter", meaning: "the new key's letter" }],
-        steps: [{ do: "Add `{letter}: \"Key{letter}\"` to the table.", place, when: null }],
+        steps: [
+          { do: "Add `{letter}: \"Key{letter}\"` to the table.", place, when: null },
+          ...Array.from({ length: long }, (_, i) => ({ do: `Then step ${i + 2}: ${"x".repeat(400)}`, place: null, when: null }))
+        ],
         checks: ["yarn test:update"],
         pitfalls: ["watch-flag"],
         evidence: ["r1", "r2"],
@@ -211,6 +218,37 @@ describe("the workflows setup (memory v1)", () => {
       assert.strictEqual(r.tokens.total, 1360)
       const log = readFileSync(join(runDir, "memory-home", "tenants", "local", "workflows", "handovers.jsonl"), "utf-8")
       assert.deepStrictEqual(JSON.parse(log.split("\n")[0]).picked_by, "cues")
+    })
+  }, 60_000)
+
+  it("with workflows-split, a hand-over too long for one hook comes in two parts, from two hooks", async () => {
+    const root = tempDir()
+    const repo = makeKeysRepo(root)
+    const claudeHome = join(root, "claude-home")
+    const homeDir = join(root, "memory-home")
+    await withEnv({ CLAUDE_CONFIG_DIR: claudeHome, SINGULARITY_WORKSPACES: join(root, "workspaces") }, async () => {
+      // About 14,000 characters of steps: more than one hook carries.
+      await seedHome(homeDir, repo, { any: ["answer.txt"], none: [], steps: [], fills: [] }, 34)
+      const suite = await run(loadSuite(writeSuite(root, repo)))
+      const setup = await run(makeSetup("workflows-split", homeDir, true, { selector: { claude: FAKE_CLAUDE, cwd: join(root, "llm"), model: "sonnet" } }))
+      const out = join(root, "out")
+      const [r] = (await run(runSuite(suite, setup, out, FAKE_CLAUDE, { workspaces: join(root, "ws"), taskIds: ["t1"] }))) as Array<Record<string, any>>
+      const runDir = join(out, "runs", r.run_id)
+      const errors = join(runDir, "memory-home", "hook-errors.log")
+      assert.isFalse(existsSync(errors), existsSync(errors) ? readFileSync(errors, "utf-8") : "")
+      assert.strictEqual(r.setup, "workflows-split")
+      const parts = seenByAgent(claudeHome, r.session_id).hook_outputs
+        .filter((o) => o.event === "UserPromptSubmit" && o.stdout !== "")
+        .map((o) => JSON.parse(o.stdout).hookSpecificOutput.additionalContext as string)
+      assert.strictEqual(parts.length, 2)
+      assert.isTrue(parts.every((p) => p.length <= 9800), parts.map((p) => p.length).join(", "))
+      assert.include(parts[0], "`config.ts:1-4` in export const CODES = {")
+      assert.include(parts[1], "(continued)")
+      assert.include(parts[1], "Then step 35:")
+      // The log keeps all of it, once.
+      const start = JSON.parse(readFileSync(join(runDir, "memory-home", "tenants", "local", "workflows", "handovers.jsonl"), "utf-8").split("\n")[0])
+      assert.strictEqual(start.parts, 2)
+      assert.strictEqual(start.text, parts.join("\n"))
     })
   }, 60_000)
 })

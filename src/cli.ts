@@ -69,7 +69,7 @@ const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescriptio
  * harness. The hooks setup does neither: its hooks hand memory over during the
  * run (preview with `handover --home`), and memory is built with `memory build`.
  */
-const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows" && s !== "workflows-draft" && s !== "workflows-cues")
+const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows" && s !== "workflows-draft" && s !== "workflows-cues" && s !== "workflows-split")
 
 const graphVersionFlag = Flag.Int("graph-version").pipe(
   Flag.optional,
@@ -157,8 +157,8 @@ const run = Command.make(
         const sha = yield* resolveRef(ws, t.base)
         yield* Console.log(`task       ${t.id} @ ${sha.slice(0, 12)}  checks: ${t.checks.length}`)
       }
-      // The hooks setup writes its settings into each run's directory.
-      const settings = args.setup === "hooks" ? ["--settings", "<run dir>/hooks.json"] : []
+      // The hooks and workflows setups write their settings into each run's directory.
+      const settings = /^(hooks|workflows)/.test(args.setup) ? ["--settings", "<run dir>/hooks.json"] : []
       yield* Console.log("command    " + [...buildCommand(claude, suite.agent, "<session-id>"), ...settings].join(" "))
       return
     }

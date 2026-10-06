@@ -18,7 +18,7 @@
  */
 import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { fileURLToPath } from "node:url"
-import { HOOK_SCRIPT as V0_HOOK_SCRIPT, hasOurHooks, hooksSettings } from "../handover/Install.ts"
+import { HOOK_SCRIPT as V0_HOOK_SCRIPT, hasOurHooks, type HookSpec, hooksSettings } from "../handover/Install.ts"
 import { HOME_ENV, loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
@@ -48,7 +48,15 @@ export interface WorkflowsMemoryOptions {
    * states (Cues.ts): the `workflows-cues` setup.
    */
   readonly cues?: boolean | undefined
+  /**
+   * Hand over in up to two parts, through two task-start hooks, each up to
+   * Claude Code's 10,000 characters (HookStart.ts): the `workflows-split` setup.
+   */
+  readonly parts?: number | undefined
 }
+
+/** The hook that hands over the second part of a long hand-over, alongside the first. */
+const SECOND_PART: HookSpec = { event: "UserPromptSubmit", arg: "user-prompt-submit-2", matcher: undefined, timeout: 90 }
 
 /** Seconds the task-start hook may take when it drafts the change: the selection's call, then the draft's. */
 const DRAFT_HOOK_TIMEOUT = 420
@@ -210,7 +218,7 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
       return { version, sources }
     }).pipe(Effect.provide(stores))
     const settings = path.join(runDir, HOOK_SETTINGS)
-    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT)
+    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT, options.parts === 2 ? [SECOND_PART] : [])
     yield* fs.writeFileString(settings, JSON.stringify(options.draft === true ? withStartTimeout(hooks, DRAFT_HOOK_TIMEOUT) : hooks, null, 2) + "\n")
     return {
       systemPrompt: undefined,
@@ -223,13 +231,14 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
         SINGULARITY_SELECTOR: options.cues === true ? "cues" : "on",
         SINGULARITY_SELECTOR_MODEL: options.selectorModel,
         SINGULARITY_DRAFTER: options.draft === true ? "on" : "off",
-        SINGULARITY_DRAFTER_MODEL: options.selectorModel
+        SINGULARITY_DRAFTER_MODEL: options.selectorModel,
+        SINGULARITY_HANDOVER_PARTS: String(options.parts ?? 1)
       },
       delivered: collect(runDir, runHome, home.tenantDir)
     } satisfies Injection
   }, Effect.mapError(toMemoryError))
 
-  const name = options.draft === true ? "workflows-draft" : options.cues === true ? "workflows-cues" : "workflows"
+  const name = options.draft === true ? "workflows-draft" : options.parts === 2 ? "workflows-split" : options.cues === true ? "workflows-cues" : "workflows"
   return { name, beforeRun, afterRun: () => Effect.void }
 }
 

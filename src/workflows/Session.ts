@@ -11,6 +11,7 @@
  * hooks for tool calls made in parallel run at the same time.
  */
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
+import { writeFileWhole } from "../local/Files.ts"
 import { Pitfall } from "./Models.ts"
 
 export const ShownPlace = Schema.Struct({
@@ -72,8 +73,7 @@ export const writeSession = Effect.fn("workflows.writeSession")(function*(tenant
   const dir = sessionsDir(tenantDir, path)
   yield* fs.makeDirectory(dir, { recursive: true })
   const file = path.join(dir, `${safeId(state.session_id)}.json`)
-  yield* fs.writeFileString(`${file}.tmp`, JSON.stringify(yield* encodeSession(state), null, 2) + "\n")
-  yield* fs.rename(`${file}.tmp`, file)
+  yield* writeFileWhole(fs, file, JSON.stringify(yield* encodeSession(state), null, 2) + "\n")
 })
 
 export const readFired = Effect.fn("workflows.readFired")(function*(tenantDir: string, sessionId: string) {

@@ -1,7 +1,18 @@
 import { assert, describe, it } from "@effect/vitest"
 import { Schema } from "effect"
 import { checkCues, type CuesAnswer } from "../../src/workflows/CueWriter.ts"
-import { applyFills, cueChoice, fillsFor, fillValue, hasCues, positiveText, statedValues } from "../../src/workflows/Cues.ts"
+import {
+  applyFills,
+  choiceByCues,
+  cueChoice,
+  fillsFor,
+  fillValue,
+  hasCues,
+  partsChoice,
+  positiveText,
+  statedValues,
+  taskParts
+} from "../../src/workflows/Cues.ts"
 import type { RunEvidence } from "../../src/workflows/Evidence.ts"
 import { pickMode } from "../../src/workflows/HookStart.ts"
 import { FORMAT, type Workflow, WorkflowMemory } from "../../src/workflows/Models.ts"
@@ -83,6 +94,10 @@ describe("cues", () => {
     assert.deepStrictEqual(cueChoice(memory, "toggle it with Alt+U, not in view mode").find((c) => c.workflow.id === "add-shortcut")?.skip, [3])
   })
 
+  it("matches a phrase where the task's text breaks a line in it", () => {
+    assert.deepStrictEqual(ids("Please add a\nnew   appState field and add a\ntest"), ["add-field", "keyboard-test"])
+  })
+
   it("doesn't pick a workflow for what a task rules out, for its `none` phrases, or without cues", () => {
     assert.deepStrictEqual(ids("Add a new appState field `x`. Don't add a keyboard shortcut for it."), ["add-field"])
     assert.deepStrictEqual(ids("Change the keyboard shortcut for stats from Alt+/ to Alt+K."), [])
@@ -132,6 +147,88 @@ describe("cues", () => {
     assert.isTrue(filled.includes("List Alt+U in the help dialog."))
   })
 
+  it("reads a task that lists several changes as its items, with what it says of all of them", () => {
+    const task = [
+      "Three changes:",
+      "",
+      "1. Add a new appState field `rulersEnabled` (default false).",
+      "Toggle it with Alt+U.",
+      "",
+      "2. Change the shortcut from Alt+/ to Alt+K.",
+      "",
+      "3. Add a new appState field `presenterEnabled`",
+      "  (default true).",
+      "",
+      "Make sure the tests pass."
+    ].join("\n")
+    const split = taskParts(task)
+    assert.deepStrictEqual(split?.parts, [
+      { label: "1", text: "Add a new appState field `rulersEnabled` (default false).\nToggle it with Alt+U." },
+      { label: "2", text: "Change the shortcut from Alt+/ to Alt+K." },
+      { label: "3", text: "Add a new appState field `presenterEnabled`\n(default true)." }
+    ])
+    assert.strictEqual(split?.shared, "Three changes:\nMake sure the tests pass.")
+    assert.deepStrictEqual(taskParts("- one thing\n\n  more of it\n- another")?.parts, [{ label: "1", text: "one thing\nmore of it" }, { label: "2", text: "another" }])
+    assert.isUndefined(taskParts("Add a new appState field `x`. Toggle it with Alt+U, in version 2.1.286."))
+    assert.isUndefined(taskParts("Do this:\n1. one thing"))
+  })
+
+  it("picks and fills a task in parts change by change", () => {
+    const task = [
+      "1. Add a new appState field `rulersEnabled` (default false). Toggle it with Alt+U, from the menu (also in view mode).",
+      "2. Change the shortcut from Alt+/ to Alt+K.",
+      "3. Add a new appState field `presenterEnabled` (default true). Toggle it with Alt+J, but not in view mode.",
+      "",
+      "Add a test for each."
+    ].join("\n")
+    const choice = partsChoice(memory, task)
+    assert.strictEqual(choice?.count, 3)
+    // The whole task's "from Alt+" would rule the shortcut workflow out; only change 2 says it.
+    assert.deepStrictEqual(ids(task), ["add-field", "keyboard-test"])
+    assert.deepStrictEqual(choice?.chosen.map((c) => c.workflow.id), ["add-field", "add-shortcut", "keyboard-test"])
+    assert.deepStrictEqual(choiceByCues(memory, task).map((c) => c.workflow.id), ["add-field", "add-shortcut", "keyboard-test"])
+    const field = choice?.uses.get("add-field") ?? []
+    assert.deepStrictEqual(field.map((u) => [u.label, Object.fromEntries(u.values)]), [
+      ["1", { "{field}": "rulersEnabled", "{default}": "false" }],
+      ["3", { "{field}": "presenterEnabled", "{default}": "true" }]
+    ])
+    const shortcut = choice?.uses.get("add-shortcut") ?? []
+    assert.deepStrictEqual(shortcut.map((u) => [u.label, u.values.get("{code}"), u.skip]), [["1", "U", []], ["3", "J", [3]]])
+    // A step one change needs stays.
+    assert.deepStrictEqual(choice?.chosen.find((c) => c.workflow.id === "add-shortcut")?.skip, [])
+    // What the task says of all of them goes with each.
+    assert.deepStrictEqual(choice?.uses.get("keyboard-test")?.map((u) => u.label), ["1", "2", "3"])
+    assert.isUndefined(partsChoice(memory, "Add a new appState field `x`. Toggle it with Alt+U."))
+  })
+
+  it("hands over a workflow several changes need once, with each change's values, and says which changes need what", () => {
+    const task = [
+      "1. Add a new appState field `rulersEnabled` (default false). Toggle it with Alt+U, from the menu (also in view mode).",
+      "2. Add a new appState field `presenterEnabled` (default false). Toggle it with Alt+J, but not in view mode.",
+      "3. Add a test."
+    ].join("\n")
+    const choice = partsChoice(memory, task)
+    assert.isDefined(choice)
+    if (choice === undefined) return
+    const text = renderHandover(memory, choice.chosen, new Map(), undefined, undefined, 1, choice).text
+    assert.isTrue(text.includes("Your task lists several changes"))
+    assert.isTrue(text.includes("## 1. add-field (for 1 and 2 in your list)"))
+    assert.isTrue(text.includes("Filled from your task, change by change: 1: {field} = `rulersEnabled`, {default} = `false`; 2: {field} = `presenterEnabled`, {default} = `false`"))
+    // Values that differ stay blanks in the steps.
+    assert.isTrue(text.includes("Add `{field}: {default},` to the defaults."))
+    assert.isFalse(text.includes("Blanks: {field}"))
+    assert.isTrue(text.includes("Add it to the view-mode menu. (only if the task wants it in view mode too) (for 1 only)"))
+    assert.isTrue(text.includes("## 3. keyboard-test (for 3 in your list)"))
+    // Values the changes agree on are written into the steps.
+    const same = "1. Add a new appState field `rulersEnabled` (default false).\n2. Toggle it with Alt+U."
+    const agreed = partsChoice(memory, same)
+    assert.isDefined(agreed)
+    if (agreed === undefined) return
+    const filled = renderHandover(memory, agreed.chosen, new Map(), undefined, undefined, 1, agreed).text
+    assert.isTrue(filled.includes("Add `rulersEnabled: false,` to the defaults."))
+    assert.isTrue(filled.includes("List Alt+U in the help dialog."))
+  })
+
   it("is local first: the task-start hook picks by cues unless a model or words are asked for", () => {
     assert.strictEqual(pickMode(undefined), "cues")
     assert.strictEqual(pickMode(""), "cues")
@@ -165,7 +262,8 @@ const seed = (task: string, prompt: string, values: ReadonlyArray<string>): RunE
   readFirst: [],
   values: [...values],
   calls: [],
-  cwd: undefined
+  cwd: undefined,
+  looking: null
 })
 
 const plainMemory: WorkflowMemory = {

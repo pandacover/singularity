@@ -215,3 +215,85 @@ checks = [
   "yarn tsc",
 ]
 check_files = "hidden/stats-shortcut-k"
+
+# --- Bug fixes, for memory beyond settings and shortcuts -------------------------
+# Real upstream fixes, each asked at its parent commit and checked by the
+# fix's own test file at the fix (copied over the agent's, so its own test
+# there is replaced), plus the typecheck. Memory learns from the runs of the
+# two seeds (eraser-while-drawing, edit-arrow-crash) and is measured on the two
+# held out (save-as-in-text, dropdown-outside-click). They share how a bug is
+# reproduced in a test (render <Excalidraw />, the API, UI, Keyboard and
+# Pointer helpers, fireEvent) and how it is checked, not where the fix goes.
+# Their lockfile is the base commit's, so node_modules stays as it is.
+# The eraser test's render counts (inline snapshots) are left out: another
+# correct fix may render a different number of times.
+
+[[tasks]]
+id = "eraser-while-drawing"
+family = "bug-fix"
+base = "4ce70b81"
+prompt = """
+Bug: while drawing a multi-point line or arrow (after the first click, before
+finishing it), pressing E switches to the eraser, and the next click erases
+instead of adding a point. The same happens while a line's points are being
+edited or dragged. E should switch to the eraser only when that doesn't
+interrupt creating or editing a line, as the other tool shortcuts already
+behave. Fix it, add a regression test, and make sure the tests and the
+typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/multiPointCreate.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/eraser-while-drawing"
+
+[[tasks]]
+id = "edit-arrow-crash"
+family = "bug-fix"
+base = "792ea3a0"
+prompt = """
+Bug: right-clicking an arrow that has a text label and choosing "Edit arrow"
+crashes with "Selected element ID and linear editor elementId does not match"
+when the label's text element comes before the arrow in the scene's elements
+(as it does in some saved files). Editing the arrow should work whatever the
+order of the elements. Fix it, add a regression test, and make sure the tests
+and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/element/tests/linearElementEditor.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/edit-arrow-crash"
+
+[[tasks]]
+id = "save-as-in-text"
+family = "bug-fix"
+base = "d29d8648"
+prompt = """
+Bug: while editing a text element, Ctrl+S (Cmd+S on a Mac) commits the text
+and saves the drawing, but Ctrl+Shift+S (Cmd+Shift+S, save as) does nothing:
+the text editor stays open and nothing is saved. Make the save-as shortcut
+work while editing text the way the save shortcut does: commit the text, then
+save. Add a regression test, and make sure the tests and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/wysiwyg/textWysiwyg.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/save-as-in-text"
+
+[[tasks]]
+id = "dropdown-outside-click"
+family = "bug-fix"
+base = "f1a79b73"
+prompt = """
+Bug: the main menu and the toolbar's "more tools" dropdown don't close when
+you click or touch outside them (on the canvas or on the toolbar), however
+often you open them. Escape still closes them. Fix it, add a regression test,
+and make sure the tests and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/components/dropdownMenu/DropdownMenu.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/dropdown-outside-click"
