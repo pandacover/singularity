@@ -10,6 +10,7 @@
  */
 import { DateTime, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect"
 import { CandidateNotFound, Conflict, StoreError } from "../graph/Errors.ts"
+import { writeFileWhole } from "../local/Files.ts"
 import { ID } from "../local/Home.ts"
 import { emptyMemory, WorkflowMemory } from "./Models.ts"
 import { type At, type ProposeOptions, WorkflowCandidate, WorkflowStore } from "./WorkflowStore.ts"
@@ -41,8 +42,7 @@ export const make = Effect.fn("JsonWorkflowStore.make")(function*(dir: string, t
     fs.readFileString(file).pipe(Effect.flatMap(decode), Effect.mapError(storeError(`can't read ${file}`)))
   const write = (file: string, text: string) =>
     fs.makeDirectory(path.dirname(file), { recursive: true }).pipe(
-      Effect.andThen(fs.writeFileString(`${file}.tmp`, text)),
-      Effect.andThen(fs.rename(`${file}.tmp`, file)),
+      Effect.andThen(writeFileWhole(fs, file, text)),
       Effect.mapError(storeError(`can't write ${file}`))
     )
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n"

@@ -4,6 +4,7 @@
  * other:
  *
  *     node src/workflows/hook.ts user-prompt-submit   (UserPromptSubmit)
+ *     node src/workflows/hook.ts user-prompt-submit-2 (UserPromptSubmit: the hand-over's second part, when it has one)
  *     node src/workflows/hook.ts post-tool-use        (PostToolUse and PostToolUseFailure)
  *     node src/workflows/hook.ts session-end          (SessionEnd)
  *
@@ -59,6 +60,8 @@ if (process.env.SINGULARITY_HOOKS !== "off") {
       if (hasSession(stdin)) out = await (await import("./HookTool.ts")).postToolUse(stdin)
     } else if (event === "user-prompt-submit") {
       out = await (await import("./HookStart.ts")).userPromptSubmit(stdin)
+    } else if (event === "user-prompt-submit-2") {
+      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2)
     } else if (event === "session-end") {
       await (await import("./HookEnd.ts")).sessionEnd(stdin)
     } else {

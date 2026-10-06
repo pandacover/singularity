@@ -30,15 +30,33 @@ export const DEFAULT_DRAFTER_MODEL = "sonnet"
 export const pickMode = (setting: string | undefined): "model" | "words" | "cues" =>
   setting === "on" || setting === "model" ? "model" : setting === "off" ? "words" : "cues"
 
-export const userPromptSubmit = (stdin: string): Promise<string | undefined> =>
+/**
+ * How many hooks carry the hand-over (`SINGULARITY_HANDOVER_PARTS`, 1 or 2):
+ * Claude Code cuts each hook's text at 10,000 characters on its own, so a
+ * second hook doubles the room. Only without a model call, so both hooks
+ * compute the same hand-over.
+ */
+export const handoverParts = (setting: string | undefined, mode: "model" | "words" | "cues"): number =>
+  setting === "2" && mode !== "model" ? 2 : 1
+
+/**
+ * `part` 1 hands over the first part and keeps the session's state; part 2,
+ * from a second hook running alongside, computes the same hand-over without
+ * keeping anything and hands over the rest, if there is any.
+ */
+export const userPromptSubmit = (stdin: string, part: 1 | 2 = 1): Promise<string | undefined> =>
   Effect.runPromise(
     Effect.gen(function*() {
       const input = decodeHookInput(stdin)
       if (input === undefined || input.prompt === undefined || input.prompt.trim() === "") return undefined
       const home = yield* loadHome()
-      if ((yield* readSession(home.tenantDir, input.session_id)) !== undefined) return undefined
-      const path = yield* Path.Path
       const mode = pickMode(process.env.SINGULARITY_SELECTOR)
+      const parts = handoverParts(process.env.SINGULARITY_HANDOVER_PARTS, mode)
+      if (part > parts) return undefined
+      const session = yield* readSession(home.tenantDir, input.session_id)
+      // A follow-up prompt gets nothing; part 2 may find the session part 1 just started for this very prompt.
+      if (session !== undefined && (part === 1 || session.prompt !== input.prompt)) return undefined
+      const path = yield* Path.Path
       const cues = mode === "cues"
       const selector = mode !== "model"
         ? undefined
@@ -60,9 +78,10 @@ export const userPromptSubmit = (stdin: string): Promise<string | undefined> =>
       )
       const result = yield* startTask(
         { sessionId: input.session_id, prompt: input.prompt, cwd: input.cwd ?? process.cwd() },
-        { tenantDir: home.tenantDir, selector, drafter, cues }
+        { tenantDir: home.tenantDir, selector, drafter, cues, parts, persist: part === 1 }
       ).pipe(Effect.provide(stores))
-      if (result.text === undefined) return undefined
-      return JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: result.text } })
+      const text = result.text === undefined ? undefined : result.parts[part - 1]
+      if (text === undefined) return undefined
+      return JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } })
     }).pipe(Effect.provide(NodeServices.layer))
   )

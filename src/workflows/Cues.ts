@@ -15,6 +15,9 @@
  * phrase. Anything a value would have to be derived from stays a blank for
  * the agent.
  *
+ * A task that lists several changes (a numbered or bulleted list) is picked
+ * and filled change by change, each with what the task says of all of them.
+ *
  * This module is what task start needs; writing the cues is CueWriter.ts.
  */
 import { type Fill, graphOrder, type Workflow, type WorkflowMemory } from "./Models.ts"
@@ -24,9 +27,12 @@ import type { Selected } from "./Select.ts"
 export const positiveText = (task: string): string =>
   task.replace(/(?:\b(?:not|never|no|without)\b|n't\b)[^.,;:()\n]*/gi, " ")
 
+/** Text for matching: any case, and a phrase still matches where the task's text breaks a line in it. */
+const folded = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ")
+
 const said = (text: string, phrases: ReadonlyArray<string>): string | undefined => {
-  const t = text.toLowerCase()
-  return phrases.find((p) => p.trim() !== "" && t.includes(p.trim().toLowerCase()))
+  const t = folded(text)
+  return phrases.find((p) => p.trim() !== "" && t.includes(folded(p)))
 }
 
 /** The phrase of `any` the text says, when it says none of `none`. */
@@ -113,3 +119,105 @@ export const fillsOfChosen = (task: string, chosen: ReadonlyArray<Selected>): Ma
     const values = fillsFor(task, c.workflow)
     return values.size === 0 ? [] : [[c.workflow.id, values] as const]
   }))
+
+/** One change of a task that lists several: its number in the list (its place, for bullets) and its text. */
+export interface TaskPart {
+  readonly label: string
+  readonly text: string
+}
+
+const ITEM = /^\s{0,3}(?:(\d{1,2})[.)]|[-*•])\s+/
+
+/**
+ * The changes a task lists, when it lists two or more (a numbered or bulleted
+ * list): each item with the lines that follow it, up to the next item or a
+ * blank line followed by text that isn't indented. `shared` is the rest, what
+ * the task says of all of them ("Make sure the tests pass"). Undefined for a
+ * task that is one change.
+ */
+export const taskParts = (task: string): { readonly parts: ReadonlyArray<TaskPart>; readonly shared: string } | undefined => {
+  const parts: Array<{ label: string; lines: Array<string> }> = []
+  const shared: Array<string> = []
+  let current: { label: string; lines: Array<string> } | undefined
+  let blank = false
+  for (const line of task.replace(/\r\n/g, "\n").split("\n")) {
+    const item = ITEM.exec(line)
+    if (item !== null) {
+      current = { label: item[1] ?? String(parts.length + 1), lines: [line.slice(item[0].length)] }
+      parts.push(current)
+    } else if (line.trim() === "") {
+      blank = true
+      continue
+    } else if (current !== undefined && (!blank || /^\s{2,}/.test(line))) {
+      current.lines.push(line.trim())
+    } else {
+      current = undefined
+      shared.push(line)
+    }
+    blank = false
+  }
+  return parts.length < 2 ? undefined : { parts: parts.map((p) => ({ label: p.label, text: p.lines.join("\n") })), shared: shared.join("\n") }
+}
+
+/** How one change of a task in parts asks for a workflow: the steps it leaves out and the values it states. */
+export interface PartUse {
+  readonly label: string
+  readonly skip: ReadonlyArray<number>
+  readonly values: ReadonlyMap<string, string>
+}
+
+/**
+ * A task that lists several changes, picked change by change: each item, with
+ * what the task says of all of them, is a task of its own for the cues and
+ * the fills, so each change gets its own values (the second change's key is
+ * never the first's) and what one change rules out doesn't rule it out for
+ * another. A workflow several changes need is chosen once, without the steps
+ * none of them needs.
+ */
+export interface PartsChoice {
+  readonly chosen: Array<Selected>
+  /** For each chosen workflow, the changes that ask for it, in the task's order. */
+  readonly uses: Map<string, Array<PartUse>>
+  /** How many changes the task lists. */
+  readonly count: number
+}
+
+/** The cues' choice for a task that lists several changes; undefined for a task that is one change. */
+export const partsChoice = (memory: WorkflowMemory, task: string): PartsChoice | undefined => {
+  const split = taskParts(task)
+  if (split === undefined) return undefined
+  const uses = new Map<string, Array<PartUse>>()
+  const whys = new Map<string, Array<string>>()
+  for (const p of split.parts) {
+    const text = split.shared.trim() === "" ? p.text : `${p.text}\n\n${split.shared}`
+    for (const c of cueChoice(memory, text)) {
+      const id = c.workflow.id
+      uses.set(id, [...(uses.get(id) ?? []), { label: p.label, skip: c.skip, values: fillsFor(text, c.workflow) }])
+      whys.set(id, [...(whys.get(id) ?? []), `${p.label}: ${c.why}`])
+    }
+  }
+  const chosen = graphOrder(memory).flatMap((w) => {
+    const u = uses.get(w.id)
+    if (u === undefined) return []
+    const skip = u[0].skip.filter((s) => u.every((x) => x.skip.includes(s)))
+    return [{ workflow: w, skip, why: (whys.get(w.id) ?? []).join("; ") }]
+  })
+  return { chosen, uses, count: split.parts.length }
+}
+
+/** The values the changes state for a workflow, as one set; undefined when two changes give a blank different values. */
+export const mergedValues = (uses: ReadonlyArray<PartUse>): Map<string, string> | undefined => {
+  const out = new Map<string, string>()
+  for (const u of uses) {
+    for (const [placeholder, value] of u.values) {
+      const had = out.get(placeholder)
+      if (had !== undefined && had !== value) return undefined
+      out.set(placeholder, value)
+    }
+  }
+  return out
+}
+
+/** The workflows the cues pick for a task: change by change when it lists several. */
+export const choiceByCues = (memory: WorkflowMemory, task: string): Array<Selected> =>
+  partsChoice(memory, task)?.chosen ?? cueChoice(memory, task)

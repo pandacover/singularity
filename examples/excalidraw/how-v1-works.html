@@ -1,0 +1,1726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory v1, from empty to learning</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --code: #f3f2ee;
+    --wash: rgba(42, 120, 214, 0.07);
+    /* categorical slot 1: picked, shown, the accent */
+    --accent: #2a78d6;
+    --accent-wash: rgba(42, 120, 214, 0.13);
+    --on-accent: #ffffff;
+    /* categorical slot 2: edited where memory showed nothing */
+    --s-2: #eb6834;
+    /* status: warning (always with an icon and a label) */
+    --warn: #fab219;
+    --warn-wash: rgba(250, 178, 25, 0.16);
+    /* phases of a run: ordinal ramp, the most avoidable part most prominent */
+    --ph-look: #104281; --ph-look-ink: #ffffff;
+    --ph-edit: #2a78d6; --ph-edit-ink: #ffffff;
+    --ph-check: #86b6ef; --ph-check-ink: #0b0b0b;
+    /* depth of a block in a place's chain: ordinal ramp, innermost most prominent */
+    --d1: #86b6ef; --d1-ink: #0b0b0b;
+    --d2: #5598e7; --d2-ink: #0b0b0b;
+    --d3: #256abf; --d3-ink: #ffffff;
+    --d4: #104281; --d4-ink: #ffffff;
+    /* the gate: diverging pair */
+    --pos: #2a78d6;
+    --neg: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10); --code: #121211;
+      --wash: rgba(57, 135, 229, 0.10);
+      --accent: #3987e5; --accent-wash: rgba(57, 135, 229, 0.18); --on-accent: #ffffff;
+      --s-2: #d95926;
+      --warn: #fab219; --warn-wash: rgba(250, 178, 25, 0.13);
+      --ph-look: #86b6ef; --ph-look-ink: #0b0b0b;
+      --ph-edit: #3987e5; --ph-edit-ink: #ffffff;
+      --ph-check: #184f95; --ph-check-ink: #ffffff;
+      --d1: #184f95; --d1-ink: #ffffff;
+      --d2: #256abf; --d2-ink: #ffffff;
+      --d3: #5598e7; --d3-ink: #0b0b0b;
+      --d4: #9ec5f4; --d4-ink: #0b0b0b;
+      --pos: #3987e5; --neg: #e66767;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10); --code: #121211;
+    --wash: rgba(57, 135, 229, 0.10);
+    --accent: #3987e5; --accent-wash: rgba(57, 135, 229, 0.18); --on-accent: #ffffff;
+    --s-2: #d95926;
+    --warn: #fab219; --warn-wash: rgba(250, 178, 25, 0.13);
+    --ph-look: #86b6ef; --ph-look-ink: #0b0b0b;
+    --ph-edit: #3987e5; --ph-edit-ink: #ffffff;
+    --ph-check: #184f95; --ph-check-ink: #ffffff;
+    --d1: #184f95; --d1-ink: #ffffff;
+    --d2: #256abf; --d2-ink: #ffffff;
+    --d3: #5598e7; --d3-ink: #0b0b0b;
+    --d4: #9ec5f4; --d4-ink: #0b0b0b;
+    --pos: #3987e5; --neg: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root {
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 72px;
+  }
+  .wrap { max-width: 1220px; margin: 0 auto; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; font-weight: 650; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 0 0 12px; font-weight: 650; }
+  h2:focus { outline: none; }
+  h3 { font-size: 16px; line-height: 1.35; margin: 26px 0 8px; font-weight: 650; }
+  h4 { font-size: 15px; margin: 0; font-weight: 650; }
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 10px; padding-left: 22px; }
+  li { margin: 0 0 4px; }
+  code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.86em; }
+  :where(p, li, td, dd, .rich) code { background: var(--code); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; overflow-wrap: anywhere; }
+  .lede { color: var(--ink-2); font-size: 17px; max-width: 840px; margin-bottom: 8px; }
+  .note { color: var(--muted); font-size: 14px; max-width: 840px; }
+  .muted { color: var(--muted); }
+  .ink-2 { color: var(--ink-2); }
+  .small { font-size: 14px; }
+
+  /* ---------- stepper ---------- */
+  .stepper {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--page);
+    margin: 18px -20px 18px; padding: 8px 20px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .phases, .steps { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); column-gap: 6px; }
+  .phase {
+    font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+    border-top: 2px solid var(--axis); padding-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .phase.on { border-top-color: var(--accent); color: var(--ink-2); }
+  .phase.build { grid-column: 1 / span 6; }
+  .phase.use { grid-column: 7 / span 4; }
+  .phase.learn { grid-column: 11 / span 1; }
+  .step {
+    appearance: none; border: 0; background: none; font: inherit; color: var(--ink-2);
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 6px 2px 4px; border-radius: 8px; cursor: pointer; text-align: center; font-size: 13px; line-height: 1.25;
+  }
+  .step:hover { background: var(--wash); }
+  .step:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .step .n {
+    width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    border: 1.5px solid var(--axis); font-size: 13px; font-weight: 600; background: var(--surface);
+  }
+  .step.seen .n { border-color: var(--accent); color: var(--ink); }
+  .step[aria-current="step"] .n { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .step[aria-current="step"] .lbl { color: var(--ink); font-weight: 600; }
+  .step .mt { font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; line-height: 15px; }
+  @media (max-width: 880px) {
+    .stepper { overflow-x: auto; }
+    .phases, .steps { grid-template-columns: repeat(11, 78px); }
+  }
+
+  /* ---------- layout ---------- */
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  @media (max-width: 1040px) { .main { grid-template-columns: minmax(0, 1fr); } .home { position: static !important; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px 24px; }
+  #stage { scroll-margin-top: 112px; min-width: 0; }
+  .eyebrow { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 1px 10px;
+    font-size: 12.5px; border: 1px solid var(--border); color: var(--ink-2); background: var(--page);
+  }
+  .badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .badge.model::before { background: var(--accent); }
+  .badge.free::before { border: 1.5px solid var(--muted); width: 5px; height: 5px; }
+  .takeaway { margin: 20px 0 0; padding: 12px 14px; border-radius: 8px; background: var(--wash); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+  .btn {
+    appearance: none; font: inherit; font-size: 14.5px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    border-radius: 8px; padding: 7px 14px; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn:hover:not(:disabled) { background: var(--wash); }
+  .btn:disabled { color: var(--muted); cursor: default; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+  .btn.primary:disabled { background: var(--surface); border-color: var(--border); color: var(--muted); }
+  .btn.sm { font-size: 13.5px; padding: 4px 10px; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--page); }
+  .panel h4 { margin-bottom: 8px; }
+  .eyebrow-sm { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .eyebrow-sm .id { text-transform: none; letter-spacing: 0; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+
+  /* ---------- memory home ---------- */
+  .home { position: sticky; top: 118px; }
+  .home .card { padding: 16px 18px 18px; }
+  .home h3 { margin: 0 0 2px; font-size: 15px; }
+  .home .path { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .tree, .tree ul { list-style: none; padding: 0; margin: 0; }
+  .tree ul { padding-left: 16px; border-left: 1px solid var(--grid); margin-left: 6px; }
+  .ti { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 2px 0; font-size: 13.5px; }
+  .ti > .tn { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; color: var(--ink); }
+  .ti > .tnote { color: var(--muted); font-size: 12.5px; }
+  .ti.ghost > .tn, .ti.ghost > .tnote { color: var(--muted); font-style: italic; }
+  .ti .new { font-size: 11px; font-weight: 600; color: var(--ink); display: inline-flex; align-items: center; gap: 4px; }
+  .ti .new::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .ti .read { font-size: 11px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; }
+  .home-empty { color: var(--muted); font-style: italic; font-size: 14px; padding: 6px 0; }
+  .home-sum { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--grid); font-size: 13.5px; color: var(--ink-2); }
+  .home-sum p { margin: 0 0 6px; }
+  .home-sum .k { color: var(--muted); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* ---------- small pieces ---------- */
+  .quote {
+    border-left: 3px solid var(--axis); background: var(--page); border-radius: 0 8px 8px 0;
+    padding: 10px 14px; margin: 10px 0 14px; color: var(--ink-2); white-space: pre-wrap; font-size: 15px;
+  }
+  .quote .ql { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; white-space: normal; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin: 14px 0 4px; }
+  .kpi { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px 10px; background: var(--page); }
+  .kpi .l { font-size: 13px; color: var(--muted); }
+  .kpi .v { font-size: 23px; font-weight: 650; line-height: 1.2; }
+  table.t { border-collapse: collapse; width: 100%; font-size: 14px; margin: 6px 0 4px; }
+  table.t th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; border-bottom: 1px solid var(--axis); padding: 6px 10px 6px 0; }
+  table.t td { border-bottom: 1px solid var(--grid); padding: 7px 10px 7px 0; vertical-align: top; }
+  table.t td.num, table.t th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.t tr.mark td { background: var(--wash); }
+  .scroll-x { overflow-x: auto; }
+  dl.rec { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 14.5px; }
+  dl.rec dt { color: var(--muted); }
+  dl.rec dd { margin: 0; }
+  .ok, .bad { font-weight: 700; }
+  .ok { color: var(--ink); }
+  .bad { color: var(--ink); }
+  .cmd { display: inline-flex; gap: 6px; align-items: baseline; margin: 0 10px 4px 0; }
+  .glyph { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; line-height: 1; font-weight: 700; flex: none; transform: translateY(2px); }
+  .glyph.yes { background: var(--accent); color: var(--on-accent); }
+  .glyph.no { border: 1.5px solid var(--ink-2); color: var(--ink); }
+  .glyph.idle { border: 1.5px solid var(--muted); color: var(--muted); }
+  .glyph.miss { background: var(--s-2); color: #ffffff; }
+  .glyph.warn { background: var(--warn); color: #0b0b0b; border-radius: 4px; }
+  .glyph.dash { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+  .chip-btn {
+    appearance: none; font: inherit; font-size: 13.5px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+    border-radius: 999px; padding: 3px 12px;
+  }
+  .chip-btn:hover { background: var(--wash); }
+  .chip-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash); color: var(--ink); }
+  .chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tag { font-size: 11.5px; border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; color: var(--ink-2); white-space: nowrap; }
+  .blank { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.86em; border: 1px dashed var(--muted); border-radius: 4px; padding: 0 3px; color: var(--ink); background: transparent; }
+  .fv { background: var(--accent-wash); border-bottom: 2px solid var(--accent); border-radius: 2px; color: var(--ink); padding: 0 1px; }
+  .cue { background: var(--accent-wash); border-radius: 3px; padding: 0 2px; color: var(--ink); }
+  details { margin: 10px 0; }
+  summary { cursor: pointer; color: var(--ink-2); font-size: 14.5px; }
+  summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  pre.json {
+    background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    font: 12px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; overflow: auto; max-height: 360px; color: var(--ink-2); margin: 8px 0 0;
+  }
+  .flow3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+  @media (max-width: 760px) { .flow3 { grid-template-columns: 1fr; } }
+  .flow3 .panel { position: relative; }
+  .flow3 .num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 12.5px; font-weight: 700; margin-right: 6px; }
+
+  /* ---------- turn strips ---------- */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; color: var(--ink-2); margin: 4px 0 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .sw.ph-look, .turn.ph-look { background: var(--ph-look); color: var(--ph-look-ink); }
+  .sw.ph-edit, .turn.ph-edit { background: var(--ph-edit); color: var(--ph-edit-ink); }
+  .sw.ph-check, .turn.ph-check { background: var(--ph-check); color: var(--ph-check-ink); }
+  .turns { display: flex; flex-wrap: wrap; gap: 4px; }
+  .turn {
+    position: relative; width: 34px; height: 34px; border-radius: 4px; display: grid; place-items: center;
+    font-size: 12px; font-weight: 600; cursor: default;
+  }
+  .turn:hover, .turn:focus-visible { filter: brightness(1.12); }
+  .turn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .turn.failed::after {
+    content: "✗"; position: absolute; top: -7px; right: -7px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--surface); color: var(--ink); border: 1.5px solid var(--ink); font-size: 10px; line-height: 13px; text-align: center;
+  }
+  .strip-notes { font-size: 14px; color: var(--ink-2); margin-top: 10px; }
+  .strip-notes div { margin-bottom: 3px; }
+
+  /* ---------- code viewer ---------- */
+  .code {
+    background: var(--code); border: 1px solid var(--border); border-radius: 10px; padding: 8px 0;
+    overflow-x: auto; font: 12.5px/1.62 ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .code .file { padding: 0 14px 6px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .code .file b { color: var(--ink); font-weight: 600; }
+  .ln { display: grid; grid-template-columns: 60px 30px auto; align-items: center; min-width: max-content; padding-right: 16px; }
+  .ln .no { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; font-variant-numeric: tabular-nums; }
+  .ln .mk { display: flex; justify-content: center; }
+  .ln .tx { white-space: pre; color: var(--ink-2); }
+  .ln.region { background: var(--accent-wash); }
+  .ln.region .tx { color: var(--ink); }
+  .ln.head .tx { color: var(--ink); font-weight: 600; }
+  .ln.edit { background: var(--accent-wash); }
+  .ln.edit .tx { color: var(--ink); font-weight: 600; }
+  .ln.edit .no::after { content: "+"; color: var(--ink); font-weight: 700; }
+  .ln.changed .tx, .ln.added .tx { text-decoration: underline; text-decoration-color: var(--s-2); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .u-changed { text-decoration: underline; text-decoration-color: var(--s-2); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .ln.sep .tx { color: var(--muted); font-style: italic; }
+  .dot { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; box-shadow: 0 0 0 2px var(--code); }
+  .dot.d1 { background: var(--d1); color: var(--d1-ink); }
+  .dot.d2 { background: var(--d2); color: var(--d2-ink); }
+  .dot.d3 { background: var(--d3); color: var(--d3-ink); }
+  .dot.d4 { background: var(--d4); color: var(--d4-ink); }
+  .dot.x { background: var(--surface); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: none; }
+  .opens { font-size: 11px; color: var(--muted); }
+  .walk-text { min-height: 52px; margin: 10px 0 6px; }
+  .result {
+    margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--page); font-size: 15px;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .chainlist { list-style: none; padding: 0; margin: 6px 0 0; }
+  .chainlist li { display: flex; gap: 8px; align-items: center; margin: 0 0 5px; font-size: 13.5px; flex-wrap: wrap; }
+  .chainlist li code { font-size: 12.5px; }
+
+  /* ---------- graph ---------- */
+  .graph-wrap { margin: 8px 0 4px; }
+  .graph-wrap svg { width: 100%; max-width: 760px; height: auto; display: block; margin: 0 auto; }
+  .gnode rect { fill: var(--surface); stroke: var(--axis); stroke-width: 1.2; }
+  .gnode text { fill: var(--ink); font: 600 13px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .gnode text.meta { fill: var(--muted); font-weight: 400; font-size: 11px; }
+  .gnode.pill rect { fill: var(--page); }
+  .gnode.pill text { fill: var(--ink-2); font-weight: 600; font-size: 12px; }
+  .gnode.click { cursor: pointer; }
+  .gnode.click:hover rect { stroke: var(--ink-2); }
+  .gnode:focus { outline: none; }
+  .gnode:focus-visible rect { stroke: var(--ink); stroke-width: 2.2; }
+  .gnode.on rect { fill: var(--accent-wash); stroke: var(--accent); stroke-width: 2; }
+  .gnode.sel rect { stroke: var(--ink); stroke-width: 2.2; }
+  .gnode.dim { opacity: 0.4; }
+  .gedge { fill: none; stroke: var(--axis); stroke-width: 1.6; }
+  .gedge.on { stroke: var(--accent); stroke-width: 2; }
+  .gedge.dim { opacity: 0.35; }
+  .ghit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: help; }
+  .ghit:focus { outline: none; }
+  .ghit:focus-visible + .gedge, .ghit:hover + .gedge { stroke: var(--ink-2); stroke-width: 2.4; }
+  .arrow-fill { fill: var(--axis); }
+  .arrow-on { fill: var(--accent); }
+  .graph-hint { font-size: 13.5px; color: var(--muted); text-align: center; margin: 4px 0 0; }
+
+  /* ---------- workflow card ---------- */
+  .wf { border: 1px solid var(--border); border-radius: 10px; background: var(--page); padding: 14px 16px; margin-top: 10px; }
+  .wf-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .wf .k { color: var(--muted); font-size: 13px; margin-right: 4px; }
+  .wf p { font-size: 14.5px; margin-bottom: 6px; }
+  .wf-steps { padding-left: 22px; margin: 8px 0; }
+  .wf-steps li { margin-bottom: 9px; font-size: 14.5px; }
+  .wf-steps li.left-out { color: var(--muted); }
+  .wf-steps li.left-out .do { text-decoration: line-through; text-decoration-color: var(--muted); }
+  .wf-steps .when { font-size: 13.5px; color: var(--ink-2); font-style: italic; }
+  .wf-steps .where { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .wf-steps .where::before { content: "⌖ "; color: var(--ink-2); }
+  .wf-steps .where.none::before { content: "○ "; }
+  .wf-steps .where .mono { overflow-wrap: anywhere; }
+  .wf-steps .why-left { font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- pick ---------- */
+  .task-input {
+    width: 100%; font: 14.5px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 9px 11px; resize: vertical;
+  }
+  .task-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .editor { margin: 2px 0 8px; }
+  .editor[hidden] { display: none; }
+  .reading { white-space: normal; font-size: 15px; line-height: 1.6; background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--ink-2); }
+  .reading del { color: var(--muted); text-decoration-thickness: 1.5px; }
+  .reading mark { background: var(--accent-wash); color: var(--ink); border-bottom: 2px solid var(--accent); padding: 0 1px; border-radius: 2px; }
+  .results { list-style: none; padding: 0; margin: 8px 0 0; }
+  .results li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid var(--grid); margin: 0; }
+  .results li:last-child { border-bottom: 0; }
+  .results .nm { font-weight: 600; }
+  .results li.no .nm { font-weight: 400; color: var(--muted); }
+  .results .why { font-size: 13.5px; color: var(--ink-2); }
+  .results li.no .why { color: var(--muted); }
+  .results .sub { grid-column: 2; font-size: 13.5px; color: var(--ink-2); }
+  .pick-note { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--page); font-size: 14.5px; color: var(--ink-2); }
+  .pick-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 12px; align-items: start; }
+  @media (max-width: 900px) { .pick-grid { grid-template-columns: 1fr; } }
+  .legend-inline { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  .legend-inline del { color: var(--muted); }
+  .legend-inline mark { background: var(--accent-wash); color: var(--ink); border-bottom: 2px solid var(--accent); }
+
+  /* ---------- hand-over ---------- */
+  .ho {
+    max-height: 540px; overflow: auto; background: var(--code); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; font: 12.5px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--ink-2);
+  }
+  .ho:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hl { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.6em; }
+  .hl.h1 { color: var(--ink); font-weight: 700; }
+  .hl.h2 { color: var(--ink); font-weight: 700; margin-top: 6px; }
+  .hl.ex, .hl.fence { color: var(--muted); }
+  .hl.place { color: var(--ink); background: var(--wash); border-radius: 3px; }
+  .ho-legend .swatch-place { display: inline-block; width: 26px; height: 12px; border-radius: 3px; background: var(--wash); border: 1px solid var(--border); }
+  .hl.filled { color: var(--ink); }
+  .hl.blanks { font-style: italic; }
+  .hl.warn { background: var(--warn-wash); border-left: 3px solid var(--warn); padding-left: 8px; margin-left: -11px; color: var(--ink); }
+  .hl.check { color: var(--ink); }
+  .ho-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); margin: 8px 0; }
+  .ho-legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .meter-wrap { margin: 12px 0 14px; max-width: 620px; }
+  .meter-top { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--ink-2); margin-bottom: 6px; gap: 10px; }
+  .meter-top b { color: var(--ink); font-size: 18px; font-weight: 650; }
+  .meter { position: relative; height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  .meter .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); }
+  .meter .tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .meter-bottom { position: relative; height: 18px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .meter-bottom span { position: absolute; white-space: nowrap; transform: translateX(-100%); }
+
+  /* ---------- during ---------- */
+  .tester { border: 1px solid var(--border); border-radius: 10px; background: var(--page); padding: 14px 16px; }
+  .tester input {
+    width: 100%; font: 13.5px ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 8px 10px;
+  }
+  .tester input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .warnbox { margin-top: 10px; border-left: 3px solid var(--warn); background: var(--warn-wash); border-radius: 0 8px 8px 0; padding: 10px 12px; font-size: 14px; }
+  .warnbox pre { margin: 6px 0 0; white-space: pre-wrap; font: 12.5px/1.55 ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--ink); }
+  .quietbox { margin-top: 10px; border-left: 3px solid var(--axis); background: var(--surface); border-radius: 0 8px 8px 0; padding: 10px 12px; font-size: 14px; color: var(--ink-2); }
+  .pits { list-style: none; padding: 0; margin: 6px 0 0; }
+  .pits li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 14.5px; margin: 0; }
+  .pits li:last-child { border-bottom: 0; }
+  .pits .trig { grid-column: 2; font-size: 13px; color: var(--muted); }
+
+  /* ---------- after ---------- */
+  .fb-row { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 6px 14px; padding: 9px 0; border-bottom: 1px solid var(--grid); align-items: start; }
+  .fb-row:last-child { border-bottom: 0; }
+  @media (max-width: 720px) { .fb-row { grid-template-columns: 1fr; } }
+  .fb-name { font-weight: 600; font-size: 14.5px; }
+  .fb-name small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
+  .fb-places { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pl {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 9px 2px 4px; background: var(--surface); color: var(--ink-2);
+  }
+  .pl .glyph { transform: none; }
+
+  /* ---------- gate ---------- */
+  .gate { margin: 10px 0 4px; }
+  .gate-head, .gate-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 120px; gap: 10px; align-items: center; }
+  .gate-head { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .gate-head .axis { display: flex; justify-content: space-between; }
+  .gate-row { padding: 8px 0; }
+  .gate-row .lbl { font-size: 14px; }
+  .gate-row .lbl small { display: block; color: var(--muted); font-size: 12.5px; }
+  .track { position: relative; height: 24px; }
+  .track .mid { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--axis); }
+  .bar { position: absolute; top: 3px; height: 18px; cursor: default; }
+  .bar.pos { left: calc(50% + 1px); background: var(--pos); border-radius: 0 4px 4px 0; }
+  .bar.neg { right: calc(50% + 1px); background: var(--neg); border-radius: 4px 0 0 4px; }
+  .bar:hover, .bar:focus-visible { filter: brightness(1.12); }
+  .bar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .bar-val { position: absolute; top: 3px; font-size: 12.5px; line-height: 18px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .score { font-size: 14px; }
+  .score b { font-size: 18px; font-weight: 650; }
+  .diff { list-style: none; padding: 0; margin: 6px 0 0; }
+  .diff li { padding: 8px 0 8px 12px; border-left: 3px solid var(--accent); margin: 0 0 8px; background: var(--page); border-radius: 0 8px 8px 0; font-size: 14.5px; padding-right: 10px; }
+  .diff li .w { font-size: 12.5px; color: var(--muted); display: block; }
+
+  /* ---------- tooltip ---------- */
+  .tip {
+    position: fixed; z-index: 50; max-width: 340px; pointer-events: none;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16); padding: 8px 10px; font-size: 13.5px; line-height: 1.45;
+  }
+  .tip strong { display: block; font-size: 15px; }
+  .tip .tw { color: var(--ink-2); margin-top: 2px; }
+  .tip .tk { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--axis); vertical-align: middle; margin-right: 6px; }
+  footer.src { margin-top: 26px; font-size: 13px; color: var(--muted); max-width: 900px; }
+  footer.src code { font-size: 12px; }
+  /* code is shown as typed: no ligatures turning => or === into symbols */
+  .viz-root code, .viz-root .mono, .viz-root .code, .viz-root .ho, .viz-root pre, .viz-root input, .viz-root textarea { font-variant-ligatures: none; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <header>
+      <h1>Memory v1, from empty to learning</h1>
+      <p class="lede">What the local-first memory does at each step, shown on real data. It learns from six runs of two tasks, then a new task arrives (a “Presenter mode” setting) and gets the workflows it needs, with no model call at task start. Click a step, or use the ← → keys.</p>
+      <p class="note">Everything below is from the excalidraw runs: memory version 2 (sealed as <code>memory-local-first</code>), the six runs it learned from, and one Presenter-mode run that used it. In the measurement each run had its own copy of memory, and the eval passed v1's hooks to it; here they share one memory home, the way it would work in your own sessions once the hooks are installed there.</p>
+    </header>
+    <nav class="stepper" id="stepper" aria-label="Steps"></nav>
+    <div class="main">
+      <main id="stage" class="card" tabindex="-1"></main>
+      <aside class="home" id="home" aria-label="Memory home"></aside>
+    </div>
+    <footer class="src">
+      Sources: memory <code>runs/excalidraw/memory/v1-cues</code> (version 2) and the records in it; the Presenter run <code>runs/excalidraw/v1cues-toggles/runs/toggle-presenter-r1-62362b</code> (its hand-over log and transcript); the code in <code>src/workflows/</code>. The picks in step 7 run a line-for-line copy of <code>Cues.ts</code>, checked against it on all nine suite tasks; the place lookups in step 8 were computed with v1's own <code>Places.ts</code> and <code>Locate.ts</code>; the learning round in step 11 is the one tried in <code>C:\singularity-workspaces\_v1-evolve-test</code>.
+    </footer>
+  </div>
+  <div class="tip" id="tip" role="tooltip" hidden></div>
+</div>
+
+<script>
+"use strict";
+const DATA = {"memory":{"workflows":[{"id":"add-app-state-field","name":"Add a persisted field to the app state","use_when":"A task asks for a new appState field/setting with a default and rules for where it is stored (browser local storage, export, collaboration server).","only_if_asked":false,"blanks":[{"name":"field","meaning":"the new appState field name"},{"name":"default","meaning":"its default value"}],"steps":[{"do":"Add `{field}: {type};` to the AppState interface.","place":"p-c4a20a9e","when":null},{"do":"Add `{field}: {default},` to the default app state returned by getDefaultAppState.","place":"p-4a2d0bc9","when":null},{"do":"Add `{field}: { browser: \u003cbool>, export: \u003cbool>, server: \u003cbool> }` to the storage config, following the storage rules the task states (e.g. browser true, export false, server false).","place":"p-39d6dbca","when":null},{"do":"Regenerate snapshots (see update-test-snapshots) since a new app-state field changes many snapshots.","place":null,"when":null}],"checks":["yarn test:typecheck"],"pitfalls":["watch-flag-test-update"],"cues":{"any":["appstate field","new setting","toggle setting","state field"],"none":[],"steps":[],"fills":[{"placeholder":"{field}","from":"code","n":1,"phrase":null},{"placeholder":"{default}","from":"after","n":1,"phrase":"default"}]},"tasks":["toggle-minimap"],"runs":3},{"id":"create-toggle-action","name":"Create a toggle action for a boolean app-state field","use_when":"A task asks for a new action that toggles a boolean setting (needed before it can be put in a menu, shortcut or preferences).","only_if_asked":false,"blanks":[{"name":"action","meaning":"exported action const name, e.g. actionToggle{Thing}"},{"name":"actionName","meaning":"the string action name registered in ActionName"},{"name":"field","meaning":"the boolean appState field being toggled"},{"name":"label","meaning":"the i18n label key and its English text"}],"steps":[{"do":"Create the new action file modelled on an existing toggle action (e.g. the grid-mode or objects-snap-mode toggle): `register({ name: \"{actionName}\", label: \"labels.{label}\", viewMode: true if it must work in view mode, trackEvent with predicate on !appState.{field}, perform returning appState with {field} flipped and CaptureUpdateAction.EVENTUALLY, checked: (appState) => appState.{field} })`.","place":"p-4eb1f0bc","when":null},{"do":"Add `| \"{actionName}\"` to the ActionName union.","place":"p-dc01975e","when":null},{"do":"Export the action: `export { {action} } from \"./{action file}\";`.","place":"p-fdd3fc89","when":null},{"do":"Add the English label under labels: `\"{label}\": \"\u003ctext>\"`.","place":"p-ce97afb0","when":null}],"checks":["yarn test:typecheck"],"pitfalls":[],"cues":{"any":["toggle setting","toggle it","a toggle","new toggle"],"none":[],"steps":[],"fills":[{"placeholder":"{field}","from":"code","n":1,"phrase":null}]},"tasks":["toggle-minimap"],"runs":3},{"id":"give-action-keyboard-shortcut","name":"Give an action a keyboard shortcut and list it in the help dialog","use_when":"A task asks for a new keyboard shortcut for an action, including showing it in the help dialog.","only_if_asked":false,"blanks":[{"name":"action","meaning":"the action that gets the shortcut"},{"name":"actionName","meaning":"the string action name used as ShortcutName"},{"name":"shortcut","meaning":"the shortcut text, e.g. Alt+\u003ckey>"},{"name":"code","meaning":"key code property name in CODES and its event.code value"},{"name":"label","meaning":"the i18n label key of the action"}],"steps":[{"do":"Add `{code}: \"\u003cEventCode>\",` to CODES if it isn't there already.","place":"p-86f45d72","when":"only if the key code is not already defined"},{"do":"Add `| \"{actionName}\"` to the ShortcutName union.","place":"p-8240d44a","when":null},{"do":"Add `{actionName}: [getShortcutKey(\"{shortcut}\")],` to the shortcut map.","place":"p-97633f87","when":null},{"do":"In the action's own file add `keyTest: (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.{code}` (match the modifiers of the shortcut).","place":null,"when":null},{"do":"Add `\u003cShortcut label={t(\"labels.{label}\")} shortcuts={[getShortcutKey(\"{shortcut}\")]} />` to the shortcuts island in the help dialog.","place":"p-ffb8565e","when":null}],"checks":["yarn test:typecheck"],"pitfalls":[],"cues":{"any":["help dialog","with alt+","new keyboard shortcut","new shortcut"],"none":["shortcut from"],"steps":[],"fills":[{"placeholder":"{shortcut}","from":"key","n":1,"phrase":null}]},"tasks":["altkey-zen-m","toggle-minimap"],"runs":6},{"id":"change-keyboard-shortcut","name":"Change an existing action's keyboard shortcut","use_when":"A task asks to change the key combination of an existing action and update everything that shows or tests it.","only_if_asked":false,"blanks":[{"name":"newCode","meaning":"CODES property name and event.code of the new key"},{"name":"oldShortcut","meaning":"the old shortcut text"},{"name":"newShortcut","meaning":"the new shortcut text"},{"name":"actionName","meaning":"shortcut map key of the action"}],"steps":[{"do":"Add `{newCode}: \"\u003cEventCode>\",` to CODES if it isn't defined yet.","place":"p-86f45d72","when":"only if the key code is not already defined"},{"do":"In the action's own file, change the keyTest to compare event.code with CODES.{newCode} (keep the modifier checks).","place":null,"when":null},{"do":"Change the shortcut map entry for {actionName} to getShortcutKey(\"{newShortcut}\").","place":"p-97633f87","when":null},{"do":"Change the matching Shortcut in the help dialog to getShortcutKey(\"{newShortcut}\").","place":"p-ffb8565e","when":null},{"do":"Search the repo (tests, locales, docs) for the old shortcut text/code and update any remaining mentions.","place":null,"when":null},{"do":"Run typecheck and tests; regenerate snapshots if they changed.","place":null,"when":null}],"checks":["yarn test:typecheck","yarn test:update"],"pitfalls":["watch-flag-test-update"],"cues":{"any":["shortcut from","change the keyboard shortcut","change the shortcut"],"none":[],"steps":[],"fills":[{"placeholder":"{newShortcut}","from":"key","n":2,"phrase":null}]},"tasks":["altkey-zen-m","toggle-minimap"],"runs":6},{"id":"add-shortcut-keyboard-test","name":"Add a test that the shortcut toggles the action","use_when":"A task explicitly asks to add a test for a keyboard shortcut.","only_if_asked":true,"blanks":[{"name":"stateField","meaning":"app-state field the action changes"},{"name":"newShortcut","meaning":"the shortcut's key and modifier"}],"steps":[{"do":"In the Excalidraw component test file, import CODES from the common package and Keyboard from the UI test helpers.","place":"p-60dd6056","when":null},{"do":"Add an `it` that renders `\u003cExcalidraw handleKeyboardGlobally />`, asserts h.state.{stateField} is false, presses the new shortcut with Keyboard, and asserts it flipped; also assert the old shortcut does nothing when relevant.","place":null,"when":null}],"checks":["yarn vitest run packages/excalidraw/tests/excalidraw.test.tsx"],"pitfalls":["keyboard-test-needs-global-handling"],"cues":{"any":["add a test","add tests","new test","test for the shortcut","test that the shortcut"],"none":[],"steps":[],"fills":[]},"tasks":["altkey-zen-m"],"runs":2},{"id":"add-action-to-canvas-context-menu","name":"Add an action to the canvas right-click menu","use_when":"A task asks for an action to be available from the canvas context menu (optionally also in view mode).","only_if_asked":false,"blanks":[{"name":"action","meaning":"the action const to add"},{"name":"actionName","meaning":"its shortcut/action name string used in the context-menu test"}],"steps":[{"do":"Import {action} in the actions import list.","place":"p-66d2e407","when":null},{"do":"Add {action} to the canvas menu item list in getContextMenuItems.","place":"p-6655ad1a","when":null},{"do":"Add {action} to the view-mode canvas menu list.","place":"p-ae28280f","when":"only if the task wants it in view mode too"},{"do":"Add \"{actionName}\" to expectedShortcutNames in the canvas context menu test, in the same position as in the menu.","place":"p-69dba589","when":null},{"do":"Regenerate snapshots (see update-test-snapshots).","place":null,"when":null}],"checks":["yarn test:typecheck","yarn test:update"],"pitfalls":["app-tsx-ambiguous-edit"],"cues":{"any":["right-click menu","context menu","right-click"],"none":[],"steps":[{"step":3,"any":["view mode"],"none":[]}],"fills":[]},"tasks":["toggle-minimap"],"runs":3},{"id":"add-preference-toggle-to-main-menu","name":"Add a toggle to Preferences in the main menu","use_when":"A task asks for a setting to be toggleable from Preferences in the main menu.","only_if_asked":false,"blanks":[{"name":"action","meaning":"toggle action const"},{"name":"Item","meaning":"new component name PreferencesToggle{Thing}Item"},{"name":"Thing","meaning":"suffix used for Preferences.Toggle{Thing}"},{"name":"field","meaning":"appState field shown as checked"}],"steps":[{"do":"Import {action} in the actions import list of the default items file.","place":"p-9db93121","when":null},{"do":"Add an exported `{Item}` component modelled on the other PreferencesToggle…Item components (useI18n, useExcalidrawActionManager, useUIAppState; a checked DropdownMenuItem calling actionManager.executeAction({action})).","place":"p-0141a9dc","when":null},{"do":"Render \u003c{Item} /> in the Preferences submenu default children.","place":"p-d41f091b","when":null},{"do":"Expose it: `Preferences.Toggle{Thing} = {Item};`.","place":"p-12d0bbbb","when":null}],"checks":["yarn test:typecheck","yarn prettier --write packages/excalidraw/components/main-menu/DefaultItems.tsx"],"pitfalls":["app-tsx-ambiguous-edit","prettier-check-failure"],"cues":{"any":["from preferences","in preferences","preferences in the main menu","preferences menu"],"none":[],"steps":[],"fills":[]},"tasks":["toggle-minimap"],"runs":3},{"id":"update-test-snapshots","name":"Regenerate test snapshots and verify","use_when":"A change to app state, menus or shortcuts makes snapshot tests fail, or a task says tests must pass.","only_if_asked":false,"blanks":[],"steps":[{"do":"Run `yarn test:update` with no extra --watch flag (the script already passes one).","place":null,"when":null},{"do":"Run `yarn test:typecheck`.","place":null,"when":null},{"do":"Review changed snapshot files with git status to confirm only expected snapshots changed.","place":null,"when":null}],"checks":["yarn test:update","yarn test:typecheck"],"pitfalls":["watch-flag-test-update"],"cues":{"any":["tests","typecheck","snapshot"],"none":[],"steps":[],"fills":[]},"tasks":["altkey-zen-m","toggle-minimap"],"runs":5}],"edges":[{"from":"start","to":"add-app-state-field","relation":"LEADS_TO","condition":"task adds a new setting/state field","guidance":null,"pitfalls":null},{"from":"start","to":"change-keyboard-shortcut","relation":"LEADS_TO","condition":"task changes an existing shortcut","guidance":null,"pitfalls":null},{"from":"add-app-state-field","to":"create-toggle-action","relation":"PROVIDES_INPUT_FOR","condition":"the field needs a toggle action","guidance":"The action's perform flips the new field.","pitfalls":null},{"from":"create-toggle-action","to":"give-action-keyboard-shortcut","relation":"LEADS_TO","condition":"task asks for a keyboard shortcut","guidance":null,"pitfalls":null},{"from":"create-toggle-action","to":"add-action-to-canvas-context-menu","relation":"LEADS_TO","condition":"task asks for a context menu entry and no shortcut step precedes","guidance":"The context-menu test needs the action's shortcut name, so do the shortcut workflow first if both are asked.","pitfalls":null},{"from":"give-action-keyboard-shortcut","to":"add-action-to-canvas-context-menu","relation":"LEADS_TO","condition":"task asks for a canvas context menu entry","guidance":null,"pitfalls":null},{"from":"add-action-to-canvas-context-menu","to":"add-preference-toggle-to-main-menu","relation":"LEADS_TO","condition":"task asks for a Preferences entry","guidance":null,"pitfalls":null},{"from":"give-action-keyboard-shortcut","to":"add-preference-toggle-to-main-menu","relation":"LEADS_TO","condition":"task asks for a Preferences entry but no context menu entry","guidance":null,"pitfalls":null},{"from":"create-toggle-action","to":"add-preference-toggle-to-main-menu","relation":"LEADS_TO","condition":"only a Preferences entry is asked","guidance":null,"pitfalls":null},{"from":"add-preference-toggle-to-main-menu","to":"update-test-snapshots","relation":"TRIGGERS","condition":null,"guidance":"New app-state field and menu items change snapshots.","pitfalls":"Do not pass --watch=false to yarn test:update."},{"from":"add-action-to-canvas-context-menu","to":"update-test-snapshots","relation":"TRIGGERS","condition":"no Preferences step follows","guidance":null,"pitfalls":null},{"from":"give-action-keyboard-shortcut","to":"update-test-snapshots","relation":"LEADS_TO","condition":"no menu steps follow","guidance":null,"pitfalls":null},{"from":"change-keyboard-shortcut","to":"add-shortcut-keyboard-test","relation":"LEADS_TO","condition":"task explicitly asks for a new test of the shortcut","guidance":null,"pitfalls":null},{"from":"change-keyboard-shortcut","to":"update-test-snapshots","relation":"LEADS_TO","condition":"no new test requested","guidance":null,"pitfalls":null},{"from":"add-shortcut-keyboard-test","to":"update-test-snapshots","relation":"LEADS_TO","condition":null,"guidance":null,"pitfalls":null},{"from":"update-test-snapshots","to":"end","relation":"LEADS_TO","condition":null,"guidance":null,"pitfalls":null}],"pitfalls":[{"id":"watch-flag-test-update","text":"`yarn test:update` already passes a --watch option, so adding `--watch=false` fails with 'Expected a single value for option -w, --watch'. Run plain `yarn test:update`.","trigger":{"on":"command","all":["test:update","--watch=false"],"none":[],"file":null},"cost_tokens":45360,"runs":4},{"id":"app-tsx-ambiguous-edit","text":"The same action name appears in several similar lists in App.tsx (and similar lists in other files), so an edit with a short old-string matches more than one place and fails. Include enough surrounding context (neighbouring entries) for a unique match, or edit each list separately.","trigger":{"on":"error","all":["Found 2 matches of the string to replace"],"none":[],"file":null},"cost_tokens":104115,"runs":2},{"id":"keyboard-test-needs-global-handling","text":"A test that presses a shortcut with Keyboard fails (state never changes) if Excalidraw is rendered without `handleKeyboardGlobally`. Render `\u003cExcalidraw handleKeyboardGlobally />` instead of debugging the keyTest.","trigger":null,"cost_tokens":848859,"runs":2},{"id":"prettier-check-failure","text":"`prettier --check` over several paths fails the chained command; use `yarn prettier --write` on the edited files (or --list-different to find which) instead of chaining checks.","trigger":null,"cost_tokens":55493,"runs":1}],"places":[{"id":"p-86f45d72","file":"packages/common/src/keys.ts","chain":[{"head":"export const CODES = {","open":null,"close":"} as const;"}],"group":null,"new_file":null,"runs":6,"tasks":["altkey-zen-m","toggle-minimap"],"edits":{"add":6,"change":0,"create":0}},{"id":"p-97633f87","file":"packages/excalidraw/actions/shortcuts.ts","chain":[{"head":"const shortcutMap: Record\u003cShortcutName, string[]> = {","open":null,"close":"};"}],"group":null,"new_file":null,"runs":6,"tasks":["altkey-zen-m","toggle-minimap"],"edits":{"add":3,"change":3,"create":0}},{"id":"p-ffb8565e","file":"packages/excalidraw/components/HelpDialog.tsx","chain":[{"head":"export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {","open":null,"close":"};"},{"head":"return (","open":null,"close":");"},{"head":"\u003c>","open":null,"close":"\u003c/>"},{"head":"\u003cDialog","open":">","close":"\u003c/Dialog>"},{"head":"\u003cSection title={t(\"helpDialog.shortcuts\")}>","open":null,"close":"\u003c/Section>"},{"head":"\u003cShortcutIsland","open":">","close":"\u003c/ShortcutIsland>"}],"group":null,"new_file":null,"runs":6,"tasks":["altkey-zen-m","toggle-minimap"],"edits":{"add":3,"change":3,"create":0}},{"id":"p-4eb1f0bc","file":"packages/excalidraw/actions","chain":[],"group":null,"new_file":{"dir":"packages/excalidraw/actions","prefix":"actionToggle","ext":".tsx"},"runs":3,"tasks":["toggle-minimap"],"edits":{"add":0,"change":0,"create":3}},{"id":"p-fdd3fc89","file":"packages/excalidraw/actions/index.ts","chain":[],"group":"{ actionToggle","new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-8240d44a","file":"packages/excalidraw/actions/shortcuts.ts","chain":[{"head":"export type ShortcutName =","open":null,"close":null},{"head":"| SubtypeOf\u003c","open":null,"close":null}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-dc01975e","file":"packages/excalidraw/actions/types.ts","chain":[{"head":"export type ActionName =","open":null,"close":null}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-39d6dbca","file":"packages/excalidraw/appState.ts","chain":[{"head":"const APP_STATE_STORAGE_CONF = (\u003c","open":">(config: { [K in keyof T]: K extends keyof AppState ? T[K] : never }) =>","close":"});"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-4a2d0bc9","file":"packages/excalidraw/appState.ts","chain":[{"head":"export const getDefaultAppState = (): Omit\u003c","open":"> => {","close":"};"},{"head":"return {","open":null,"close":"};"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-6655ad1a","file":"packages/excalidraw/components/App.tsx","chain":[{"head":"class App extends React.Component\u003cAppProps, AppState> {","open":null,"close":"}"},{"head":"private getContextMenuItems = (","open":"): ContextMenuItems => {","close":"};"},{"head":"if (type === \"canvas\") {","open":null,"close":"}"},{"head":"return [","open":null,"close":"];"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-66d2e407","file":"packages/excalidraw/components/App.tsx","chain":[{"head":"import {","open":null,"close":"} from \"../actions\";"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-ae28280f","file":"packages/excalidraw/components/App.tsx","chain":[{"head":"class App extends React.Component\u003cAppProps, AppState> {","open":null,"close":"}"},{"head":"private getContextMenuItems = (","open":"): ContextMenuItems => {","close":"};"},{"head":"if (type === \"canvas\") {","open":null,"close":"}"},{"head":"if (this.state.viewModeEnabled) {","open":null,"close":"}"},{"head":"return [","open":null,"close":"];"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-0141a9dc","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","chain":[],"group":"PreferencesToggle","new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-12d0bbbb","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","chain":[],"group":"Preferences.Toggle","new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":2,"change":1,"create":0}},{"id":"p-9db93121","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","chain":[{"head":"import {","open":null,"close":"} from \"../../actions\";"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-d41f091b","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","chain":[{"head":"export const Preferences = ({","open":"}) => {","close":"};"},{"head":"return (","open":null,"close":");"},{"head":"\u003cDropdownMenuSub>","open":null,"close":"\u003c/DropdownMenuSub>"},{"head":"\u003cDropdownMenuSub.Content className=\"excalidraw-main-menu-preferences-submenu\">","open":null,"close":"\u003c/DropdownMenuSub.Content>"},{"head":"{children || (","open":null,"close":")}"},{"head":"\u003c>","open":null,"close":"\u003c/>"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-ce97afb0","file":"packages/excalidraw/locales/en.json","chain":[{"head":"{","open":null,"close":"}"},{"head":"\"labels\": {","open":null,"close":"},"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-69dba589","file":"packages/excalidraw/tests/contextmenu.test.tsx","chain":[{"head":"describe(\"contextMenu element\", () => {","open":null,"close":"});"},{"head":"it(\"shows context menu for canvas\", () => {","open":null,"close":"});"},{"head":"const expectedShortcutNames: ShortcutName[] = [","open":null,"close":"];"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-c4a20a9e","file":"packages/excalidraw/types.ts","chain":[{"head":"export interface AppState {","open":null,"close":"}"}],"group":null,"new_file":null,"runs":3,"tasks":["toggle-minimap"],"edits":{"add":3,"change":0,"create":0}},{"id":"p-60dd6056","file":"packages/excalidraw/tests/excalidraw.test.tsx","chain":[],"group":"import ","new_file":null,"runs":2,"tasks":["altkey-zen-m"],"edits":{"add":2,"change":2,"create":0}}]},"handover":{"session_id":"79d0640a-18ac-46e9-a784-95688a0f11e7","version":2,"workflows":[{"id":"add-app-state-field","skip":[]},{"id":"create-toggle-action","skip":[]},{"id":"give-action-keyboard-shortcut","skip":[]},{"id":"add-action-to-canvas-context-menu","skip":[3]},{"id":"add-preference-toggle-to-main-menu","skip":[]},{"id":"update-test-snapshots","skip":[]}],"reasons":["add-app-state-field: says \"appstate field\"","create-toggle-action: says \"toggle setting\"","give-action-keyboard-shortcut: says \"help dialog\"","add-action-to-canvas-context-menu: says \"right-click menu\"","add-preference-toggle-to-main-menu: says \"from preferences\"","update-test-snapshots: says \"tests\""],"shown":[{"place":"p-c4a20a9e","file":"packages/excalidraw/types.ts","from":326,"to":587},{"place":"p-4a2d0bc9","file":"packages/excalidraw/appState.ts","from":28,"to":146},{"place":"p-39d6dbca","file":"packages/excalidraw/appState.ts","from":153,"to":291},{"place":"p-4eb1f0bc","file":"packages/excalidraw/actions","from":0,"to":0},{"place":"p-dc01975e","file":"packages/excalidraw/actions/types.ts","from":45,"to":144},{"place":"p-fdd3fc89","file":"packages/excalidraw/actions/index.ts","from":80,"to":94},{"place":"p-ce97afb0","file":"packages/excalidraw/locales/en.json","from":2,"to":204},{"place":"p-86f45d72","file":"packages/common/src/keys.ts","from":5,"to":28},{"place":"p-8240d44a","file":"packages/excalidraw/actions/shortcuts.ts","from":11,"to":51},{"place":"p-97633f87","file":"packages/excalidraw/actions/shortcuts.ts","from":58,"to":116},{"place":"p-ffb8565e","file":"packages/excalidraw/components/HelpDialog.tsx","from":262,"to":335},{"place":"p-66d2e407","file":"packages/excalidraw/components/App.tsx","from":302,"to":335},{"place":"p-6655ad1a","file":"packages/excalidraw/components/App.tsx","from":13855,"to":13872},{"place":"p-69dba589","file":"packages/excalidraw/tests/contextmenu.test.tsx","from":90,"to":98},{"place":"p-9db93121","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","from":7,"to":20},{"place":"p-0141a9dc","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","from":428,"to":657},{"place":"p-d41f091b","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","from":674,"to":686},{"place":"p-12d0bbbb","file":"packages/excalidraw/components/main-menu/DefaultItems.tsx","from":694,"to":704}],"missing":[],"pitfalls":["watch-flag-test-update","app-tsx-ambiguous-edit","prettier-check-failure"],"fills":{"add-app-state-field":{"{field}":"presenterModeEnabled","{default}":"false"},"create-toggle-action":{"{field}":"presenterModeEnabled"},"give-action-keyboard-shortcut":{"{shortcut}":"Alt+J"}},"chars":9345,"text":"# Workflows from earlier work in this repository\n\nReusable steps learned from earlier tasks here. Values your task states are filled in; blanks in braces stand for the rest of your task's own names and values. Places are found in the code as it is now (current line numbers); the lines shown are excerpts.\n\n## 1. Add a persisted field to the app state\nFilled from your task: {field} = `presenterModeEnabled`, {default} = `false`\n1. Add `presenterModeEnabled: {type};` to the AppState interface.\n   `packages/excalidraw/types.ts:326-587` in export interface AppState {\n   ```\n     326| export interface AppState {\n        ⋮\n     586|   fontTopPicks: readonly FontFamilyValues[] | null;\n     587| }\n   ```\n2. Add `presenterModeEnabled: false,` to the default app state returned by getDefaultAppState.\n   `packages/excalidraw/appState.ts:28-146` in export const getDefaultAppState = (): Omit\u003c › return {\n   ```\n      28|   return {\n        ⋮\n     145|     fontTopPicks: null,\n     146|   };\n   ```\n3. Add `presenterModeEnabled: { browser: \u003cbool>, export: \u003cbool>, server: \u003cbool> }` to the storage config, following the storage rules the task states (e.g. browser true, export false, server false).\n   `packages/excalidraw/appState.ts:153-291` in const APP_STATE_STORAGE_CONF = (\u003c\n   ```\n     153| const APP_STATE_STORAGE_CONF = (\u003c\n        ⋮\n     290|   fontTopPicks: { browser: true, export: false, server: false },\n     291| });\n   ```\n4. Regenerate snapshots (see update-test-snapshots) since a new app-state field changes many snapshots.\nCheck with `yarn test:typecheck`.\nWatch out: `yarn test:update` already passes a --watch option, so adding `--watch=false` fails with 'Expected a single value for option -w, --watch'. Run plain `yarn test:update`.\n\n## 2. Create a toggle action for a boolean app-state field\nFilled from your task: {field} = `presenterModeEnabled`\nBlanks: {action} exported action const name, e.g. actionToggle{Thing}; {actionName} the string action name registered in ActionName; {label} the i18n label key and its English text\n1. Create the new action file modelled on an existing toggle action (e.g. the grid-mode or objects-snap-mode toggle): `register({ name: \"{actionName}\", label: \"labels.{label}\", viewMode: true if it must work in view mode, trackEvent with predicate on !appState.presenterModeEnabled, perform returning appState with presenterModeEnabled flipped and CaptureUpdateAction.EVENTUALLY, checked: (appState) => appState.presenterModeEnabled })`.\n   a new file in `packages/excalidraw/actions/`, named like the 8 there that start with `actionToggle`; shortest first: actionToggleMidpointSnapping.tsx (24 lines), actionToggleArrowBinding.tsx (27 lines), actionToggleStats.tsx (29 lines), actionToggleGridMode.tsx (35 lines), actionToggleObjectsSnapMode.tsx (35 lines), actionToggleShapeSwitch.tsx (36 lines)\n2. Add `| \"{actionName}\"` to the ActionName union.\n   `packages/excalidraw/actions/types.ts:45-144` in export type ActionName =\n   ```\n      45| export type ActionName =\n        ⋮\n     143|   | \"toggleShapeSwitch\"\n     144|   | \"togglePolygon\";\n   ```\n3. Export the action: `export { {action} } from \"./{action file}\";`.\n   `packages/excalidraw/actions/index.ts:80-94` the top-level `{ actionToggle…` statements\n   ```\n        ⋮\n      92| export { actionToggleSearchMenu } from \"./actionToggleSearchMenu\";\n      94| export { actionToggleCropEditor } from \"./actionCropEditor\";\n   ```\n4. Add the English label under labels: `\"{label}\": \"\u003ctext>\"`.\n   `packages/excalidraw/locales/en.json:2-204` in { › \"labels\": {\n   ```\n       2|   \"labels\": {\n        ⋮\n     203|     \"inputDeviceMouse\": \"Mouse\"\n     204|   },\n   ```\nCheck with `yarn test:typecheck`.\n\n## 3. Give an action a keyboard shortcut and list it in the help dialog\nFilled from your task: {shortcut} = `Alt+J`\nBlanks: {action} the action that gets the shortcut; {actionName} the string action name used as ShortcutName; {code} key code property name in CODES and its event.code value; {label} the i18n label key of the action\n1. Add `{code}: \"\u003cEventCode>\",` to CODES if it isn't there already. (only if the key code is not already defined)\n   `packages/common/src/keys.ts:5-28` in export const CODES = {\n   ```\n       5| export const CODES = {\n        ⋮\n      27|   S: \"KeyS\",\n      28| } as const;\n   ```\n2. Add `| \"{actionName}\"` to the ShortcutName union.\n   `packages/excalidraw/actions/shortcuts.ts:11-51` in export type ShortcutName = › | SubtypeOf\u003c\n   ```\n      11|   | SubtypeOf\u003c\n        ⋮\n      50|       | \"wrapSelectionInFrame\"\n      51|     >\n   ```\n3. Add `{actionName}: [getShortcutKey(\"Alt+J\")],` to the shortcut map.\n   `packages/excalidraw/actions/shortcuts.ts:58-116` in const shortcutMap: Record\u003cShortcutName, string[]> = {\n   ```\n      58| const shortcutMap: Record\u003cShortcutName, string[]> = {\n        ⋮\n     115|   toolLock: [getShortcutKey(\"Q\")],\n     116| };\n   ```\n4. In the action's own file add `keyTest: (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.{code}` (match the modifiers of the shortcut).\n5. Add `\u003cShortcut label={t(\"labels.{label}\")} shortcuts={[getShortcutKey(\"Alt+J\")]} />` to the shortcuts island in the help dialog.\n   `packages/excalidraw/components/HelpDialog.tsx:262-335` in … › \u003cDialog › \u003cSection title={t(\"helpDialog.shortcuts\")}> › \u003cShortcutIsland\n   ```\n     262|           \u003cShortcutIsland\n        ⋮\n     334|             />\n     335|           \u003c/ShortcutIsland>\n   ```\nCheck with `yarn test:typecheck`.\n\n## 4. Add an action to the canvas right-click menu\nBlanks: {action} the action const to add; {actionName} its shortcut/action name string used in the context-menu test\n1. Import {action} in the actions import list.\n   `packages/excalidraw/components/App.tsx:302-335` in import {\n   ```\n     302| import {\n        ⋮\n     334|   actionToggleCropEditor,\n     335| } from \"../actions\";\n   ```\n2. Add {action} to the canvas menu item list in getContextMenuItems.\n   `packages/excalidraw/components/App.tsx:13855-13872` in … › private getContextMenuItems = ( › if (type === \"canvas\") { › return [\n   ```\n   13855|       return [\n        ⋮\n   13871|         actionToggleStats,\n   13872|       ];\n   ```\n3. Add \"{actionName}\" to expectedShortcutNames in the canvas context menu test, in the same position as in the menu.\n   `packages/excalidraw/tests/contextmenu.test.tsx:90-98` in describe(\"contextMenu element\", () => { › it(\"shows context menu for canvas\", () => { › const expectedShortcutNames: ShortcutName[] = [\n   ```\n      90|     const expectedShortcutNames: ShortcutName[] = [\n        ⋮\n      97|       \"stats\",\n      98|     ];\n   ```\n4. Regenerate snapshots (see update-test-snapshots).\nCheck with `yarn test:typecheck` or `yarn test:update`.\nWatch out: The same action name appears in several similar lists in App.tsx (and similar lists in other files), so an edit with a short old-string matches more than one place and fails. Include enough surrounding context (neighbouring entries) for a unique match, or edit each list separately.\n\n## 5. Add a toggle to Preferences in the main menu\nBlanks: {action} toggle action const; {Item} new component name PreferencesToggle{Thing}Item; {Thing} suffix used for Preferences.Toggle{Thing}; {field} appState field shown as checked\n1. Import {action} in the actions import list of the default items file.\n   `packages/excalidraw/components/main-menu/DefaultItems.tsx:7-20` in import {\n   ```\n       7| import {\n        ⋮\n      19|   actionToggleZenMode,\n      20| } from \"../../actions\";\n   ```\n2. Add an exported `{Item}` component modelled on the other PreferencesToggle…Item components (useI18n, useExcalidrawActionManager, useUIAppState; a checked DropdownMenuItem calling actionManager.executeAction({action})).\n   `packages/excalidraw/components/main-menu/DefaultItems.tsx:428-657` the top-level `PreferencesToggle…` statements\n   ```\n        ⋮\n     620| const PreferencesToggleViewModeItem = () => {\n     641| const PreferencesToggleElementPropertiesItem = () => {\n   ```\n3. Render \u003c{Item} /> in the Preferences submenu default children.\n   `packages/excalidraw/components/main-menu/DefaultItems.tsx:674-686` in … › \u003cDropdownMenuSub.Content className=\"excalidraw-main-menu-preference... › {children || ( › \u003c>\n   ```\n     674|           \u003c>\n        ⋮\n     685|             \u003cPreferencesToggleShowHintsItem />\n     686|           \u003c/>\n   ```\n4. Expose it: `Preferences.Toggle{Thing} = {Item};`.\n   `packages/excalidraw/components/main-menu/DefaultItems.tsx:694-704` the top-level `Preferences.Toggle…` statements\n   ```\n        ⋮\n     703| Preferences.ToggleViewMode = PreferencesToggleViewModeItem;\n     704| Preferences.ToggleElementProperties = PreferencesToggleElementPropertiesItem;\n   ```\nCheck with `yarn test:typecheck` or `yarn prettier --write packages/excalidraw/components/main-menu/DefaultItems.tsx`.\nWatch out: `prettier --check` over several paths fails the chained command; use `yarn prettier --write` on the edited files (or --list-different to find which) instead of chaining checks.\n\n## 6. Regenerate test snapshots and verify\n1. Run `yarn test:update` with no extra --watch flag (the script already passes one).\n2. Run `yarn test:typecheck`.\n3. Review changed snapshot files with git status to confirm only expected snapshots changed.\nCheck with `yarn test:update` or `yarn test:typecheck`.\n"},"placeDemo":{"base":{"region":{"from":13855,"to":13872,"open":13855,"close":13872},"heads":[638,13834,13844,13855],"excerptStart":13834,"excerpt":["  private getContextMenuItems = (","    type: \"canvas\" | \"element\",","  ): ContextMenuItems => {","    const options: ContextMenuItems = [];","","    options.push(actionCopyAsPng, actionCopyAsSvg);","","    // canvas contextMenu","    // -------------------------------------------------------------------------","","    if (type === \"canvas\") {","      if (this.state.viewModeEnabled) {","        return [","          ...options,","          actionToggleGridMode,","          actionToggleZenMode,","          actionToggleViewMode,","          actionToggleStats,","        ];","      }","","      return [","        actionPaste,","        CONTEXT_MENU_SEPARATOR,","        actionCopyAsPng,","        actionCopyAsSvg,","        copyText,","        CONTEXT_MENU_SEPARATOR,","        actionSelectAll,","        actionUnlockAllElements,","        CONTEXT_MENU_SEPARATOR,","        actionToggleGridMode,","        actionToggleObjectsSnapMode,","        actionToggleArrowBinding,","        actionToggleMidpointSnapping,","        actionToggleZenMode,","        actionToggleViewMode,","        actionToggleStats,","      ];","    }",""],"classLine":638},"above":{"region":{"from":13915,"to":13932,"open":13915,"close":13932},"heads":[638,13894,13904,13915],"excerptStart":13894,"excerpt":["  private getContextMenuItems = (","    type: \"canvas\" | \"element\",","  ): ContextMenuItems => {","    const options: ContextMenuItems = [];","","    options.push(actionCopyAsPng, actionCopyAsSvg);","","    // canvas contextMenu","    // -------------------------------------------------------------------------","","    if (type === \"canvas\") {","      if (this.state.viewModeEnabled) {","        return [","          ...options,","          actionToggleGridMode,","          actionToggleZenMode,","          actionToggleViewMode,","          actionToggleStats,","        ];","      }","","      return [","        actionPaste,","        CONTEXT_MENU_SEPARATOR,","        actionCopyAsPng,","        actionCopyAsSvg,","        copyText,","        CONTEXT_MENU_SEPARATOR,","        actionSelectAll,","        actionUnlockAllElements,","        CONTEXT_MENU_SEPARATOR,","        actionToggleGridMode,","        actionToggleObjectsSnapMode,","        actionToggleArrowBinding,","        actionToggleMidpointSnapping,","        actionToggleZenMode,","        actionToggleViewMode,","        actionToggleStats,","      ];","    }",""],"classLine":638},"list":{"region":{"from":13855,"to":13873,"open":13855,"close":13873},"heads":[638,13834,13844,13855],"excerptStart":13834,"excerpt":["  private getContextMenuItems = (","    type: \"canvas\" | \"element\",","  ): ContextMenuItems => {","    const options: ContextMenuItems = [];","","    options.push(actionCopyAsPng, actionCopyAsSvg);","","    // canvas contextMenu","    // -------------------------------------------------------------------------","","    if (type === \"canvas\") {","      if (this.state.viewModeEnabled) {","        return [","          ...options,","          actionToggleGridMode,","          actionToggleZenMode,","          actionToggleViewMode,","          actionToggleStats,","        ];","      }","","      return [","        actionPaste,","        CONTEXT_MENU_SEPARATOR,","        actionCopyAsPng,","        actionCopyAsSvg,","        CONTEXT_MENU_SEPARATOR,","        actionSelectAll,","        actionUnlockAllElements,","        CONTEXT_MENU_SEPARATOR,","        actionToggleGridMode,","        actionToggleObjectsSnapMode,","        actionToggleArrowBinding,","        actionToggleMidpointSnapping,","        actionToggleZenMode,","        actionToggleViewMode,","        actionToggleStats,","        actionToggleRulers,","        actionToggleMinimap,","      ];","    }"],"classLine":638},"grew":{"region":{"from":13855,"to":13872,"open":13855,"close":13872},"heads":[638,13834,13844,13855],"excerptStart":13834,"excerpt":["  private getContextMenuItems = (","    type: \"canvas\" | \"element\",","  ): ContextMenuItems => {","    const options: ContextMenuItems = [];","","    options.push(actionCopyAsPng, actionCopyAsSvg);","","    // canvas contextMenu","    // -------------------------------------------------------------------------","","    if (type === \"canvas\" && !this.state.contextMenuLocked) {","      if (this.state.viewModeEnabled) {","        return [","          ...options,","          actionToggleGridMode,","          actionToggleZenMode,","          actionToggleViewMode,","          actionToggleStats,","        ];","      }","","      return [","        actionPaste,","        CONTEXT_MENU_SEPARATOR,","        actionCopyAsPng,","        actionCopyAsSvg,","        copyText,","        CONTEXT_MENU_SEPARATOR,","        actionSelectAll,","        actionUnlockAllElements,","        CONTEXT_MENU_SEPARATOR,","        actionToggleGridMode,","        actionToggleObjectsSnapMode,","        actionToggleArrowBinding,","        actionToggleMidpointSnapping,","        actionToggleZenMode,","        actionToggleViewMode,","        actionToggleStats,","      ];","    }",""],"classLine":638},"renamed":{"region":null,"heads":[638,null,null,null],"excerptStart":13834,"excerpt":["  private buildContextMenu = (","    type: \"canvas\" | \"element\",","  ): ContextMenuItems => {","    const options: ContextMenuItems = [];","","    options.push(actionCopyAsPng, actionCopyAsSvg);","","    // canvas contextMenu","    // -------------------------------------------------------------------------","","    if (type === \"canvas\") {","      if (this.state.viewModeEnabled) {","        return [","          ...options,","          actionToggleGridMode,","          actionToggleZenMode,","          actionToggleViewMode,","          actionToggleStats,","        ];","      }","","      return [","        actionPaste,","        CONTEXT_MENU_SEPARATOR,","        actionCopyAsPng,","        actionCopyAsSvg,","        copyText,","        CONTEXT_MENU_SEPARATOR,","        actionSelectAll,","        actionUnlockAllElements,","        CONTEXT_MENU_SEPARATOR,","        actionToggleGridMode,","        actionToggleObjectsSnapMode,","        actionToggleArrowBinding,","        actionToggleMidpointSnapping,","        actionToggleZenMode,","        actionToggleViewMode,","        actionToggleStats,","      ];","    }",""],"classLine":638}},"tasks":{"altkey-zen-m":"Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything\nthat shows or tests the shortcut, and make sure the tests and the typecheck\npass.","altkey-viewmode-j":"Change the view mode keyboard shortcut from Alt+R to Alt+J. Update everything\nthat shows or tests the shortcut, and make sure the tests and the typecheck\npass.","altkey-snap-u":"Change the \"snap to objects\" keyboard shortcut from Alt+S to Alt+U. Update\neverything that shows or tests the shortcut, and make sure the tests and the\ntypecheck pass.","toggle-minimap":"Add a \"Minimap\" toggle setting. Nothing draws a minimap yet; this is just the\nsetting. Store it in a new appState field `minimapEnabled` (default false),\nsaved to the browser's local storage but not to exported files or the\ncollaboration server. Users should be able to toggle it with Alt+M, from the\ncanvas right-click menu (also in view mode), and from Preferences in the main\nmenu, and the help dialog should list the shortcut. Make sure the tests and the\ntypecheck pass.","toggle-rulers":"Add a \"Rulers\" toggle setting. Nothing draws rulers yet; this is just the\nsetting. Store it in a new appState field `rulersEnabled` (default false),\nsaved to the browser's local storage and included in exported files, but not\nsent to the collaboration server. Users should be able to toggle it with\nAlt+U, from the canvas right-click menu (also in view mode), and from\nPreferences in the main menu, and the help dialog should list the shortcut.\nMake sure the tests and the typecheck pass.","toggle-presenter":"Add a \"Presenter mode\" toggle setting. Nothing uses it yet; this is just the\nsetting. Store it in a new appState field `presenterModeEnabled` (default\nfalse) that isn't saved anywhere: not local storage, exported files, or the\ncollaboration server. Users should be able to toggle it with Alt+J, from the\ncanvas right-click menu (but not in view mode, where it shouldn't be offered),\nand from Preferences in the main menu, and the help dialog should list the\nshortcut. Make sure the tests and the typecheck pass.","midpoint-snap-n":"Add a keyboard shortcut for the existing \"Snap to midpoints\" setting: Alt+N\nshould toggle it. The help dialog should list the shortcut. Make sure the tests\nand the typecheck pass.","page-breaks":"Add a \"Show page breaks\" setting. Nothing draws page breaks yet; this is just\nthe setting. Store it in a new appState field `pageBreaksEnabled` (default\nfalse), saved to the browser's local storage but not to exported files or the\ncollaboration server. Users should be able to toggle it from Preferences in the\nmain menu. Don't add a keyboard shortcut or a right-click menu entry for it.\nMake sure the tests and the typecheck pass.","stats-shortcut-k":"Change the keyboard shortcut for the \"Canvas & Shape properties\" (stats) panel\nfrom Alt+/ to Alt+K. Update everything that shows the shortcut, and add a test\nto packages/excalidraw/tests/excalidraw.test.tsx that checks Alt+K toggles the\npanel and Alt+/ no longer does. Make sure the tests and the typecheck pass."}};
+
+// ====================================================================
+// Cue matching: a line-for-line port of src/workflows/Cues.ts and of
+// graphOrder in src/workflows/Models.ts.
+// ====================================================================
+const START = "start";
+function graphOrder(m) {
+  const byId = new Map(m.workflows.map((w) => [w.id, w]));
+  const next = new Map();
+  for (const e of m.edges) next.set(e.from, [...(next.get(e.from) ?? []), e.to]);
+  const indegree = new Map(m.workflows.map((w) => [w.id, 0]));
+  for (const e of m.edges) if (indegree.has(e.to) && e.from !== START) indegree.set(e.to, (indegree.get(e.to) ?? 0) + 1);
+  const order = [];
+  const seen = new Set();
+  const queue = [...(next.get(START) ?? []).filter((id) => byId.has(id))];
+  for (const w of m.workflows) if ((indegree.get(w.id) ?? 0) === 0 && !queue.includes(w.id)) queue.push(w.id);
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (seen.has(id) || !byId.has(id)) continue;
+    seen.add(id);
+    order.push(id);
+    for (const to of next.get(id) ?? []) {
+      if (!byId.has(to)) continue;
+      indegree.set(to, (indegree.get(to) ?? 1) - 1);
+      if ((indegree.get(to) ?? 0) <= 0) queue.push(to);
+    }
+  }
+  for (const w of m.workflows) if (!seen.has(w.id)) order.push(w.id);
+  return order.map((id) => byId.get(id));
+}
+const NEGATED = /(?:\b(?:not|never|no|without)\b|n't\b)[^.,;:()\n]*/gi;
+const positiveText = (task) => task.replace(NEGATED, " ");
+const said = (text, phrases) => {
+  const t = text.toLowerCase();
+  return phrases.find((p) => p.trim() !== "" && t.includes(p.trim().toLowerCase()));
+};
+const cueMatch = (text, any, none) => {
+  const hit = said(text, any);
+  return hit === undefined || said(text, none) !== undefined ? undefined : hit;
+};
+function cueChoice(memory, task) {
+  const text = positiveText(task);
+  return graphOrder(memory).flatMap((w) => {
+    const c = w.cues;
+    if (c === undefined) return [];
+    const hit = cueMatch(text, c.any, c.none);
+    if (hit === undefined) return [];
+    const skip = c.steps
+      .filter((s) => s.step >= 1 && s.step <= w.steps.length && cueMatch(text, s.any, s.none) === undefined)
+      .map((s) => s.step);
+    if (skip.length >= w.steps.length) return [];
+    return [{ workflow: w, skip, why: `says ${JSON.stringify(hit)}`, hit }];
+  });
+}
+const KEY = /\b(?:(?:Alt|Ctrl|Cmd|Shift|Meta|CtrlOrCmd)\+)+[A-Za-z0-9/']/g;
+const unique = (xs) => [...new Set(xs.map((x) => x.trim()).filter((x) => x !== ""))];
+const statedValues = (task) => ({
+  code: unique([...task.matchAll(/`([^`\n]+)`/g)].map((m) => m[1])),
+  quoted: unique([...task.matchAll(/"([^"\n]+)"|“([^”\n]+)”/g)].map((m) => m[1] ?? m[2])),
+  key: unique([...task.matchAll(KEY)].map((m) => m[0]))
+});
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function fillValue(task, f) {
+  const v = statedValues(task);
+  if (f.from === "after") {
+    const phrase = f.phrase?.trim();
+    if (!phrase) return undefined;
+    const m = new RegExp(`${escapeRe(phrase)}\\s*[:=(]?\\s*["'\`]?([A-Za-z0-9_$.+-]+)`, "i").exec(task);
+    const value = m?.[1]?.replace(/[.+-]+$/, "");
+    return value === "" ? undefined : value;
+  }
+  if (!Number.isInteger(f.n) || f.n < 1) return undefined;
+  if (f.from === "key-letter") {
+    const k = v.key[f.n - 1];
+    const letter = k?.slice(k.lastIndexOf("+") + 1);
+    return letter !== undefined && /^[A-Za-z0-9]$/.test(letter) ? letter.toUpperCase() : undefined;
+  }
+  return v[f.from][f.n - 1];
+}
+function fillsFor(task, w) {
+  const out = new Map();
+  for (const f of w.cues?.fills ?? []) {
+    const value = fillValue(task, f);
+    if (value !== undefined && !out.has(f.placeholder)) out.set(f.placeholder, value);
+  }
+  return out;
+}
+
+// ====================================================================
+// Trigger matching: a port of matchTrigger in src/records/Triggers.ts.
+// ====================================================================
+const containsAll = (text, all) => all.every((s) => text.includes(s));
+const containsNone = (text, none) => none.every((s) => !text.includes(s));
+function matchTrigger(t, e) {
+  switch (t.on) {
+    case "command":
+      return e.command !== undefined && containsAll(e.command, t.all) && containsNone(e.command, t.none);
+    case "edit": {
+      if (e.text === undefined) return false;
+      if (t.file !== null) {
+        const file = t.file.replace(/\\/g, "/");
+        const target = e.file !== undefined ? e.file.endsWith(file) : (e.command ?? "").replace(/\\/g, "/").includes(file);
+        if (!target) return false;
+      }
+      return containsAll(e.text, t.all) && containsNone(e.text, t.none);
+    }
+    case "error":
+      return e.failed && e.output !== undefined && containsAll(e.output, t.all) && containsNone(e.output, t.none);
+  }
+  return false;
+}
+
+// ====================================================================
+// Data that isn't memory itself: read from the records, transcripts and
+// logs named in each comment.
+// ====================================================================
+const MEM = DATA.memory;
+const WF = new Map(MEM.workflows.map((w) => [w.id, w]));
+const PLACES = new Map(MEM.places.map((p) => [p.id, p]));
+const PITS = new Map(MEM.pitfalls.map((p) => [p.id, p]));
+const ORDER = graphOrder(MEM);
+const SESSION = DATA.handover.session_id;
+const CLASS_LINE = "class App extends React.Component<AppProps, AppState> {";
+
+const SHORT = {
+  "add-app-state-field": "Add a persisted app-state field",
+  "create-toggle-action": "Create a toggle action",
+  "give-action-keyboard-shortcut": "Give an action a shortcut",
+  "change-keyboard-shortcut": "Change an action's shortcut",
+  "add-shortcut-keyboard-test": "Add a shortcut test",
+  "add-action-to-canvas-context-menu": "Add it to the right-click menu",
+  "add-preference-toggle-to-main-menu": "Add a toggle to Preferences",
+  "update-test-snapshots": "Update snapshots and verify"
+};
+
+const PH = { look: "looking around", edit: "editing", check: "checking and finishing" };
+// Turns of two runs, from their transcripts (main thread; tokens are what each turn read and wrote).
+const RUNS = {
+  minimap: {
+    label: "Turns of the Minimap run without memory",
+    turns: [
+      ["look", 25, "Searched for how an existing setting (snap to objects) is stored, and for the stats toggle"],
+      ["look", 25, "Read the grid-mode toggle action; searched for where grid mode appears"],
+      ["look", 30, "Read the snap-mode toggle, the app state, App.tsx near the context menu, and the Preferences menu"],
+      ["look", 36, "Searched for the Preferences items, and for how zen and snap mode are stored"],
+      ["look", 44, "Read the action names, the shortcut map, the help dialog, the Preferences list, the context-menu test and the app-state type"],
+      ["edit", 49, "First edits: the app-state field, its default and storage rule, the action name, the shortcut map; searched for labels and icons"],
+      ["look", 50, "Read the icons file"],
+      ["edit", 52, "Added an icon and the label, and wrote the action file; searched for key codes and exports"],
+      ["look", 53, "Read the key codes and the action exports"],
+      ["edit", 57, "11 edits: the key code, the export, the import and both menus in App.tsx, the help dialog, the Preferences menu, the context-menu test"],
+      ["check", 58, "Typecheck passed. `yarn test:update --watch=false` failed: “Expected a single value for option -w, --watch”", true],
+      ["check", 59, "Ran plain `yarn test:update`: snapshots updated, tests passed"],
+      ["check", 61, "Checked which files changed"],
+      ["check", 61, "Looked at two snapshot changes"],
+      ["check", 62, "Looked at the export snapshot change"],
+      ["check", 63, "Reported the result"]
+    ],
+    notes: [
+      "First edit in turn 6, after five turns of looking around.",
+      "✗ Turn 11: `yarn test:update --watch=false` failed; turn 12 ran it without the flag (a detour of 59k tokens)."
+    ]
+  },
+  presenter: {
+    label: "Turns of the Presenter run with memory",
+    turns: [
+      ["look", 29, "Read the stats toggle action; searched for how settings are stored and where an existing toggle appears"],
+      ["look", 33, "Read the zen-mode toggle action, App.tsx around the menus, the Preferences menu and the shortcut map"],
+      ["look", 40, "Searched the action manager for view mode, read the key codes, searched the help dialog and the labels"],
+      ["look", 41, "Read parts of the action manager, the labels and the help dialog"],
+      ["edit", 46, "All 18 edits in one turn: the action file, key code, action name, export, shortcut, label, help dialog, app state and its type, App.tsx, the context-menu test, the Preferences menu"],
+      ["check", 48, "Typecheck and `yarn test:update`, both passed the first time"],
+      ["check", 50, "Checked which files and snapshots changed"],
+      ["check", 51, "Reported the result"]
+    ],
+    notes: [
+      "First edit in turn 5, and every edit in that one turn.",
+      "No `--watch=false`, no failed call."
+    ]
+  }
+};
+
+// The six records memory learned from (runs/excalidraw/memory/v1-cues/tenants/local/records).
+const SEEDS = [
+  ["46e157ba", "altkey-zen-m", 25, 1165, 0.51, 2],
+  ["57366316", "altkey-zen-m", 8, 245, 0.11, 0],
+  ["d82393d3", "altkey-zen-m", 30, 1264, 0.46, 2],
+  ["7b7e9811", "toggle-minimap", 13, 611, 0.35, 1],
+  ["82b33af0", "toggle-minimap", 18, 819, 0.43, 3],
+  ["e871e5e6", "toggle-minimap", 16, 787, 0.40, 1]
+];
+
+// What the Presenter run did with what it was shown: its diff's places against the hand-over log.
+const FEEDBACK = {
+  byWorkflow: [
+    ["add-app-state-field", [["p-c4a20a9e", 1], ["p-4a2d0bc9", 1], ["p-39d6dbca", 1]]],
+    ["create-toggle-action", [["p-4eb1f0bc", 1], ["p-dc01975e", 1], ["p-fdd3fc89", 0], ["p-ce97afb0", 1]]],
+    ["give-action-keyboard-shortcut", [["p-86f45d72", 1], ["p-8240d44a", 1], ["p-97633f87", 1], ["p-ffb8565e", 1]]],
+    ["add-action-to-canvas-context-menu", [["p-66d2e407", 1], ["p-6655ad1a", 1], ["p-69dba589", 1]]],
+    ["add-preference-toggle-to-main-menu", [["p-9db93121", 1], ["p-0141a9dc", 0], ["p-d41f091b", 1], ["p-12d0bbbb", 0]]],
+    ["update-test-snapshots", []]
+  ],
+  elsewhere: [
+    ["actions/index.ts", "the top-level `{ action…` statements", "its export, `export { actionTogglePresenterMode } from …`", "p-fdd3fc89"],
+    ["DefaultItems.tsx", "the top-level `Preferences…` statements", "its `PreferencesTogglePresenterModeItem` component", "p-0141a9dc"],
+    ["DefaultItems.tsx", "the top-level `Preferences.…` statements", "`Preferences.TogglePresenterMode = …`", "p-12d0bbbb"]
+  ]
+};
+
+const TASKS = [
+  ["toggle-presenter", "Presenter mode"],
+  ["toggle-rulers", "Rulers"],
+  ["toggle-minimap", "Minimap"],
+  ["page-breaks", "Page breaks"],
+  ["midpoint-snap-n", "Midpoint snapping"],
+  ["stats-shortcut-k", "Stats shortcut"],
+  ["altkey-zen-m", "Zen mode shortcut"],
+  ["altkey-viewmode-j", "View mode shortcut"],
+  ["altkey-snap-u", "Snap shortcut"]
+];
+const TASK_NOTES = {
+  "toggle-presenter": "“but not in view mode” is a negated clause, so it is taken out before matching, and the right-click workflow's view-mode step is dropped. This is exactly what the run in the next steps was handed.",
+  "toggle-rulers": "A twin of the Minimap task: the same six workflows, the view-mode step included (“also in view mode”), with the Rulers task's own values filled in.",
+  "toggle-minimap": "One of the two tasks memory learned from. When the cues were written, they were checked to pick exactly these six for it.",
+  "page-breaks": "“Don't add a keyboard shortcut or a right-click menu entry” is taken out, so neither of those workflows is picked. But “toggle it” still picks Create a toggle action, which a setting offered only in Preferences doesn't need: cues learned from two tasks are broad.",
+  "midpoint-snap-n": "The action already exists, yet “toggle it” picks Create a toggle action: a known weakness of cues learned from two tasks. The shortcut workflow is right, with Alt+N filled in.",
+  "stats-shortcut-k": "“add a test” picks the shortcut-test workflow. It is marked only if asked, and this task does ask for a test.",
+  "altkey-zen-m": "One of the two tasks memory learned from: change a shortcut, then update snapshots. The new key fills {newShortcut}.",
+  "altkey-viewmode-j": "A twin of the zen-mode task: change a shortcut, then update snapshots. The new key fills {newShortcut}.",
+  "altkey-snap-u": "A twin of the zen-mode task. The quoted name isn't used, the new key fills {newShortcut}.",
+  "own": "Your own text, matched the same way. Try taking a phrase out, or negating one (“don't”, “not”, “without”)."
+};
+
+// ====================================================================
+// DOM helpers. Text always goes in as text nodes, never as HTML.
+// ====================================================================
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  if (props) {
+    for (const [k, v] of Object.entries(props)) {
+      if (v === undefined || v === null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = String(v);
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : String(v));
+    }
+  }
+  for (const c of kids.flat(Infinity)) {
+    if (c === null || c === undefined || c === false) continue;
+    n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return n;
+}
+const SVGNS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs ?? {})) if (v !== undefined && v !== null) n.setAttribute(k, String(v));
+  for (const c of kids.flat(Infinity)) if (c !== null && c !== undefined) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+/** `code` and **bold** in static copy, as nodes. */
+function rich(s) {
+  const out = [];
+  const re = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    out.push(m[1] !== undefined ? el("code", { text: m[1] }) : el("strong", { text: m[2] }));
+    last = re.lastIndex;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+const P = (s, cls) => el("p", { class: cls }, rich(s));
+const takeaway = (s) => el("p", { class: "takeaway" }, rich(s));
+const fmtK = (n) => `${Math.round(n)}k`;
+const ord = (n) => ["", "1st", "2nd", "3rd"][n] ?? `${n}th`;
+const glyph = (kind) => el("span", { class: `glyph ${kind}`, "aria-hidden": "true", text: { yes: "✓", no: "✗", idle: "○", miss: "+", warn: "!", dash: "–" }[kind] });
+
+// ---------- tooltip ----------
+const tip = document.getElementById("tip");
+function placeTip(rect) {
+  const pad = 8;
+  const w = tip.offsetWidth;
+  const h = tip.offsetHeight;
+  let x = rect.left + rect.width / 2 - w / 2;
+  let y = rect.top - h - 10;
+  if (y < pad) y = rect.bottom + 10;
+  x = Math.max(pad, Math.min(x, window.innerWidth - w - pad));
+  y = Math.max(pad, Math.min(y, window.innerHeight - h - pad));
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+}
+function showTip(target, build, at) {
+  tip.replaceChildren(...build());
+  tip.hidden = false;
+  placeTip(at ?? target.getBoundingClientRect());
+}
+function hideTip() { tip.hidden = true; }
+function attachTip(target, build) {
+  target.addEventListener("pointerenter", () => showTip(target, build));
+  target.addEventListener("pointerleave", hideTip);
+  target.addEventListener("focus", () => showTip(target, build));
+  target.addEventListener("blur", hideTip);
+}
+window.addEventListener("scroll", hideTip, { passive: true });
+
+// ====================================================================
+// Shared views
+// ====================================================================
+function taskQuote(label, text) {
+  // The prompt's own line breaks are only wrapping; reflow it for reading.
+  return el("div", { class: "quote" }, el("span", { class: "ql", text: label }), text.replace(/\s*\n\s*/g, " "));
+}
+function kpiRow(items) {
+  return el("div", { class: "kpis" }, items.map(([label, value]) => el("div", { class: "kpi" }, el("div", { class: "l", text: label }), el("div", { class: "v", text: value }))));
+}
+function turnStrip(run) {
+  const row = el("div", { class: "turns", role: "list", "aria-label": run.label });
+  run.turns.forEach(([ph, k, what, failed], i) => {
+    const plain = what.replace(/`/g, "");
+    const sq = el("div", { class: `turn ph-${ph}${failed ? " failed" : ""}`, role: "listitem", tabindex: "0", "aria-label": `Turn ${i + 1}, ${PH[ph]}, ${k}k tokens: ${plain}` }, String(i + 1));
+    attachTip(sq, () => [el("strong", { text: `${k}k tokens` }), el("div", { text: `Turn ${i + 1}, ${PH[ph]}` }), el("div", { class: "tw" }, rich(what))]);
+    row.append(sq);
+  });
+  return el("div", {},
+    el("div", { class: "legend" },
+      el("span", {}, el("i", { class: "sw ph-look" }), "Looking around (searching, reading)"),
+      el("span", {}, el("i", { class: "sw ph-edit" }), "Editing"),
+      el("span", {}, el("i", { class: "sw ph-check" }), "Checking and finishing")),
+    row,
+    el("div", { class: "strip-notes" }, run.notes.map((n) => el("div", {}, rich(n)))));
+}
+function shortPath(f) { return f.split("/").slice(-2).join("/"); }
+function shorten(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+/** A place in words, as the hand-over and the inducing model describe it. */
+function placeWords(p) {
+  if (p.new_file) return ["a new file in ", el("code", { text: p.new_file.dir + "/" }), ", named like ", el("code", { text: `${p.new_file.prefix}…${p.new_file.ext}` })];
+  const file = el("code", { text: p.file.split("/").pop() });
+  if (p.chain.length === 0) return [file, " · the top-level ", el("code", { text: `${p.group === "import " ? "import" : p.group}…` }), " statements"];
+  const parts = p.chain.map((b) => shorten(b.head, 40));
+  const shown = parts.length > 4 ? ["…", ...parts.slice(-4)] : parts;
+  return [file, " · ", el("span", { class: "mono", text: shown.join(" › ") })];
+}
+/** Step text with its blanks marked, and the task's values filled in where given. */
+function blanked(text, fills) {
+  const out = [];
+  const parts = text.split("`");
+  parts.forEach((part, i) => {
+    const pieces = [];
+    const re = /\{[A-Za-z_]\w*(?: [a-z]+)?\}/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(part))) {
+      if (m.index > last) pieces.push(part.slice(last, m.index));
+      const v = fills?.get(m[0]);
+      pieces.push(v !== undefined ? el("span", { class: "fv", title: `${m[0]}, filled from the task`, text: v }) : el("span", { class: "blank", title: "a blank for the agent to fill", text: m[0] }));
+      last = re.lastIndex;
+    }
+    if (last < part.length) pieces.push(part.slice(last));
+    out.push(i % 2 === 1 ? el("code", {}, pieces) : pieces);
+  });
+  return out;
+}
+function workflowCard(w, opts = {}) {
+  const skip = opts.skip ?? [];
+  const fills = opts.fills ?? null;
+  const card = el("div", { class: "wf" });
+  card.append(el("div", { class: "wf-head" }, el("h4", { text: w.name }), w.only_if_asked ? el("span", { class: "tag", text: "only if asked" }) : null));
+  card.append(el("p", {}, el("span", { class: "k", text: "Use when" }), w.use_when));
+  if (w.blanks.length > 0) {
+    card.append(el("p", {}, el("span", { class: "k", text: "Blanks" }), w.blanks.map((b, i) => {
+      const v = fills?.get(`{${b.name}}`);
+      return [i > 0 ? " · " : "", v !== undefined ? el("span", { class: "fv", text: `{${b.name}} = ${v}` }) : el("span", { class: "blank", text: `{${b.name}}` }), " ", b.meaning];
+    })));
+  }
+  const ol = el("ol", { class: "wf-steps" });
+  w.steps.forEach((s, i) => {
+    const left = skip.includes(i + 1);
+    const p = s.place ? PLACES.get(s.place) : null;
+    ol.append(el("li", { class: left ? "left-out" : null },
+      el("div", { class: "do" }, blanked(s.do, fills)),
+      s.when ? el("div", { class: "when" }, "(", blanked(s.when, fills), ")") : null,
+      p ? el("div", { class: "where" }, placeWords(p), el("span", { class: "muted", text: ` · edited by ${p.runs} run${p.runs === 1 ? "" : "s"}` }))
+        : el("div", { class: "where none", text: "no place: a command to run, or a spot only the task knows, which the agent finds" }),
+      left ? el("div", { class: "why-left", text: "Left out for this task: its cue isn't in what the matcher reads." }) : null));
+  });
+  card.append(ol);
+  if (w.checks.length > 0) card.append(el("p", {}, el("span", { class: "k", text: "Checks" }), w.checks.map((c, i) => [i > 0 ? " · " : "", el("code", { text: c })])));
+  if (w.pitfalls.length > 0) card.append(el("p", {}, el("span", { class: "k", text: "Pitfalls" }), w.pitfalls.map((id, i) => [i > 0 ? " · " : "", id])));
+  card.append(el("p", { class: "small muted" }, `Learned from ${w.runs} runs of ${w.tasks.join(" and ")}.`));
+  return card;
+}
+
+// ---------- the graph ----------
+const GNODE = {
+  start: [388, 26, 76, 28],
+  "add-app-state-field": [215, 92],
+  "change-keyboard-shortcut": [560, 92],
+  "create-toggle-action": [215, 172],
+  "give-action-keyboard-shortcut": [215, 252],
+  "add-shortcut-keyboard-test": [560, 252],
+  "add-action-to-canvas-context-menu": [215, 332],
+  "add-preference-toggle-to-main-menu": [215, 412],
+  "update-test-snapshots": [388, 500],
+  end: [388, 576, 76, 28]
+};
+const GPATH = {
+  "start>add-app-state-field": "M388,40 C388,58 215,50 215,69",
+  "start>change-keyboard-shortcut": "M388,40 C388,58 560,50 560,69",
+  "add-app-state-field>create-toggle-action": "M215,115 L215,149",
+  "create-toggle-action>give-action-keyboard-shortcut": "M215,195 L215,229",
+  "create-toggle-action>add-action-to-canvas-context-menu": "M97,180 C62,180 62,326 97,326",
+  "give-action-keyboard-shortcut>add-action-to-canvas-context-menu": "M215,275 L215,309",
+  "add-action-to-canvas-context-menu>add-preference-toggle-to-main-menu": "M215,355 L215,389",
+  "give-action-keyboard-shortcut>add-preference-toggle-to-main-menu": "M97,260 C50,260 50,406 97,406",
+  "create-toggle-action>add-preference-toggle-to-main-menu": "M97,166 C34,166 34,418 97,418",
+  "add-preference-toggle-to-main-menu>update-test-snapshots": "M215,435 C215,462 320,452 320,477",
+  "add-action-to-canvas-context-menu>update-test-snapshots": "M333,332 C370,332 368,440 368,477",
+  "give-action-keyboard-shortcut>update-test-snapshots": "M333,252 C404,252 404,440 404,477",
+  "change-keyboard-shortcut>add-shortcut-keyboard-test": "M560,115 L560,229",
+  "change-keyboard-shortcut>update-test-snapshots": "M678,92 C748,92 748,500 506,500",
+  "add-shortcut-keyboard-test>update-test-snapshots": "M560,275 C560,420 450,440 450,477",
+  "update-test-snapshots>end": "M388,523 L388,562"
+};
+const REL = { LEADS_TO: "leads to", TRIGGERS: "makes necessary", PROVIDES_INPUT_FOR: "provides input for", CONVERGES_TO: "converges to" };
+const nodeName = (id) => (id === "start" ? "start" : id === "end" ? "end" : SHORT[id] ?? id);
+
+/** opts: picked (Map id -> choice) to highlight a selection, selected (id), onSelect(id). */
+function graphView(opts = {}) {
+  const picked = opts.picked ?? null;
+  const active = (id) => picked === null || picked.has(id) || ((id === "start" || id === "end") && picked.size > 0);
+  const root = svg("svg", { viewBox: "0 0 760 600", role: "img", "aria-label": "The graph of workflows: which workflow leads to which, from start to end" });
+  root.append(svg("defs", {},
+    svg("marker", { id: "ar", viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto" }, svg("path", { d: "M0,1 L9,5 L0,9 z", class: "arrow-fill" })),
+    svg("marker", { id: "ar-on", viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto" }, svg("path", { d: "M0,1 L9,5 L0,9 z", class: "arrow-on" }))));
+  const edges = svg("g", {});
+  for (const e of MEM.edges) {
+    const d = GPATH[`${e.from}>${e.to}`];
+    if (d === undefined) continue;
+    const on = picked !== null && active(e.from) && active(e.to);
+    const dim = picked !== null && !on;
+    const hit = svg("path", { d, class: "ghit", tabindex: "0", role: "img", "aria-label": `${nodeName(e.from)} ${REL[e.relation]} ${nodeName(e.to)}${e.condition ? ", if " + e.condition : ""}` });
+    const line = svg("path", { d, class: `gedge${on ? " on" : ""}${dim ? " dim" : ""}`, "marker-end": on ? "url(#ar-on)" : "url(#ar)" });
+    const build = () => [
+      el("strong", { text: `${nodeName(e.from)} → ${nodeName(e.to)}` }),
+      el("div", { class: "tw", text: `${REL[e.relation]}${e.condition ? ", if: " + e.condition : ", always"}` }),
+      e.guidance ? el("div", { class: "tw", text: `Guidance: ${e.guidance}` }) : null,
+      e.pitfalls ? el("div", { class: "tw", text: `Avoid: ${e.pitfalls}` }) : null
+    ].filter(Boolean);
+    hit.addEventListener("pointermove", (ev) => showTip(hit, build, { left: ev.clientX, top: ev.clientY, width: 0, height: 0, bottom: ev.clientY }));
+    hit.addEventListener("pointerleave", hideTip);
+    hit.addEventListener("focus", () => showTip(hit, build));
+    hit.addEventListener("blur", hideTip);
+    edges.append(hit, line);
+  }
+  root.append(edges);
+  for (const [id, [cx, cy, w = 236, h = 46]] of Object.entries(GNODE)) {
+    const pill = id === "start" || id === "end";
+    const wf = WF.get(id);
+    const on = picked !== null && !pill && picked.has(id);
+    const dim = picked !== null && !active(id);
+    const clickable = !pill && typeof opts.onSelect === "function";
+    const g = svg("g", {
+      class: `gnode${pill ? " pill" : ""}${on ? " on" : ""}${dim ? " dim" : ""}${opts.selected === id ? " sel" : ""}${clickable ? " click" : ""}`,
+      tabindex: clickable ? "0" : null,
+      role: clickable ? "button" : null,
+      "aria-label": pill ? id : `${wf.name}${on ? ", picked" : ""}`,
+      "aria-pressed": clickable ? String(opts.selected === id) : null
+    });
+    g.append(svg("rect", { x: cx - w / 2, y: cy - h / 2, width: w, height: h, rx: pill ? h / 2 : 8 }));
+    if (pill) {
+      g.append(svg("text", { x: cx, y: cy + 4, "text-anchor": "middle" }, id));
+    } else {
+      const places = wf.steps.filter((s) => s.place !== null).length;
+      g.append(svg("text", { x: cx, y: cy - 3, "text-anchor": "middle" }, SHORT[id]));
+      g.append(svg("text", { x: cx, y: cy + 14, "text-anchor": "middle", class: "meta" },
+        `${wf.steps.length} steps · ${places === 0 ? "no places" : places === 1 ? "1 place" : places + " places"}${wf.only_if_asked ? " · only if asked" : ""}`));
+    }
+    if (clickable) {
+      g.addEventListener("click", () => opts.onSelect(id));
+      g.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); opts.onSelect(id); } });
+    }
+    root.append(g);
+  }
+  return el("div", { class: "graph-wrap" }, root);
+}
+
+// ====================================================================
+// The steps
+// ====================================================================
+const state = {
+  walk: 0,
+  graphSel: "add-action-to-canvas-context-menu",
+  pickTask: "toggle-presenter",
+  pickText: null,
+  editing: false,
+  pickSel: null,
+  variant: "base",
+  fired: new Set(),
+  lastRun: null,
+  customCmd: ""
+};
+
+function renderEmpty() {
+  return [
+    P("Claude Code gets the task and nothing else. It looks for a similar setting to copy, reads files a few at a time, edits, and checks. Every turn rereads the whole conversation (25k to 63k tokens a turn in this run), so turns are what cost."),
+    taskQuote("The task: one of the two memory will learn from", DATA.tasks["toggle-minimap"]),
+    el("h3", { text: "One run without memory, turn by turn" }),
+    turnStrip(RUNS.minimap),
+    kpiRow([["Turns", "16"], ["Tokens", "787k"], ["Cost", "$0.40"], ["First edit", "turn 6"]]),
+    takeaway("Seven of its 16 turns went to looking around, and one to a mistake other runs made too. Memory is meant to carry what those turns had to find out.")
+  ];
+}
+
+function renderRecord() {
+  const cmds = [
+    [true, "yarn test:typecheck 2>&1 | Select-Object -Last 20"],
+    [false, "yarn test:update --watch=false 2>&1 | Select-Object -Last 60"],
+    [true, "yarn test:update 2>&1 | Select-Object -Last 40"],
+    [true, "git status --short | head -30 && git diff --stat | tail -3"],
+    [true, "git diff packages/utils/tests/__snapshots__/export.test.ts.snap packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap | head -50"],
+    [true, "git diff -U4 packages/utils/tests/__snapshots__/export.test.ts.snap"]
+  ];
+  const card = el("div", { class: "panel" },
+    el("div", { class: "eyebrow-sm" }, "Record ", el("span", { class: "id", text: "e871e5e6" }), ", the run from step 1"),
+    el("dl", { class: "rec" },
+      el("dt", { text: "Task" }), el("dd", { class: "rich" }, rich("`toggle-minimap`: add a “Minimap” toggle setting (the full prompt is kept)")),
+      el("dt", { text: "Run" }), el("dd", { class: "rich" }, rich("started at commit `84e3f5a4` · 16 turns · 51 tool calls · 787k tokens · $0.40")),
+      el("dt", { text: "Change" }), el("dd", { class: "rich" }, rich("17 files: 12 changed, 1 new (`actionToggleMinimap.tsx`), and 4 test snapshots")),
+      el("dt", { text: "Commands" }), el("dd", {}, cmds.map(([ok, c]) => el("div", { class: "cmd" }, glyph(ok ? "yes" : "no"), el("code", { text: c })))),
+      el("dt", { text: "Detour" }), el("dd", { class: "rich" },
+        el("div", {}, rich("**Failed** (turn 11): `yarn test:update --watch=false` said “Error: Expected a single value for option \"-w, --watch\", received [false, false]”")),
+        el("div", {}, rich("**Fixed** (turn 12) by `yarn test:update`, dropping `--watch=false` · it cost 59k tokens")))));
+  const table = el("table", { class: "t" },
+    el("thead", {}, el("tr", {}, el("th", { text: "Record" }), el("th", { text: "Task" }), el("th", { class: "num", text: "Turns" }), el("th", { class: "num", text: "Tokens" }), el("th", { class: "num", text: "Cost" }), el("th", { class: "num", text: "Detours" }))),
+    el("tbody", {}, SEEDS.map(([id, task, turns, tok, cost, det]) => el("tr", { class: id === "e871e5e6" ? "mark" : null },
+      el("td", { class: "mono", text: id }), el("td", { text: task === "altkey-zen-m" ? "Zen mode shortcut, Alt+Z to Alt+M" : "Minimap setting" }),
+      el("td", { class: "num", text: turns }), el("td", { class: "num", text: `${tok.toLocaleString("en-US")}k` }), el("td", { class: "num", text: `$${cost.toFixed(2)}` }), el("td", { class: "num", text: det })))));
+  return [
+    P("A record keeps what happened, as it happened: the task, the commit the run started from, its change (the diff), its log of tool calls in order, the commands it ran and whether each worked, and its **detours**: a call that failed, what fixed it, and what that cost. Nothing is generalized yet."),
+    P("Which runs count: in your own sessions, v1's session-end hook records a session whose change was committed and whose last test run passed. In evals, a run that passed its checks."),
+    card,
+    el("h3", { text: "The six records memory will learn from" }),
+    el("div", { class: "scroll-x" }, table),
+    P("The other task: “Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything that shows or tests the shortcut, and make sure the tests and the typecheck pass.”", "small ink-2"),
+    takeaway("Six successful runs of two tasks, none of them with memory: that is everything v1 will learn from.")
+  ];
+}
+
+// ---------- step 3: from an edit to its place ----------
+const WALK = [
+  { found: [], text: "The Minimap run added one line to this list: `actionToggleMinimap,`. Memory won't keep the line, or where it is. It keeps which list it went into." },
+  { found: [13855], text: "The nearest line above it that is indented less opens the block it is in: `return [`. That is the innermost block." },
+  { found: [13855, 13844], text: "The same again from there gives `if (type === \"canvas\") {`. The view-mode `if` just inside it is passed over: it is indented as much as `return [`, so it is a neighbour, not a parent." },
+  { found: [13855, 13844, 13834], text: "The next one is `): ContextMenuItems => {`, which only continues a statement, so the block is named by the line that starts it: `private getContextMenuItems = (`." },
+  { found: [13855, 13844, 13834, 638], text: "Then the class, at the top level. Nothing encloses it, so the chain is complete." }
+];
+const DEPTH = { 638: 1, 13834: 2, 13844: 3, 13855: 4 };
+
+function codeLines(lines, opts) {
+  const box = el("div", { class: "code", role: "region", "aria-label": opts.label ?? "Code" });
+  if (opts.file) box.append(el("div", { class: "file" }, opts.file));
+  for (const l of lines) {
+    if (l.sep) { box.append(el("div", { class: "ln sep" }, el("span", { class: "no" }), el("span", { class: "mk" }), el("span", { class: "tx", text: l.sep }))); continue; }
+    const depth = opts.heads?.get(l.no);
+    const cls = ["ln"];
+    if (l.tag) cls.push(l.tag);
+    if (opts.region && l.no !== null && l.no >= opts.region.from && l.no <= opts.region.to) cls.push("region");
+    if (depth !== undefined) cls.push("head");
+    let mk = null;
+    if (depth === "x") mk = el("span", { class: "dot x", title: "not found", text: "✗" });
+    else if (depth !== undefined) mk = el("span", { class: `dot d${depth}`, title: `block ${depth} of the chain`, text: depth });
+    else if (opts.opens?.has(l.no)) mk = el("span", { class: "opens", title: "the line that opens block 2", text: "↳" });
+    box.append(el("div", { class: cls.join(" ") }, el("span", { class: "no", text: l.no ?? "" }), el("span", { class: "mk" }, mk), el("span", { class: "tx", text: l.text })));
+  }
+  return box;
+}
+
+function renderEvidence() {
+  const host = el("div");
+  const base = DATA.placeDemo.base;
+  const lines = [{ no: 638, text: CLASS_LINE }, { sep: "⋮" }];
+  base.excerpt.slice(0, 40).forEach((t, i) => {
+    const no = base.excerptStart + i;
+    lines.push({ no, text: t });
+    if (no === 13868) lines.push({ no: null, text: "        actionToggleMinimap,", tag: "edit" });
+  });
+  const draw = () => {
+    const s = WALK[state.walk];
+    const heads = new Map(s.found.map((n) => [n, DEPTH[n]]));
+    const view = codeLines(lines, { label: "App.tsx at the commit the runs started from, with the Minimap run's addition", file: el("span", {}, el("b", { text: "packages/excalidraw/components/App.tsx" }), " at the runs' starting commit, with the Minimap run's added line (+)"), heads, opens: state.walk >= 3 ? new Set([13836]) : new Set() });
+    const controls = el("div", { class: "btn-row" },
+      el("button", { class: "btn primary sm", disabled: state.walk >= 4, onclick: () => { state.walk++; draw(); } }, state.walk === 0 ? "Find the blocks around it" : "Up one more block"),
+      el("button", { class: "btn sm", disabled: state.walk === 0, onclick: () => { state.walk = 0; draw(); } }, "Start over"),
+      el("button", { class: "btn sm", disabled: state.walk === 4, onclick: () => { state.walk = 4; draw(); } }, "Show the whole chain"));
+    const out = [el("div", { class: "walk-text" }, el("p", {}, el("strong", { text: `${state.walk === 0 ? "The edit" : "Block " + (5 - state.walk)}. ` }), rich(s.text))), controls, view];
+    if (state.walk === 4) {
+      const place = PLACES.get("p-6655ad1a");
+      out.push(el("div", { class: "result" }, el("div", {},
+        el("strong", { text: "The place, as memory keeps it" }),
+        el("ul", { class: "chainlist" }, place.chain.map((b, i) => el("li", {},
+          el("span", { class: `dot d${i + 1}`, text: i + 1 }), el("code", { text: b.head }),
+          b.open ? el("span", { class: "small muted" }, " opened by ", el("code", { text: b.open })) : null,
+          b.close ? el("span", { class: "small muted" }, " closed by ", el("code", { text: b.close })) : null))),
+        P("No line numbers and no neighbouring lines, so it holds for as long as these four blocks exist. All three Minimap runs edited this list, so it is one place with three runs as evidence. The same run's edit in the view-mode list, a few lines up, is another place: one block deeper, under `if (this.state.viewModeEnabled) {`.", "small ink-2"))));
+    }
+    host.replaceChildren(...out);
+  };
+  draw();
+  return [
+    P("Code, not a model, reads each record: where each edit went, in what order, what the run read before it created a file, which checks worked, its detours, and the task's own values. Where an edit went is kept as a **place**: the chain of blocks around it, read from indentation."),
+    el("h3", { text: "From an edit to its place" }),
+    host,
+    el("h3", { text: "Other kinds of place" }),
+    el("ul", {},
+      el("li", {}, rich("A group of top-level statements that start alike: the `PreferencesToggle…` components in the Preferences menu.")),
+      el("li", {}, rich("The imports at the top of a file.")),
+      el("li", {}, rich("A new file: its directory, and how its neighbours are named: `actions/actionToggle….tsx`."))),
+    el("h3", { text: "Also read from the same run" }),
+    el("ul", {},
+      el("li", {}, rich("**The task's own values**, which memory must never contain: what the prompt quotes or names, and names its change brought that the repository didn't have (checked with `git grep`): `minimapEnabled`, `Alt+M`, `Minimap`, `KeyM`, `actionToggleMinimap`, `PreferencesToggleMinimapItem`, `minimapIcon`, and three fragments of the icon's drawing.")),
+      el("li", {}, rich("**What it read before creating its action file**: `actionToggleGridMode.tsx`, `actionToggleObjectsSnapMode.tsx`, `types.ts`, `shortcuts.ts`.")),
+      el("li", {}, rich("**The checks that worked**, each in the shortest line that ran it: `yarn test:typecheck`, `yarn test:update`.")),
+      el("li", {}, rich("**Its 20 edits in the order it made them**, and its detour."))),
+    takeaway("Pooled over the six runs: 24 places, each with the runs that edited it. Evidence is worked out from the records whenever memory is built; it isn't stored.")
+  ];
+}
+
+// ---------- step 4: induction ----------
+function renderInduce() {
+  const rows = [
+    ["Added `minimapEnabled: false,` to the object `getDefaultAppState` returns (all 3 Minimap runs)", "Add `{field}: {default},` to the default app state returned by getDefaultAppState.", "p-4a2d0bc9"],
+    ["Added `actionToggleMinimap,` to the canvas list in App.tsx (all 3)", "Add {action} to the canvas menu item list in getContextMenuItems.", "p-6655ad1a"],
+    ["Added it to the view-mode list as well, because the task said “also in view mode” (all 3)", "Add {action} to the view-mode canvas menu list. (only if the task wants it in view mode too)", "p-ae28280f"],
+    ["Changed the zen-mode action's `keyTest` to the new key, in that action's own file (all 3 zen runs)", "In the action's own file, change the keyTest to compare event.code with CODES.{newCode} (keep the modifier checks).", null],
+    ["Ran `yarn test:update --watch=false`, which failed, then plain `yarn test:update` (4 of the 6 runs)", "Pitfall: `yarn test:update` already passes a --watch option, so adding `--watch=false` fails. Run plain `yarn test:update`. Its trigger: a command containing `test:update` and `--watch=false`.", "pit"]
+  ];
+  const table = el("table", { class: "t" },
+    el("thead", {}, el("tr", {}, el("th", { text: "What the runs did" }), el("th", { text: "What memory keeps" }))),
+    el("tbody", {}, rows.map(([did, keeps, place]) => el("tr", {},
+      el("td", { class: "rich" }, rich(did)),
+      el("td", {},
+        place === "pit" ? el("div", { class: "rich" }, rich(keeps)) : el("div", {}, blanked(keeps, null)),
+        place && place !== "pit" ? el("div", { class: "small muted" }, "⌖ ", placeWords(PLACES.get(place))) : null,
+        place === null ? el("div", { class: "small muted", text: "○ no place: that file is one of several named actionToggle…, and only one task edited it, so it is that task's own file" }) : null)))));
+  const detail = el("div");
+  const graphHost = el("div");
+  const draw = () => {
+    graphHost.replaceChildren(graphView({ selected: state.graphSel, onSelect: (id) => { state.graphSel = id; draw(); } }));
+    detail.replaceChildren(workflowCard(WF.get(state.graphSel)));
+  };
+  draw();
+  return [
+    P("One call to Sonnet (high effort, $0.14) reads the evidence of all six runs and proposes three things: **workflows**, sub-routines finer than a task, with **blanks** in braces where a task's own values go; **edges** that say which workflow leads to which, and when; and **pitfalls**, mistakes taken from the detours, each with an exact trigger where one exists."),
+    el("div", { class: "scroll-x" }, table),
+    el("h3", { text: "Then code checks the answer" }),
+    el("ul", {},
+      el("li", {}, rich("No text may name a task's own value: blanks instead of `minimapEnabled`, `Alt+M`, `actionToggleMinimap`.")),
+      el("li", {}, rich("A step's place must have been edited by at least two runs, and not be one task's own file.")),
+      el("li", {}, rich("A trigger must match the call that failed, and not the one that fixed it.")),
+      el("li", {}, rich("Every workflow must be reachable from start and lead to end."))),
+    P("Problems go back to the model once, with its answer; whatever still fails is dropped. This build had none. Of the 24 places, 20 carry steps; the other four are the zen-mode action's own file, an icon one run drew on its own, and two spots in a test file, each edited by only one run."),
+    el("h3", { text: "What memory holds now" }),
+    P("Hover an arrow for its condition; click a workflow to read it.", "small muted"),
+    graphHost,
+    detail,
+    takeaway("8 workflows, 16 edges and 4 pitfalls, over 20 places. Committed as version 1.")
+  ];
+}
+
+// ---------- step 5: cues ----------
+function fillWords(f) {
+  if (f.from === "after") return ["the word after “", f.phrase, "”"];
+  return [`the ${ord(f.n)} `, { code: "name in backticks", quoted: "quoted text", key: "key combination", "key-letter": "key of a combination" }[f.from]];
+}
+function renderCues() {
+  const table = el("table", { class: "t" },
+    el("thead", {}, el("tr", {}, el("th", { text: "Workflow" }), el("th", { text: "Picked when the task says any of" }), el("th", { text: "Unless it says" }), el("th", { text: "Blanks filled from the task" }))),
+    el("tbody", {}, ORDER.map((w) => el("tr", {},
+      el("td", {}, el("strong", { text: SHORT[w.id] }), w.only_if_asked ? el("div", { class: "small muted", text: "only if asked" }) : null),
+      el("td", {},
+        w.cues.any.map((p, i) => [i > 0 ? " " : "", el("span", { class: "cue", text: `“${p}”` })]),
+        w.cues.steps.map((s) => el("div", { class: "small ink-2", title: w.steps[s.step - 1].when }, `Its step ${s.step} is kept only if the task also says `, s.any.map((p) => el("span", { class: "cue", text: `“${p}”` }))))),
+      el("td", {}, w.cues.none.length ? w.cues.none.map((p) => el("span", { class: "cue", text: `“${p}”` })) : el("span", { class: "muted", text: "–" })),
+      el("td", { class: "small" }, w.cues.fills.length ? w.cues.fills.map((f) => el("div", {}, el("code", { text: f.placeholder }), " = ", fillWords(f))) : el("span", { class: "muted", text: "–" }))))));
+  const seedPicks = [["altkey-zen-m", "Zen mode shortcut"], ["toggle-minimap", "Minimap"]].map(([id, label]) =>
+    el("li", {}, el("strong", { text: `${label}: ` }), cueChoice(MEM, DATA.tasks[id]).map((c) => SHORT[c.workflow.id]).join(", ")));
+  return [
+    P("A second call (Sonnet, $0.09) writes, for each workflow, its **cues**: phrases of which a task that needs the workflow says at least one, phrases that rule it out, phrases for its conditional steps, and where a task states a blank's value. They are plain text, matched exactly at task start, so picking needs no model."),
+    el("div", { class: "scroll-x" }, table),
+    el("h3", { text: "Then code checks them" }),
+    el("ul", {},
+      el("li", {}, rich("No cue may name a task's own value: “with alt+” is fine, “Alt+M” is not.")),
+      el("li", {}, rich("On the two tasks memory learned from, the cues must pick exactly the workflows the model says each needs, and each fill must find that task's value:")),
+      el("ul", {}, seedPicks)),
+    takeaway("Cues are written once per build and committed as version 2. A build or a learning round writes workflows without cues, so they are written again after each.")
+  ];
+}
+
+// ---------- step 6: on disk ----------
+function renderStore() {
+  const place = PLACES.get("p-6655ad1a");
+  const w = WF.get("add-app-state-field");
+  const asStored = {
+    id: w.id, name: w.name, use_when: w.use_when, cues: w.cues, only_if_asked: w.only_if_asked, blanks: w.blanks,
+    steps: w.steps, checks: w.checks, pitfalls: w.pitfalls, evidence: `[${w.runs} record ids]`, tasks: w.tasks
+  };
+  return [
+    P("Each change to memory is first a **candidate**, with the model's reasons, the records it learned from, what the checks found and what it cost. Committed, it becomes a **version**, kept whole; `workflows.json` says which version is current. Nothing is edited in place, so any earlier memory can be read again."),
+    el("div", { class: "two" },
+      el("div", { class: "panel" }, el("h4", { text: "In memory" }), el("ul", { class: "small" },
+        el("li", {}, rich("Workflows: steps with blanks, a place per step or none, conditions, checks, cues")),
+        el("li", {}, rich("Places: chains of block openings, a group's start, or a new file's directory and name")),
+        el("li", {}, rich("Edges between workflows, with conditions")),
+        el("li", {}, rich("Pitfalls, with exact triggers where they have one")),
+        el("li", {}, rich("For each piece, the runs it came from")))),
+      el("div", { class: "panel" }, el("h4", { text: "Never in memory" }), el("ul", { class: "small" },
+        el("li", {}, rich("Lines of code or line numbers: they are looked up in the code when used")),
+        el("li", {}, rich("A task's own values: names, keys, labels")),
+        el("li", {}, rich("Finished changes to copy"))))),
+    el("h3", { text: "One place, as stored" }),
+    el("div", { class: "panel" },
+      el("p", { class: "small" }, el("code", { text: place.file })),
+      el("ul", { class: "chainlist" }, place.chain.map((b, i) => el("li", {}, el("span", { class: `dot d${i + 1}`, text: i + 1 }), el("code", { text: b.head }), b.close ? el("span", { class: "small muted" }, " … ", el("code", { text: b.close })) : null))),
+      el("p", { class: "small muted", text: `Edited by ${place.runs} runs of ${place.tasks.join(", ")}: ${place.edits.add} additions.` })),
+    el("h3", { text: "One workflow, as stored" }),
+    workflowCard(w),
+    el("details", {}, el("summary", { text: "The same workflow as it is on disk (JSON)" }), el("pre", { class: "json", text: JSON.stringify(asStored, null, 1) })),
+    P("Version 2: 8 workflows, 20 places, 16 edges, 4 pitfalls, cues on all 8. Its fingerprint (sha256 of `versions/000002.json`) is `04b51cbb…ec1f9`, sealed with the tag `memory-local-first`.", "small ink-2"),
+    takeaway("Building is done. From here on, each task only reads memory, until the next learning round.")
+  ];
+}
+
+// ---------- step 7: picking by cues ----------
+function negatedRanges(text) {
+  const out = [];
+  const re = new RegExp(NEGATED.source, "gi");
+  let m;
+  while ((m = re.exec(text))) { if (m[0].length === 0) { re.lastIndex++; continue; } out.push([m.index, m.index + m[0].length]); }
+  return out;
+}
+function readingView(text, phrases) {
+  const neg = negatedRanges(text);
+  const inNeg = (i) => neg.some(([a, b]) => i >= a && i < b);
+  const marks = [];
+  const lower = text.toLowerCase();
+  for (const p of phrases) {
+    const q = p.trim().toLowerCase();
+    if (!q) continue;
+    let i = lower.indexOf(q);
+    while (i >= 0) {
+      if (!inNeg(i) && !marks.some(([a, b]) => i < b && i + q.length > a)) marks.push([i, i + q.length]);
+      i = lower.indexOf(q, i + 1);
+    }
+  }
+  const cuts = [...neg.map(([a, b]) => ({ a, b, k: "del" })), ...marks.map(([a, b]) => ({ a, b, k: "mark" }))].sort((x, y) => x.a - y.a);
+  const box = el("div", { class: "reading", "aria-label": "The task as the matcher reads it" });
+  // Shown reflowed. A line break ends a negated clause, which the struck ranges already reflect;
+  // a newline and a space are one character each, so the ranges still line up.
+  const disp = text.replace(/\n/g, " ");
+  let at = 0;
+  for (const c of cuts) {
+    if (c.a < at) continue;
+    if (c.a > at) box.append(disp.slice(at, c.a));
+    box.append(el(c.k, { text: disp.slice(c.a, c.b) }));
+    at = c.b;
+  }
+  if (at < disp.length) box.append(disp.slice(at));
+  return box;
+}
+function renderPick() {
+  if (state.pickText === null) state.pickText = DATA.tasks[state.pickTask];
+  const chipsBox = el("div", { class: "chips", role: "group", "aria-label": "Example tasks from the suite" });
+  const ta = el("textarea", { class: "task-input", "aria-label": "Your task's text", spellcheck: "false" });
+  ta.value = state.pickText;
+  const fit = () => { ta.rows = Math.max(4, ta.value.split("\n").length + 1); };
+  const editor = el("div", { class: "editor" }, el("div", { class: "eyebrow-sm", text: "Your task (edit it; the pick updates as you type)" }), ta);
+  const readingHost = el("div");
+  const resultsHost = el("div");
+  const noteHost = el("div");
+  const graphHost = el("div");
+  const cardHost = el("div");
+  const update = () => {
+    const text = state.pickText;
+    const choice = cueChoice(MEM, text);
+    const picked = new Map(choice.map((c) => [c.workflow.id, c]));
+    chipsBox.replaceChildren(...TASKS.map(([id, label]) => el("button", { class: "chip-btn", "aria-pressed": String(!state.editing && state.pickTask === id), onclick: () => { state.editing = false; state.pickTask = id; state.pickText = DATA.tasks[id]; ta.value = state.pickText; state.pickSel = null; update(); } }, label)),
+      el("button", { class: "chip-btn", "aria-pressed": String(state.editing), onclick: () => { state.editing = true; update(); ta.focus(); } }, "Write your own"));
+    editor.hidden = !state.editing;
+    fit();
+    // what the matcher reads: negated clauses out, the cues it found marked
+    const hits = [];
+    const pos = positiveText(text);
+    for (const c of choice) {
+      hits.push(c.hit);
+      for (const s of c.workflow.cues.steps) { const h = cueMatch(pos, s.any, s.none); if (h) hits.push(h); }
+    }
+    readingHost.replaceChildren(readingView(text, hits), el("p", { class: "legend-inline" }, el("del", { text: "struck" }), ": a negated clause, taken out before matching · ", el("mark", { text: "marked" }), ": a cue that picked a workflow or kept a step"));
+    // the results, in graph order
+    const list = el("ul", { class: "results" });
+    for (const w of ORDER) {
+      const c = picked.get(w.id);
+      if (c) {
+        const fills = fillsFor(text, w);
+        const open = w.blanks.filter((b) => !fills.has(`{${b.name}}`));
+        const subs = [];
+        for (const s of c.skip) {
+          const step = w.steps[s - 1];
+          const cue = w.cues.steps.find((x) => x.step === s);
+          const inNegated = cue && said(text, cue.any) !== undefined;
+          subs.push(el("div", { class: "sub" }, rich(`Step ${s} left out (${step.when}): ${inNegated ? `“${said(text, cue.any)}” is said only in a negated clause` : `none of “${cue ? cue.any.join("”, “") : ""}” is said`}.`)));
+        }
+        if (fills.size > 0) subs.push(el("div", { class: "sub" }, "Filled: ", [...fills].map(([b, v], i) => [i > 0 ? " · " : "", el("code", { text: b }), " = ", el("span", { class: "fv", text: v })])));
+        if (open.length > 0) subs.push(el("div", { class: "sub muted" }, "Left for the agent: ", open.map((b, i) => [i > 0 ? ", " : "", el("span", { class: "blank", text: `{${b.name}}` })])));
+        list.append(el("li", { class: "yes" }, glyph("yes"), el("div", {}, el("span", { class: "nm", text: w.name }), " ", el("span", { class: "why", text: `says “${c.hit}”` })), subs));
+      } else {
+        const anyNeg = said(text, w.cues.any);
+        const ruled = anyNeg !== undefined && said(pos, w.cues.any) !== undefined ? said(pos, w.cues.none) : undefined;
+        const why = ruled !== undefined ? `ruled out: says “${ruled}”`
+          : anyNeg !== undefined ? `“${anyNeg}” is said only in a negated clause`
+          : "none of its cues is said";
+        list.append(el("li", { class: "no" }, glyph("dash"), el("div", {}, el("span", { class: "nm", text: w.name }), " ", el("span", { class: "why", text: why }))));
+      }
+    }
+    resultsHost.replaceChildren(el("p", { class: "small muted" }, `${choice.length} of 8 workflows picked, in the order the hand-over will give them.`), list);
+    noteHost.replaceChildren(el("div", { class: "pick-note" }, TASK_NOTES[state.editing ? "own" : state.pickTask] ?? TASK_NOTES.own));
+    if (state.pickSel !== null && !WF.has(state.pickSel)) state.pickSel = null;
+    graphHost.replaceChildren(graphView({ picked, selected: state.pickSel, onSelect: (id) => { state.pickSel = state.pickSel === id ? null : id; update(); } }),
+      el("p", { class: "graph-hint", text: "Picked workflows in blue. Click one to read it as this task gets it." }));
+    if (state.pickSel !== null) {
+      const c = picked.get(state.pickSel);
+      const card = workflowCard(WF.get(state.pickSel), c ? { skip: c.skip, fills: fillsFor(text, c.workflow) } : {});
+      if (c) cardHost.replaceChildren(card);
+      else cardHost.replaceChildren(card, el("p", { class: "small muted", text: "Not picked for this task." }));
+    } else cardHost.replaceChildren();
+  };
+  ta.addEventListener("input", () => {
+    state.pickText = ta.value;
+    update();
+  });
+  update();
+  return [
+    P("At the session's first prompt, Claude Code runs v1's prompt hook. It takes the task's negated clauses out (from “not”, “n't”, “never”, “no” or “without” to the end of the clause), matches each workflow's cues against what is left, exactly and in any case, drops the conditional steps whose cues aren't said, and fills in the blanks the task states as written. The same text always gets the same answer."),
+    P("Pick a task from the suite, or write your own:", "small muted"),
+    chipsBox,
+    editor,
+    el("div", { class: "pick-grid" },
+      el("div", {}, el("div", { class: "eyebrow-sm", text: "What the matcher reads" }), readingHost, noteHost),
+      el("div", {}, el("div", { class: "eyebrow-sm", text: "What it picks" }), resultsHost)),
+    el("h3", { text: "The same pick on the graph" }),
+    graphHost,
+    cardHost,
+    P("The edges only set the order of the hand-over; with cues, their conditions aren't read.", "small muted"),
+    takeaway("No model call and no network: picking is plain string matching on the task's text.")
+  ];
+}
+
+// ---------- step 8: find the places, then hand over ----------
+const VARIANTS = [
+  ["base", "As memory learned it"],
+  ["above", "60 lines added above"],
+  ["list", "The list changed"],
+  ["grew", "A block's first line grew"],
+  ["moved", "The file was renamed"],
+  ["renamed", "The method was renamed"]
+];
+function variantView(key) {
+  const d = DATA.placeDemo[key === "moved" ? "base" : key];
+  const baseSet = new Set(DATA.placeDemo.base.excerpt);
+  const lines = [{ no: d.classLine, text: CLASS_LINE }];
+  if (key === "above") lines.push({ sep: "⋮  13,195 lines, then 60 new ones: a method added just above (lines 13834 to 13893)" });
+  else lines.push({ sep: "⋮" });
+  d.excerpt.slice(0, 41).forEach((t, i) => {
+    const no = d.excerptStart + i;
+    let tag = null;
+    if (!baseSet.has(t)) tag = key === "list" ? "added" : "changed";
+    lines.push({ no, text: t, tag });
+  });
+  const heads = new Map();
+  d.heads.forEach((n, i) => { if (n !== null) heads.set(n, i + 1); });
+  if (key === "renamed") heads.set(d.excerptStart, "x");
+  const file = key === "moved" ? "packages/excalidraw/components/AppComponent.tsx" : "packages/excalidraw/components/App.tsx";
+  const region = d.region ? { from: d.region.from, to: d.region.to } : null;
+  const where = region ? `${file.split("/").pop()}:${region.from}-${region.to}` : null;
+  const results = {
+    base: ["yes", `Found at \`${where}\`: the canvas list, where the Minimap runs added to it.`],
+    above: ["yes", `Found at \`${where}\`: the same four blocks, 60 lines lower.`],
+    list: ["yes", `Found at \`${where}\`: two items added and \`copyText\` gone. Items come and go; the blocks around them stay.`],
+    grew: ["yes", `Found at \`${where}\`, by its first words: the line still begins with \`if (type === "canvas"\`.`],
+    moved: ["yes", "`App.tsx` no longer exists, so v1 searches the repository for files containing `class App extends React.Component<AppProps, AppState> {` and finds the place in `AppComponent.tsx:13855-13872`, marked “moved from App.tsx”."],
+    renamed: ["no", "Not found: no block inside `class App` begins with `private getContextMenuItems`. The step is still handed over, without a place. Memory says less, never something wrong."]
+  }[key];
+  const caption = {
+    base: "The code the runs started from.",
+    above: "Someone added a 60-line method above `getContextMenuItems`.",
+    list: "Someone added `actionToggleRulers` and `actionToggleMinimap` to the list, and removed `copyText`.",
+    grew: "Someone extended the condition: `if (type === \"canvas\" && !this.state.contextMenuLocked) {`.",
+    moved: "Someone renamed `App.tsx` to `AppComponent.tsx`; the code inside is unchanged.",
+    renamed: "Someone renamed `getContextMenuItems` to `buildContextMenu`."
+  }[key];
+  return [
+    el("p", { class: "small ink-2" }, rich(caption), ["list", "grew", "renamed"].includes(key) ? [" ", el("span", { class: "u-changed", text: "Changed lines" }), " are underlined."] : null),
+    codeLines(lines, { label: "The code the place is looked up in", file: el("span", {}, el("b", { text: file })), heads, region }),
+    el("div", { class: "result" }, glyph(results[0]), el("div", { class: "rich" }, rich(results[1])))
+  ];
+}
+function renderHandover() {
+  const vHost = el("div");
+  const vButtons = el("div", { class: "chips", role: "group", "aria-label": "How the code changed" });
+  const drawV = () => {
+    vButtons.replaceChildren(...VARIANTS.map(([k, label]) => el("button", { class: "chip-btn", "aria-pressed": String(state.variant === k), onclick: () => { state.variant = k; drawV(); } }, label)));
+    vHost.replaceChildren(...variantView(state.variant));
+  };
+  drawV();
+  const ho = DATA.handover;
+  const budget = 9800;
+  const meter = el("div", { class: "meter-wrap" },
+    el("div", { class: "meter-top" }, el("span", {}, el("b", { text: ho.chars.toLocaleString("en-US") }), " characters handed over"), el("span", { text: "budget 9,800 · cut-off 10,000" })),
+    el("div", { class: "meter", role: "img", "aria-label": `${ho.chars} of a 9,800-character budget; Claude Code cuts a hook's text at 10,000` },
+      el("div", { class: "fill", style: `width:${(ho.chars / 10000) * 100}%` }),
+      el("div", { class: "tick", style: `left:${(budget / 10000) * 100}%` })),
+    el("div", { class: "meter-bottom" }, el("span", { style: `left:${(budget / 10000) * 100}%`, text: "budget ↑" })));
+  const view = el("div", { class: "ho", tabindex: "0", role: "region", "aria-label": "The hand-over text, exactly as the agent got it" });
+  let fence = false;
+  for (const line of ho.text.split("\n")) {
+    let cls = "";
+    if (line.trim() === "```") { cls = "fence"; fence = !fence; }
+    else if (fence) cls = "ex";
+    else if (line.startsWith("# ")) cls = "h1";
+    else if (line.startsWith("## ")) cls = "h2";
+    else if (line.startsWith("Filled from your task:")) cls = "filled";
+    else if (line.startsWith("Blanks:")) cls = "blanks";
+    else if (line.startsWith("Watch out:")) cls = "warn";
+    else if (line.startsWith("Check with")) cls = "check";
+    else if (/^ {3}(`|a new file in)/.test(line)) cls = "place";
+    const row = el("div", { class: `hl ${cls}` });
+    // The values the task stated: everywhere they were written into a step, and in each "Filled from your task" line.
+    const re = cls === "filled" ? /`[^`]+`/g : /presenterModeEnabled(?:: false)?|Alt\+J/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(line))) {
+      if (m.index > last) row.append(line.slice(last, m.index));
+      row.append(el("span", { class: "fv", text: m[0] }));
+      last = re.lastIndex;
+    }
+    if (last < line.length) row.append(line.slice(last));
+    view.append(row);
+  }
+  return [
+    P("Memory has no line numbers. For each chosen step it opens the place's file and looks for the chain, block by block, each among the direct children of the one before: by its opening line exactly, else by its first words. If the file no longer has it, it searches the repository for files containing the outermost block's opening line, since code moves. A place it can't find is left out quietly."),
+    el("h3", { text: "Finding one place in code that changed" }),
+    P("The canvas list from step 3. Pick a change; the results are v1's own, computed on these versions of App.tsx.", "small muted"),
+    vButtons,
+    vHost,
+    el("h3", { text: "Then the hand-over" }),
+    P("The chosen workflows in graph order. Each step with the task's values filled in, its place as a file and its current lines, the blocks around it, and a short excerpt; then the workflow's checks, and its pitfalls, once. It has to fit in 9,800 characters, because Claude Code cuts a hook's text at 10,000; excerpts get shorter until it fits."),
+    meter,
+    kpiRow([["Workflows", String(ho.workflows.length)], ["Places found", `${ho.shown.length} of ${ho.shown.length + ho.missing.length}`], ["Values filled", "3"], ["Pitfalls", String(ho.pitfalls.length)]]),
+    el("div", { class: "ho-legend" },
+      el("span", {}, el("span", { class: "fv", text: "Alt+J" }), "filled from the task"),
+      el("span", {}, el("i", { class: "swatch-place" }), "a place, found a moment ago"),
+      el("span", { class: "muted" }, "excerpt lines, with current line numbers"),
+      el("span", {}, glyph("warn"), "watch out: a pitfall")),
+    view,
+    P("Workflow 4 has four steps, not five: the view-mode step was dropped at step 7, and the steps are numbered again.", "small muted"),
+    takeaway("The agent reads this before its first turn. Whatever it says about the code was read from the code a moment before.")
+  ];
+}
+
+// ---------- step 9: during the task ----------
+const WARN_HEAD = "Memory from earlier tasks in this repository: what you just did matches a mistake made before.";
+const PRESETS = [
+  { label: "yarn test:update --watch=false", note: "as 16 of 28 runs without memory ran it", event: { tool: "Bash", command: "yarn test:update --watch=false 2>&1 | tail -40", file: undefined, text: undefined, failed: true, output: "Error: Expected a single value for option \"-w, --watch\", received [false, false]" } },
+  { label: "yarn test:update", note: "as the Presenter run ran it", event: { tool: "Bash", command: "yarn test:update 2>&1 | tail -30", file: undefined, text: undefined, failed: false, output: "Test Files  … passed" } },
+  { label: "yarn test:typecheck", note: "a check that never warns", event: { tool: "Bash", command: "yarn test:typecheck 2>&1 | tail -15", file: undefined, text: undefined, failed: false, output: "Done" } },
+  { label: "an edit that matches twice", note: "the failure this pitfall was learned from", event: { tool: "Edit", command: undefined, file: "packages/excalidraw/components/App.tsx", text: "        actionToggleZenMode,\n        actionTogglePresenterMode,", failed: true, output: "Found 2 matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance." } },
+  { label: "the same, but 3 matches", note: "what another Presenter run's failed edit actually said", event: { tool: "Edit", command: undefined, file: "packages/excalidraw/components/App.tsx", text: "  actionToggleStats,", failed: true, output: "Found 3 matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance." } }
+];
+function renderDuring() {
+  const triggered = MEM.pitfalls.filter((p) => p.trigger !== null);
+  const host = el("div");
+  const input = el("input", { type: "text", placeholder: "or type a shell command, then press Enter", "aria-label": "A shell command to check against the triggers", spellcheck: "false" });
+  input.value = state.customCmd;
+  const run = (label, event) => {
+    const fresh = triggered.filter((p) => matchTrigger(p.trigger, event) && !state.fired.has(p.id));
+    const again = triggered.filter((p) => matchTrigger(p.trigger, event) && state.fired.has(p.id));
+    for (const p of fresh) state.fired.add(p.id);
+    state.lastRun = { label, fresh, again };
+    draw();
+  };
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && input.value.trim()) { state.customCmd = input.value; run(input.value.trim(), { tool: "Bash", command: input.value, file: undefined, text: undefined, failed: false, output: undefined }); } });
+  const draw = () => {
+    const out = [];
+    const r = state.lastRun;
+    if (r) {
+      if (r.fresh.length > 0) {
+        out.push(el("div", { class: "warnbox", role: "status" }, el("div", {}, glyph("warn"), " ", el("strong", { text: "The hook hands the agent this, right after the call:" })),
+          el("pre", { text: [WARN_HEAD, ...r.fresh.map((p) => `- ${p.text}`)].join("\n") })));
+      } else if (r.again.length > 0) {
+        out.push(el("div", { class: "quietbox", role: "status" }, rich(`Matches \`${r.again[0].id}\` again, but it already warned once this session, so the hook stays quiet.`)));
+      } else {
+        out.push(el("div", { class: "quietbox", role: "status" }, "No trigger matches: the hook prints nothing."));
+      }
+    }
+    out.push(el("p", { class: "small muted" }, `Warned this session: ${state.fired.size === 0 ? "nothing yet" : [...state.fired].join(", ")}. `,
+      state.fired.size > 0 ? el("button", { class: "btn sm", onclick: () => { state.fired.clear(); state.lastRun = null; draw(); } }, "New session") : null));
+    host.replaceChildren(...out);
+  };
+  draw();
+  return [
+    P("Every pitfall on a picked workflow is already in the hand-over (its “Watch out” line). On top of that, after every shell command and edit, v1's tool hook checks the call against the pitfalls that have a trigger: plain substrings in the command, in the text an edit writes, or in a failed call's output. A match hands the agent the pitfall's warning right then, once per pitfall per session, whether or not its workflow was picked. This hook runs after every call, so it reads only a few files: no git, no model."),
+    el("ul", { class: "pits" }, MEM.pitfalls.map((p) => el("li", {}, glyph(p.trigger ? "warn" : "dash"), el("div", { class: "rich" }, rich(p.text)),
+      el("div", { class: "trig" }, p.trigger
+        ? rich(`Trigger: ${p.trigger.on === "command" ? "a command containing" : p.trigger.on === "error" ? "a failed call whose output contains" : "an edit writing"} ${p.trigger.all.map((s) => `\`${s}\``).join(" and ")}`)
+        : "No trigger: handed over at the start with its workflow, when that workflow is picked; never mid-task.")))),
+    el("h3", { text: "Try it" }),
+    el("div", { class: "tester" },
+      el("div", { class: "btn-row" }, PRESETS.map((p) => el("button", { class: "btn sm", title: p.note, onclick: () => run(p.label, p.event) }, p.label))),
+      input,
+      host),
+    P("Triggers are exact substrings. Another Presenter run did make the ambiguous-edit mistake, but its error said “Found 3 matches”, and the trigger looks for “Found 2 matches”, so the warning never came (the last button). A third run's App.tsx edit failed with “String to replace not found”, which no trigger covers.", "small ink-2"),
+    el("h3", { text: "What happened in the Presenter run" }),
+    P("Nothing fired: the warning at the start was enough. Across v1's measured runs the doubled `--watch=false` came up in none of 33, and in none of the 18 local-first runs; without memory, in 16 of 28 runs.", "ink-2"),
+    turnStrip(RUNS.presenter),
+    kpiRow([["Result", "passed"], ["Turns", "8"], ["Tokens", "338k"], ["Cost", "$0.22"]]),
+    P("Its 18 edits went in one turn, but it still spent four turns reading first: an existing toggle action, and the code around the places it was shown. That reading is the main open problem in the handoff. It was the cheapest of this memory's three Presenter runs (338k, 538k and 572k tokens); runs without memory took a median of 673k tokens and 15 turns.", "small ink-2"),
+    takeaway("Warnings arrive at the moment of the mistake, and only once, and cost nothing.")
+  ];
+}
+
+// ---------- step 10: after the task ----------
+function renderAfter() {
+  const rows = FEEDBACK.byWorkflow.map(([id, places]) => {
+    const w = WF.get(id);
+    const hit = places.filter(([, e]) => e === 1).length;
+    const outcome = places.length === 0 ? "no places, so no verdict" : hit > 0 ? `followed: edited ${hit} of its ${places.length} places` : "ignored";
+    return el("div", { class: "fb-row" },
+      el("div", { class: "fb-name" }, SHORT[id], el("small", { text: outcome })),
+      el("div", { class: "fb-places" }, places.length === 0 ? el("span", { class: "small muted", text: "–" }) : places.map(([pid, e]) => {
+        const p = PLACES.get(pid);
+        const label = p.new_file ? `a new ${p.new_file.prefix}….tsx`
+          : `${p.file.split("/").pop()} · ${p.chain.length ? p.chain[p.chain.length - 1].head : (p.group === "import " ? "import" : p.group) + "…"}`;
+        const chip = el("span", { class: "pl", tabindex: "0" }, glyph(e ? "yes" : "idle"), shorten(label, 42));
+        attachTip(chip, () => [el("strong", { text: e ? "Shown, and edited there" : "Shown, left alone" }), el("div", { class: "tw" }, placeWords(p))]);
+        return chip;
+      })));
+  });
+  return [
+    P("When the session ends with its change committed and its last test run passing, v1's session-end hook records it like any run, plus what became of each piece of memory: each place shown and edited there, or left alone, and where the run edited that memory didn't show; each workflow followed or not; each pitfall heeded, or made anyway."),
+    el("h3", { text: "What the Presenter run did with its hand-over" }),
+    el("div", { class: "legend" },
+      el("span", {}, glyph("yes"), "shown, and edited there"),
+      el("span", {}, glyph("idle"), "shown, left alone"),
+      el("span", {}, glyph("miss"), "edited where memory showed nothing")),
+    el("div", {}, rows),
+    el("div", { class: "panel", style: "margin-top:12px" },
+      el("div", {}, glyph("miss"), " ", el("strong", { text: "Edited where memory showed nothing: 3" })),
+      el("ul", { class: "small", style: "margin-top:6px" }, FEEDBACK.elsewhere.map(([file, where, what]) => el("li", {}, rich(`\`${file}\`, ${where}: ${what}`)))),
+      P("These are the three places it left alone, made a few statements away in the same files. A group of top-level statements is named by the statements around the edit, so the same list can get two names. Feedback compares places exactly.", "small ink-2")),
+    el("h3", { text: "Its pitfalls" }),
+    el("ul", { class: "pits" },
+      el("li", {}, glyph("yes"), el("div", { class: "rich" }, rich("`watch-flag-test-update`: heeded. Its trigger never matched."))),
+      el("li", {}, glyph("yes"), el("div", { class: "rich" }, rich("`app-tsx-ambiguous-edit`: heeded. Its trigger never matched."))),
+      el("li", {}, glyph("dash"), el("div", { class: "rich" }, rich("`prettier-check-failure`: no trigger, so nobody can tell.")))),
+    takeaway("15 of the 18 places shown were edited there; 5 of 6 workflows followed. This record is what learning starts from: not only where runs edited, but what memory showed them.")
+  ];
+}
+
+// ---------- step 11: learning ----------
+function gateBar(label, sub, hit, unused, kept) {
+  const max = 140;
+  const pos = el("div", { class: "bar pos", tabindex: "0", style: `width:calc(${(hit / max) * 50}% - 1px)`, "aria-label": `${hit} edited places shown` });
+  const neg = el("div", { class: "bar neg", tabindex: "0", style: `width:calc(${(unused / max) * 50}% - 1px)`, "aria-label": `${unused} places shown and left alone` });
+  attachTip(pos, () => [el("strong", { text: String(hit) }), el("div", { class: "tw", text: `of the 140 places the 16 runs edited were shown (${label.toLowerCase()})` })]);
+  attachTip(neg, () => [el("strong", { text: String(unused) }), el("div", { class: "tw", text: `places shown that the runs left alone (${label.toLowerCase()})` })]);
+  return el("div", { class: "gate-row" },
+    el("div", { class: "lbl" }, label, el("small", { text: sub })),
+    el("div", { class: "track" }, el("div", { class: "mid" }), neg, pos,
+      el("span", { class: "bar-val", style: `right:calc(50% + ${(unused / max) * 50}% + 6px)`, text: String(unused) }),
+      el("span", { class: "bar-val", style: `left:calc(50% + ${(hit / max) * 50}% + 6px)`, text: String(hit) })),
+    el("div", { class: "score" }, "= ", el("b", { text: String(hit - unused) }), kept === undefined ? null : el("span", { class: "small" }, kept ? "  ✓ kept" : "  ✗ rejected")));
+}
+function renderLearn() {
+  return [
+    P("Learning runs when you ask for it (`workflows evolve`), on the records memory hasn't learned from yet. It has three parts:"),
+    el("div", { class: "flow3" },
+      el("div", { class: "panel" }, el("h4", {}, el("span", { class: "num", text: "1" }), "Results"), P("For each new run: what memory showed it (or, for a run without memory, would have shown it), against where its edits went.", "small")),
+      el("div", { class: "panel" }, el("h4", {}, el("span", { class: "num", text: "2" }), "Refine"), P("The same model that built memory revises it from the new runs, those results, and the revisions rejected before.", "small")),
+      el("div", { class: "panel" }, el("h4", {}, el("span", { class: "num", text: "3" }), "Gate"), P("Both memories are replayed over all the runs: pick for each task, then compare places shown with places edited. The revision is kept only if shown-and-edited minus shown-and-left-alone doesn't drop; else it is rejected, with the reason, for the model to read next time.", "small"))),
+    el("h3", { text: "The one round tried so far" }),
+    P("In a copy of the seed memory: the 10 runs without memory of Page breaks and Midpoint snapping as new runs. $0.52 for the round, which counts the refinement and the model picks its replays made. Replayed over all 16 runs, which edited 140 places:", "ink-2"),
+    el("div", { class: "gate" },
+      el("div", { class: "gate-head" }, el("span"), el("div", { class: "axis" }, el("span", { text: "← shown, left alone" }), el("span", { text: "shown, and edited →" })), el("span", { text: "score" })),
+      gateBar("Before", "the memory as it was", 118, 23),
+      gateBar("After", "the revision", 122, 4, true)),
+    el("h3", { text: "What it learned, in general words" }),
+    el("ul", { class: "diff" },
+      el("li", {}, el("span", { class: "w", text: "Create a toggle action · when to use it" }), "“Not needed when the task only wants a Preferences checkbox for a field, or when the action already exists.”"),
+      el("li", {}, el("span", { class: "w", text: "Add a toggle to Preferences · step 3" }), "Without an action, the Preferences item sets the app-state field itself."),
+      el("li", {}, el("span", { class: "w", text: "Give an action a shortcut · new step 6" }), "If the action already has a menu item, show the shortcut on that item too."),
+      el("li", {}, el("span", { class: "w", text: "New edge: start → Give an action a shortcut" }), "“if the task adds a shortcut to an already existing action/setting”")),
+    el("div", { class: "panel" },
+      el("div", {}, glyph("warn"), " ", el("strong", { text: "What the gate can't see" })),
+      P("It replays places only. The same round dropped three pitfalls (the ambiguous App.tsx edit, the keyboard test's `handleKeyboardGlobally`, the prettier check), folding some of their advice into steps, and added two new ones. Nothing checked that.", "small ink-2")),
+    P("After a round, cues are written again, since the refinement writes workflows without them. The next task starts from the new version. The sealed local-first memory (version 2) is from before this round, which ran in a copy.", "small ink-2"),
+    el("div", { class: "btn-row" }, el("button", { class: "btn primary", onclick: () => go(6, true) }, "↺ The next task: back to step 7")),
+    takeaway("Memory changes only through a round like this, and keeps a change only if it fits the runs at least as well.")
+  ];
+}
+
+// ====================================================================
+// Steps, memory home, navigation
+// ====================================================================
+const STAGES = [
+  { phase: "build", label: "Empty", when: "before any memory", title: "Memory starts empty, so the agent works from the task alone", render: renderEmpty },
+  { phase: "build", label: "Record", when: "after each successful run", title: "A run that succeeded becomes a record", render: renderRecord },
+  { phase: "build", label: "Evidence", when: "when memory is built", title: "Each record is read for evidence, by code", render: renderEvidence },
+  { phase: "build", label: "Induce", when: "when memory is built", model: "Sonnet, $0.14", title: "One model call turns the runs into workflows with blanks", render: renderInduce },
+  { phase: "build", label: "Cues", when: "once, after a build", model: "Sonnet, $0.09", title: "A second call writes cues, so tasks can be matched without a model", render: renderCues },
+  { phase: "build", label: "Store", when: "on disk", title: "Memory is a few JSON files in your home folder", render: renderStore },
+  { phase: "use", label: "Pick", when: "at task start", title: "A new task arrives, and its words pick the workflows", render: renderPick },
+  { phase: "use", label: "Hand over", when: "at task start", title: "Each step's place is found in today's code, then it is all handed over", render: renderHandover },
+  { phase: "use", label: "During", when: "after every command and edit", title: "A pitfall's warning arrives the moment its trigger appears", render: renderDuring },
+  { phase: "use", label: "After", when: "at session end", title: "The session becomes a new record, with what memory did for it", render: renderAfter },
+  { phase: "learn", label: "Learn", when: "when you run a learning round", model: "Sonnet, about $0.52 a round", title: "New records teach memory, and a revision is kept only if it fits the runs better", render: renderLearn }
+];
+const PHASE_NAMES = { build: "Build memory · once per batch of runs", use: "Use it · every task", learn: "Learn" };
+
+const V12 = [["000001", "the build"], ["000002", "+ cues"]];
+const C12 = [["c000001", "the build · kept"], ["c000002", "the cues · kept"]];
+const HOME = [
+  { records: 0, sum: "Empty: no records, no workflows.", spend: "None." },
+  { records: 6, fresh: ["records"], sum: "Six records. No workflows yet.", spend: "None." },
+  { records: 6, sum: "Six records. Evidence is computed from them, never stored.", spend: "None." },
+  { records: 6, head: 1, versions: [V12[0]], candidates: [C12[0]], fresh: ["head", "000001", "c000001"], sum: "Version 1: 8 workflows, 20 places, 16 edges, 4 pitfalls. No cues yet.", spend: "$0.14, one call." },
+  { records: 6, head: 2, versions: V12, candidates: C12, fresh: ["head", "000002", "c000002"], sum: "Version 2: the same, with cues on all 8 workflows.", spend: "$0.23, two calls." },
+  { records: 6, head: 2, versions: V12, candidates: C12, sum: "Version 2, sealed as the local-first memory.", spend: "$0.23 to build it." },
+  { records: 6, head: 2, versions: V12, candidates: C12, reading: "000002", sum: "Task start reads version 2, and hasn't written anything yet.", spend: "$0.23 to build. At task start: $0." },
+  { records: 6, head: 2, versions: V12, candidates: C12, reading: "000002", sessions: true, fresh: ["session", "handovers"], sum: "Task start writes down what this session was handed.", spend: "At task start: $0." },
+  { records: 6, head: 2, versions: V12, candidates: C12, sessions: true, fired: true, sum: "A warning that fires is noted, so it fires only once.", spend: "During the task: $0." },
+  { records: 7, head: 2, versions: V12, candidates: C12, sessions: true, fresh: ["records"], sum: "Seven records: the session is one of them now, with what memory did for it.", spend: "At session end: $0." },
+  { records: 7, head: 3, versions: [...V12, ["000003", "the revision, if kept"]], candidates: [...C12, ["c000003", "the round · kept or rejected"]], sessions: true, fresh: ["head", "000003", "c000003"], sum: "A kept round adds a version. A rejected one adds only its candidate, with why.", spend: "About $0.52 a round, then cues again." }
+];
+
+let current = 0;
+const seen = new Set([0]);
+
+function renderStepper() {
+  const nav = document.getElementById("stepper");
+  const phase = STAGES[current].phase;
+  const phases = el("div", { class: "phases" }, Object.entries(PHASE_NAMES).map(([k, name]) => el("div", { class: `phase ${k}${k === phase ? " on" : ""}`, title: name, text: name })));
+  const steps = el("div", { class: "steps" }, STAGES.map((s, i) => el("button", {
+    class: `step${seen.has(i) ? " seen" : ""}`,
+    "aria-current": i === current ? "step" : null,
+    "aria-label": `Step ${i + 1}: ${s.label}${s.model ? ", a model call" : ""}`,
+    onclick: () => go(i, true)
+  }, el("span", { class: "n", text: i + 1 }), el("span", { class: "lbl", text: s.label }), s.model ? el("span", { class: "mt", text: "model" }) : null)));
+  nav.replaceChildren(phases, steps);
+}
+
+function renderStage() {
+  const s = STAGES[current];
+  const stage = document.getElementById("stage");
+  const eyebrow = el("div", { class: "eyebrow" },
+    el("span", { text: `Step ${current + 1} of ${STAGES.length} · ${s.when}` }),
+    s.model ? el("span", { class: "badge model", text: `Model call: ${s.model}` }) : el("span", { class: "badge free", text: "No model call" }));
+  const prev = current > 0 ? STAGES[current - 1] : null;
+  const next = current < STAGES.length - 1 ? STAGES[current + 1] : null;
+  const pager = el("div", { class: "pager" },
+    el("button", { class: "btn", disabled: prev === null, onclick: () => go(current - 1, true) }, prev ? `← ${current}. ${prev.label}` : "←"),
+    el("button", { class: "btn primary", disabled: next === null, onclick: () => go(current + 1, true) }, next ? `${current + 2}. ${next.label} →` : "The end"));
+  stage.replaceChildren(eyebrow, el("h2", { id: "stage-title", tabindex: "-1", text: s.title }), ...s.render(), pager);
+}
+
+function renderHome() {
+  const h = HOME[current];
+  const fresh = new Set(h.fresh ?? []);
+  const item = (name, note, key, extra) => el("li", { class: `ti${extra?.ghost ? " ghost" : ""}` },
+    el("span", { class: "tn", text: name }), note ? el("span", { class: "tnote", text: note }) : null,
+    fresh.has(key) ? el("span", { class: "new", text: "new" }) : null,
+    extra?.read ? el("span", { class: "read", text: "read now" }) : null);
+  const tree = el("ul", { class: "tree" });
+  const anything = h.records > 0 || h.head !== undefined;
+  if (h.records > 0) tree.append(item("records/", `${h.records} runs`, "records"));
+  if (h.head !== undefined) {
+    const sub = el("ul", {});
+    sub.append(item("workflows.json", `head → version ${h.head}`, "head"));
+    const versions = el("ul", {}, h.versions.map(([v, note]) => item(`${v}.json`, note, v, { read: h.reading === v })));
+    sub.append(el("li", { class: "ti" }, el("span", { class: "tn", text: "versions/" })), versions);
+    const cands = el("ul", {}, h.candidates.map(([c, note]) => item(`${c}.json`, note, c)));
+    sub.append(el("li", { class: "ti" }, el("span", { class: "tn", text: "candidates/" })), cands);
+    if (h.sessions) {
+      const ses = el("ul", {}, item(`${SESSION.slice(0, 8)}….json`, "what it was handed", "session"));
+      if (h.fired) ses.append(item(`${SESSION.slice(0, 8)}….fired.jsonl`, "only once a warning fires; none did here", "fired", { ghost: true }));
+      sub.append(el("li", { class: "ti" }, el("span", { class: "tn", text: "sessions/" })), ses);
+      sub.append(item("handovers.jsonl", "every hand-over, logged", "handovers"));
+    }
+    tree.append(el("li", { class: "ti" }, el("span", { class: "tn", text: "workflows/" })), sub);
+  }
+  const card = el("div", { class: "card" },
+    el("h3", { text: "Memory home" }),
+    el("code", { class: "path", text: "~/.singularity/tenants/local/" }),
+    anything ? tree : el("div", { class: "home-empty", text: "Nothing here yet." }),
+    el("div", { class: "home-sum" },
+      el("p", {}, el("span", { class: "k", text: "Memory now" }), h.sum),
+      el("p", {}, el("span", { class: "k", text: "Spent on model calls" }), h.spend)));
+  document.getElementById("home").replaceChildren(card);
+}
+
+function go(i, focus) {
+  current = Math.max(0, Math.min(STAGES.length - 1, i));
+  seen.add(current);
+  hideTip();
+  history.replaceState(null, "", `#step-${current + 1}`);
+  renderStepper();
+  renderStage();
+  renderHome();
+  if (focus) {
+    const stage = document.getElementById("stage");
+    const nav = document.getElementById("stepper");
+    if (stage.getBoundingClientRect().top < nav.getBoundingClientRect().bottom || stage.getBoundingClientRect().top > window.innerHeight) stage.scrollIntoView({ block: "start" });
+    document.getElementById("stage-title").focus({ preventScroll: true });
+  }
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === "ArrowRight") go(current + 1, true);
+  else if (e.key === "ArrowLeft") go(current - 1, true);
+});
+const fromHash = /^#step-(\d+)$/.exec(location.hash);
+go(fromHash ? Number(fromHash[1]) - 1 : 0, false);
+</script>
+</body>
+</html>

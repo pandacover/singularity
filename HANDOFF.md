@@ -1,7 +1,127 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-04, in the seventh session. Start here, then see
+Last updated 2026-10-07, in the ninth session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
+
+## Status: long tasks measured: memory -78% / -63%, and -39% / -38% when it knows half the changes (2026-10-07, ninth session)
+
+The user called the numbers good and asked for long tasks next: a task X
+with parts A, B, C and D in one prompt, A and C alike; does local v1 do
+better than no memory? **Yes, by a wide margin** (8 runs, $4.29, all
+passed; results at the end of `examples/excalidraw/PREREGISTRATION-v1-long.md`):
+no memory 1,902k tokens / $0.81 / 28.5 turns (median), memory 423k / $0.30 /
+9.5 turns; the runs don't overlap. Both pre-registered rules hold. Memory's
+saving grew against the same four changes asked one per session (there 50%
+of tokens, 34% of dollars): with the places in hand its runs edited all four
+changes within 2-3 turns and paid the looking and the finish once. In all 8
+runs the agent did the two alike toggles side by side, memory or not. Part of
+the gap is again the keyboard trap (all 4 runs without memory fell in; 1 of
+4 with memory, briefly); against the cheapest run without memory memory is
+still -64% / -49%.
+
+Found in the runs and fixed: the two task-start hooks of `workflows-split`
+both write `subjects.json` when the repo's path is new (lane 2's workspace),
+through the same temporary file, so one run got only part 1 of its
+hand-over. Every store write now has its own temporary file and retries a
+refused rename (`src/local/Files.ts`). `npm test`: 211 passed. Nothing
+committed.
+
+How it was prepared:
+
+- **The task**: `long-four-changes` (`examples/excalidraw/long.toml`, its own
+  file only for an hour and $6 a run): toggle-rulers, midpoint-snap-n,
+  toggle-presenter and stats-shortcut-k as a numbered list. Their hidden
+  tests side by side; the four reference solutions merged pass them all, and
+  at the base commit 16 of 19 hidden tests fail.
+- **Found by the free preview, and fixed**: v1 filled each blank with the
+  first value of its kind anywhere in the prompt, so every change got the
+  rulers field and the stats change was told Alt+N. A task that lists
+  several changes is now picked and filled change by change
+  (`partsChoice` in `src/workflows/Cues.ts`; shown once per workflow, with
+  each change's values and which changes need it). One-change hand-overs are
+  unchanged. `npm test`: 209 passed.
+- **The measurement**: `examples/excalidraw/PREREGISTRATION-v1-long.md`, 8 runs
+  (4 without memory, 4 with the `v1-finish` memory, `workflows-split`),
+  estimated at $12-16 (it cost $4.29: no run worked change by change),
+  `run-long-measurement.sh`, scored by `score-long.ts` (also per change). The bar: memory at least 20% fewer tokens and 10% fewer dollars
+  than no memory, no more failures. Asked one per session, memory saved 50%
+  of tokens and 34% of dollars on these four changes.
+
+**Then a long task memory only half knows: -39% tokens, -38% dollars** (8
+runs, $4.15, all passed; results at the end of
+`examples/excalidraw/PREREGISTRATION-v1-long-mixed.md`). That long task was
+memory's best case (all four changes of kinds it knows); `long-mixed-changes`
+(`long.toml`) swaps two of them for bug fixes memory never saw: rulers, the
+save-as bug, presenter, and a YouTube live-link bug (upstream `974f054b`, new
+to the suite), at `d29d8648`, where both bugs exist and the toggles' files
+are the same. No memory 1,287k / $0.64 / 21.5 turns (median), memory 788k /
+$0.40 / 15 turns; the runs don't overlap; the same bar holds. The saving
+(499k tokens) is about what memory saves on the two toggles alone asked one
+per session (514k): the bug fixes cost the same with memory or without,
+nothing was handed over for them, by mistake or otherwise. Memory's runs
+fixed the bugs first, then both toggles in one or two turns. Every memory
+run got both parts of its hand-over (the race fix holds).
+
+So far, then: memory's saving in a long session is what it saves on the
+changes it knows, and nothing is lost on the ones it doesn't. Next, my
+recommendation: the bug fixes are where the remaining cost is; what memory
+could carry for them (how a bug is reproduced and checked in this repo) is
+the open question from the eighth session.
+
+## Status: the three next steps, built and measured (2026-10-06, eighth session)
+
+The user asked for all three "ways on" of the seventh session, one by one,
+with results for 2 and 3. Nothing is committed (the user hasn't asked); the
+code is on `local-memory`, uncommitted. Detail in HANDOFF-v1.md and the
+pre-registrations.
+
+1. **The finish in one command** (`src/workflows/Finish.ts`, `workflows
+   finish`): the chosen workflows' checks folded into one line, the snapshot
+   files earlier runs regenerated (learned from their diffs, no model), no
+   checks under each workflow. Measured inside A below.
+2. **Learning what runs still looked up** (`src/workflows/Lookups.ts`, in
+   `workflows evolve`): the refining model reads every read and search a run
+   made before its first edit, against memory's places and what the
+   hand-over showed of them; it rewrites steps to carry that knowledge and may
+   show a place as one whole entry. Cues are written again after the round and
+   the gate replays with them. Two bugs found and fixed on the way: a round
+   dropped memory's pitfalls (runs that avoided a mistake left no detours to
+   support it), and cue phrases missed tasks whose text breaks a line inside
+   them.
+   - **Found while doing it:** Claude Code cuts each hook's text at 10,000
+     characters, and the local-first hand-over for the toggle tasks is ~13.5k,
+     so the measured runs got 3 lines of code per place. The `workflows-split`
+     setup carries it in two parts from two task-start hooks (both arrive
+     whole).
+   - **Measured** (`examples/excalidraw/PREREGISTRATION-v1-lookups.md`, 12
+     runs, $2.90, held-out toggles rulers and presenter): A = the sealed memory
+     with the one-command finish, in two parts; B = A after the learning
+     round. A against local first: rulers -11% tokens / -8% dollars,
+     presenter -31% / -18%, fewer turns after the last edit. B against A:
+     looking before the first edit fell on both (2 vs 4 turns, 3 vs 4); no
+     run failed; presenter $0.13 a run against $0.26, but rulers rose (+22%
+     tokens): its runs ran the one command without trimming the output, and
+     reading the file Claude Code saved it to cost 1-2 turns. **The
+     pre-registered cost rule fails on rulers.** The hand-over now says to
+     keep the last 60 lines.
+3. **New kinds of task and a second repository**: bug fixes in excalidraw
+   (four real upstream fixes, two learned from, two held out) and validator.js
+   (`examples/validator/`, four real upstream changes, two learned from, two
+   held out), pre-registered in `examples/PREREGISTRATION-v1-new-kinds.md`.
+   All 24 counted runs passed. **Memory didn't help either, and the rule
+   fails for both.** validator.js: ulid +9% tokens / -7% dollars,
+   postal-code-pk +1% / -2%; the tasks are small and an agent without memory
+   finds the places in 2-3 turns. Bug fixes: the learning round made each
+   seed bug a workflow of its own, cued by its own words; the held-out save-as
+   bug got nothing (+0% tokens), the dropdown bug got a wrong workflow ("main
+   menu" cues a Preferences toggle), which its agents ignored (-19% tokens,
+   +5% dollars, within the spread).
+
+Spent this session: $10.79 ($9.0 of agent runs, $1.8 of model calls that
+built memory). Next step, my recommendation: memory has helped only where a
+task repeats a past one's procedure across many places (toggles); before more
+mechanisms, decide what memory should carry for one-off work like bug fixes,
+where what tasks share is how to reproduce and check, not where to edit.
 
 ## Status: the local-first memory is sealed (2026-10-04, seventh session)
 

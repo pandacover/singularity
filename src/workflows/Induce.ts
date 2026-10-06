@@ -56,6 +56,8 @@ export const InductionAnswer = Schema.Struct({
   workflows: Schema.Array(ProposedWorkflow),
   edges: Schema.Array(Edge),
   pitfalls: Schema.Array(ProposedPitfall),
+  /** Places the hand-over shows as one whole entry rather than the end of their block. */
+  entries: Schema.Array(Schema.String),
   rationale: Schema.String
 })
 export type InductionAnswer = typeof InductionAnswer.Type
@@ -85,13 +87,17 @@ From the runs you are given, extract reusable workflows: small sub-routines that
 
 ## Pitfalls
 
-From the detours (a call that failed, and what it cost until fixed), keep the mistakes another task could make again, in general words: what goes wrong and what to do instead. Leave out failures that were simply the task's work in progress (a test failing until the feature was done). Refer to the detours a pitfall comes from as "<run id>#<detour number>", and list its id in the workflows it belongs to.
+From the detours (a call that failed, and what it cost until fixed), keep the mistakes another task could make again, in general words: what goes wrong and what to do instead. When revising current memory, keep its pitfalls too: list each by its id, with \`detours\` empty unless these runs made the mistake again. Runs that no longer hit a pitfall show it works, not that it is wrong. Leave out failures that were simply the task's work in progress (a test failing until the feature was done). Refer to the detours a pitfall comes from as "<run id>#<detour number>", and list its id in the workflows it belongs to.
 
 A pitfall may have an exact \`trigger\` that tells it is happening, checked on every tool call: plain substrings, never regular expressions, and never a task's own values.
 - \`on: "command"\`: a shell command containing every string in \`all\` and none in \`none\` (\`file\` null).
 - \`on: "edit"\`: an edit (to a file whose path ends with \`file\`, if given) writing text that contains every string in \`all\` and none in \`none\`.
 - \`on: "error"\`: a failed tool call whose output contains every string in \`all\` (\`file\` null).
 It must match the call that failed and not the call that fixed it. Use null when there are no such strings.
+
+## Entries
+
+The hand-over shows each step's place as the end of its block (its last lines), found in the code when used. \`entries\` lists the ids of places it should show as one whole entry instead: the last component, the last tag with its attributes, or for places where new files go, the shortest existing file of the kind. Only for places where an entry takes several lines and runs had to read one before they could write theirs (when you are told what runs looked up). Keep the current memory's entries unless runs show they aren't needed; leave the list empty otherwise.
 
 Ids: short kebab-case names in general words ("add-app-state-field", "test-update-watch-flag").`
 
@@ -168,7 +174,8 @@ export const inductionPrompt = (
     const weak = placeProblem(p, evidence.families)
     lines.push(
       `- ${p.id} ${describePlace(p)}: ${p.evidence.length} runs of ${p.tasks.length} task${p.tasks.length === 1 ? "" : "s"} (${p.tasks.join(", ")}); ${counts}` +
-        (weak === undefined ? "" : `. Not for a step: ${weak}`)
+        (weak === undefined ? "" : `. Not for a step: ${weak}`) +
+        (p.show === "entry" ? ". Shown as a whole entry (in `entries`)" : "")
     )
   }
   lines.push("", "## Tasks and their runs", "")
@@ -234,6 +241,8 @@ export interface Checked {
   readonly memory: WorkflowMemory
   /** Problems the model should fix, then what was dropped. */
   readonly problems: ReadonlyArray<string>
+  /** Places shown as a whole entry: the answer's `entries` that steps use. */
+  readonly entries: ReadonlyArray<string>
 }
 
 const median = (xs: ReadonlyArray<number>) => {
@@ -254,8 +263,12 @@ export const placeProblem = (p: Place, families: ReadonlyMap<string, string>): s
   return undefined
 }
 
-/** Check a model's answer against the evidence; keep what holds. */
-export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant: string): Checked => {
+/**
+ * Check a model's answer against the evidence; keep what holds. When revising
+ * `current`, a pitfall it already has may come back without new detours: the
+ * runs that avoided its mistake don't make it wrong.
+ */
+export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant: string, current?: WorkflowMemory): Checked => {
   const problems: Array<string> = []
   const places = new Map(evidence.places.map((p) => [p.id, p]))
   const placeProblem_ = (p: Place) => placeProblem(p, evidence.families)
@@ -271,21 +284,28 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
 
   // Pitfalls: real detours, general words, a trigger that singles out the mistake.
   const pitfalls: Array<Pitfall> = []
+  const learned = new Map((current?.pitfalls ?? []).map((x) => [x.id, x]))
   for (const p of answer.pitfalls) {
     const id = slug(p.id)
     if (pitfalls.some((x) => x.id === id)) continue
+    const before = learned.get(id)
     const detours = p.detours.flatMap((ref) => {
       const m = /^(.+)#(\d+)$/.exec(ref.trim())
       const run = m === null ? undefined : runs.get(m[1])
       const d = run?.detours[Number(m?.[2])]
       if (run === undefined || d === undefined) {
-        problems.push(`pitfall ${id} refers to ${JSON.stringify(ref)}, which is no detour of these runs`)
+        if (before === undefined) problems.push(`pitfall ${id} refers to ${JSON.stringify(ref)}, which is no detour of these runs`)
         return []
       }
       return [{ run, index: Number(m![2]), detour: d }]
     })
     if (detours.length === 0) {
-      problems.push(`pitfall ${id} comes from no detour of these runs; dropped`)
+      if (before === undefined) {
+        problems.push(`pitfall ${id} comes from no detour of these runs; dropped`)
+        continue
+      }
+      // Memory's own pitfall, which these runs didn't run into: kept as it was learned, in the answer's words if they hold.
+      pitfalls.push({ ...before, text: leak(`pitfall ${id}`, p.text) ? before.text : p.text.trim() })
       continue
     }
     if (leak(`pitfall ${id}`, p.text)) continue
@@ -304,8 +324,9 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       id,
       subject,
       text: p.text.trim(),
-      trigger,
-      evidence: [...new Set(detours.map((x) => x.run.record))].sort(),
+      // A trigger that doesn't single out the new detours keeps the one memory had.
+      trigger: trigger ?? before?.trigger ?? null,
+      evidence: [...new Set([...(before?.evidence ?? []), ...detours.map((x) => x.run.record)])].sort(),
       cost_tokens: median(detours.map((x) => x.detour.cost.tokens))
     })
   }
@@ -382,18 +403,27 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
   const usedPlaces = new Set(workflows.flatMap((w) => w.steps.flatMap((s) => (s.place === null ? [] : [s.place]))))
   const unused = evidence.places.filter((p) => !usedPlaces.has(p.id) && p.tasks.length > 1)
   for (const p of unused) problems.push(`place ${p.id} (${describePlace(p)}), edited by ${p.tasks.length} tasks, is in no workflow`)
+  const entries = [...new Set(answer.entries)].filter((id) => {
+    if (usedPlaces.has(id)) return true
+    problems.push(`entries names ${JSON.stringify(id)}, which no step's place is; dropped`)
+    return false
+  })
 
   return {
     memory: {
       format: FORMAT,
       tenant,
-      places: evidence.places.filter((p) => usedPlaces.has(p.id)),
+      places: evidence.places.filter((p) => usedPlaces.has(p.id)).map((p) => {
+        const { show: _show, ...rest } = p
+        return entries.includes(p.id) ? { ...rest, show: "entry" as const } : rest
+      }),
       workflows,
       edges,
       // Pitfalls in no workflow still warn when their trigger fires.
       pitfalls
     },
-    problems
+    problems,
+    entries
   }
 }
 
@@ -454,7 +484,7 @@ export const induce = Effect.fn("induce")(function*(
     calls++
     costUsd += answer.costUsd ?? 0
     rationale = answer.value.rationale
-    result = checkAnswer(answer.value, evidence, tenant)
+    result = checkAnswer(answer.value, evidence, tenant, current)
     // Only problems the model can fix are worth a second call: values, places, triggers.
     const fixable = result.problems.filter((p) => !p.includes("is in no workflow"))
     if (fixable.length === 0) break

@@ -44,7 +44,14 @@ export const Place = Schema.Struct({
   evidence: Schema.Array(Schema.String),
   tasks: Schema.Array(Schema.String),
   /** How runs edited here. */
-  edits: Schema.Struct({ add: Schema.Int, change: Schema.Int, create: Schema.Int })
+  edits: Schema.Struct({ add: Schema.Int, change: Schema.Int, create: Schema.Int }),
+  /**
+   * How the hand-over shows it: absent, the end of its block (its last
+   * lines); "entry", its last whole entry (a component, a tag with its
+   * attributes; for new files, the shortest existing one), where runs had to
+   * read one before they could edit. Learned from results (Evolve.ts).
+   */
+  show: Schema.optionalKey(Schema.Literal("entry"))
 })
 export type Place = typeof Place.Type
 
@@ -117,6 +124,12 @@ export const Workflow = Schema.Struct({
   steps: Schema.Array(WorkflowStep),
   /** Commands that check it. */
   checks: Schema.Array(Schema.String),
+  /**
+   * Test snapshot files every run it was learned from regenerated: what the
+   * checks rewrite when its change is right (Finish.ts). Absent in memory
+   * built before the finish was folded into one command.
+   */
+  snapshots: Schema.optionalKey(Schema.Array(Schema.String)),
   pitfalls: Schema.Array(Schema.String),
   /** The records of the runs it was learned from, and their tasks. */
   evidence: Schema.Array(Schema.String),

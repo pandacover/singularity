@@ -16,6 +16,7 @@ import { relativizer } from "../records/Extract.ts"
 import { classifyKey } from "../records/Shell.ts"
 import { EDIT_TOOLS, parseSession, type ToolCall } from "../traces/index.ts"
 import { editsOfDiff, placeOfEdit } from "./Edits.ts"
+import { type Looking, lookingOf } from "./Lookups.ts"
 import type { Place } from "./Models.ts"
 import { placeKey, type PlaceShape, sharedNameStart } from "./Places.ts"
 
@@ -50,6 +51,8 @@ export interface RunEvidence {
   /** The main thread's tool calls and working directory, for checking triggers against its detours. */
   readonly calls: ReadonlyArray<ToolCall>
   readonly cwd: string | undefined
+  /** What it looked up before its first edit (Lookups.ts); null without its log. */
+  readonly looking: Looking | null
 }
 
 export interface Evidence {
@@ -112,7 +115,7 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
   const fs = yield* FileSystem.FileSystem
   const order = new Map<string, number>()
   const readFirst = new Map<string, Array<string>>()
-  const none = { order, readFirst, calls: [] as ReadonlyArray<ToolCall>, cwd: undefined as string | undefined }
+  const none = { order, readFirst, calls: [] as ReadonlyArray<ToolCall>, cwd: undefined as string | undefined, looking: null as Looking | null }
   if (!(yield* fs.exists(r.run.log).pipe(Effect.orElseSucceed(() => false)))) return none
   const trace = yield* parseSession(r.run.log).pipe(Effect.option)
   if (Option.isNone(trace)) return none
@@ -131,7 +134,7 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
       readFirst.set(file, [...new Set(reads.filter((f) => f !== file && splitName(f).dir === dir))])
     }
   }
-  return { order, readFirst, calls, cwd: trace.value.cwd }
+  return { order, readFirst, calls, cwd: trace.value.cwd, looking: lookingOf(trace.value, relative) }
 })
 
 const IDENT = /[A-Za-z_$][\w$]{3,}/g
@@ -242,7 +245,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       pooled.set(id, p)
     }
     const uses: Array<PlaceUse & { readonly order: number }> = []
-    const { order, readFirst, calls, cwd } = yield* fromTranscript(r, d.created.map((c) => c.file))
+    const { order, readFirst, calls, cwd, looking } = yield* fromTranscript(r, d.created.map((c) => c.file))
     const orderOf = (file: string, fallback: number) => order.get(file) ?? 1000 + fallback
     const before: Array<{ readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
 
@@ -296,7 +299,8 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       readFirst: [...readFirst.entries()].map(([created, read]) => ({ created, read })),
       values,
       calls,
-      cwd
+      cwd,
+      looking
     })
   }
 

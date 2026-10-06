@@ -1,0 +1,2040 @@
+diff --git a/packages/common/src/keys.ts b/packages/common/src/keys.ts
+index 59fe05a8..f7a64eb0 100644
+--- a/packages/common/src/keys.ts
++++ b/packages/common/src/keys.ts
+@@ -25,6 +25,8 @@ export const CODES = {
+   Y: "KeyY",
+   R: "KeyR",
+   S: "KeyS",
++  U: "KeyU",
++  J: "KeyJ",
+ } as const;
+ 
+ export const KEYS = {
+diff --git a/packages/element/src/embeddable.ts b/packages/element/src/embeddable.ts
+index 87c7073a..8d938b5a 100644
+--- a/packages/element/src/embeddable.ts
++++ b/packages/element/src/embeddable.ts
+@@ -23,7 +23,7 @@ type IframeDataWithSandbox = MarkRequired<IframeData, "sandbox">;
+ const embeddedLinkCache = new Map<string, IframeDataWithSandbox>();
+ 
+ const RE_YOUTUBE =
+-  /^(?:http(?:s)?:\/\/)?(?:www\.)?youtu(?:be\.com|\.be)\/(embed\/|watch\?v=|shorts\/|playlist\?list=|embed\/videoseries\?list=)?([a-zA-Z0-9_-]+)/;
++  /^(?:http(?:s)?:\/\/)?(?:www\.)?youtu(?:be\.com|\.be)\/(embed\/|watch\?v=|shorts\/|live\/|playlist\?list=|embed\/videoseries\?list=)?([a-zA-Z0-9_-]+)/;
+ 
+ const RE_VIMEO =
+   /^(?:http(?:s)?:\/\/)?(?:(?:w){3}\.)?(?:player\.)?vimeo\.com\/(?:video\/)?([^?\s]+)(?:\?.*)?$/;
+diff --git a/packages/element/tests/embeddable.test.ts b/packages/element/tests/embeddable.test.ts
+index 35870a86..77a16045 100644
+--- a/packages/element/tests/embeddable.test.ts
++++ b/packages/element/tests/embeddable.test.ts
+@@ -95,6 +95,18 @@ describe("YouTube timestamp parsing", () => {
+     expect(result?.intrinsicSize).toEqual({ w: 315, h: 560 });
+   });
+ 
++  it("should handle YouTube live URLs", () => {
++    const url = "https://www.youtube.com/live/dQw4w9WgXcQ?si=abc&t=30";
++    const result = getEmbedLink(url);
++
++    expect(result?.type).toBe("video");
++    if (result?.type === "video" || result?.type === "generic") {
++      expect(result.link).toBe(
++        "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1&start=30",
++      );
++    }
++  });
++
+   it("should handle playlist URLs with timestamps", () => {
+     const url =
+       "https://www.youtube.com/playlist?list=PLrAXtmRdnEQy1KbG5lbfgQ0-PKQY6FKYZ&t=60";
+diff --git a/packages/excalidraw/actions/actionTogglePresenterMode.tsx b/packages/excalidraw/actions/actionTogglePresenterMode.tsx
+new file mode 100644
+index 00000000..5bc12a66
+--- /dev/null
++++ b/packages/excalidraw/actions/actionTogglePresenterMode.tsx
+@@ -0,0 +1,27 @@
++import { CODES, KEYS } from "@excalidraw/common";
++
++import { CaptureUpdateAction } from "@excalidraw/element";
++
++import { register } from "./register";
++
++export const actionTogglePresenterMode = register({
++  name: "presenterMode",
++  label: "labels.presenterMode",
++  viewMode: false,
++  trackEvent: {
++    category: "canvas",
++    predicate: (appState) => !appState.presenterModeEnabled,
++  },
++  perform(elements, appState) {
++    return {
++      appState: {
++        ...appState,
++        presenterModeEnabled: !this.checked!(appState),
++      },
++      captureUpdate: CaptureUpdateAction.NEVER,
++    };
++  },
++  checked: (appState) => appState.presenterModeEnabled,
++  keyTest: (event) =>
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.J,
++});
+diff --git a/packages/excalidraw/actions/actionToggleRulers.tsx b/packages/excalidraw/actions/actionToggleRulers.tsx
+new file mode 100644
+index 00000000..aa462632
+--- /dev/null
++++ b/packages/excalidraw/actions/actionToggleRulers.tsx
+@@ -0,0 +1,27 @@
++import { CODES, KEYS } from "@excalidraw/common";
++
++import { CaptureUpdateAction } from "@excalidraw/element";
++
++import { register } from "./register";
++
++export const actionToggleRulers = register({
++  name: "rulers",
++  label: "labels.rulers",
++  viewMode: true,
++  trackEvent: {
++    category: "canvas",
++    predicate: (appState) => !appState.rulersEnabled,
++  },
++  perform(elements, appState) {
++    return {
++      appState: {
++        ...appState,
++        rulersEnabled: !this.checked!(appState),
++      },
++      captureUpdate: CaptureUpdateAction.NEVER,
++    };
++  },
++  checked: (appState) => appState.rulersEnabled,
++  keyTest: (event) =>
++    !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.U,
++});
+diff --git a/packages/excalidraw/actions/index.ts b/packages/excalidraw/actions/index.ts
+index 6d2321ba..3d6014c2 100644
+--- a/packages/excalidraw/actions/index.ts
++++ b/packages/excalidraw/actions/index.ts
+@@ -82,6 +82,8 @@ export { actionToggleZenMode } from "./actionToggleZenMode";
+ export { actionToggleObjectsSnapMode } from "./actionToggleObjectsSnapMode";
+ export { actionToggleArrowBinding } from "./actionToggleArrowBinding";
+ export { actionToggleMidpointSnapping } from "./actionToggleMidpointSnapping";
++export { actionToggleRulers } from "./actionToggleRulers";
++export { actionTogglePresenterMode } from "./actionTogglePresenterMode";
+ 
+ export { actionToggleStats } from "./actionToggleStats";
+ export { actionUnbindText, actionBindText } from "./actionBoundText";
+diff --git a/packages/excalidraw/actions/shortcuts.ts b/packages/excalidraw/actions/shortcuts.ts
+index 10bcfd64..b01f5682 100644
+--- a/packages/excalidraw/actions/shortcuts.ts
++++ b/packages/excalidraw/actions/shortcuts.ts
+@@ -31,6 +31,8 @@ export type ShortcutName =
+       | "gridMode"
+       | "zenMode"
+       | "objectsSnapMode"
++      | "rulers"
++      | "presenterMode"
+       | "stats"
+       | "addToLibrary"
+       | "viewMode"
+@@ -94,6 +96,8 @@ const shortcutMap: Record<ShortcutName, string[]> = {
+   gridMode: [getShortcutKey("CtrlOrCmd+'")],
+   zenMode: [getShortcutKey("Alt+Z")],
+   objectsSnapMode: [getShortcutKey("Alt+S")],
++  rulers: [getShortcutKey("Alt+U")],
++  presenterMode: [getShortcutKey("Alt+J")],
+   stats: [getShortcutKey("Alt+/")],
+   addToLibrary: [],
+   flipHorizontal: [getShortcutKey("Shift+H")],
+diff --git a/packages/excalidraw/actions/types.ts b/packages/excalidraw/actions/types.ts
+index 4f7cbd37..0fd2bad9 100644
+--- a/packages/excalidraw/actions/types.ts
++++ b/packages/excalidraw/actions/types.ts
+@@ -61,6 +61,8 @@ export type ActionName =
+   | "objectsSnapMode"
+   | "arrowBinding"
+   | "midpointSnapping"
++  | "rulers"
++  | "presenterMode"
+   | "stats"
+   | "changeStrokeColor"
+   | "changeBackgroundColor"
+diff --git a/packages/excalidraw/appState.ts b/packages/excalidraw/appState.ts
+index e4017c73..726fb963 100644
+--- a/packages/excalidraw/appState.ts
++++ b/packages/excalidraw/appState.ts
+@@ -77,6 +77,8 @@ export const getDefaultAppState = (): Omit<
+     isBindingEnabled: true,
+     bindingPreference: "enabled",
+     isMidpointSnappingEnabled: true,
++    rulersEnabled: false,
++    presenterModeEnabled: false,
+     showHints: true,
+     inputDevice: "auto",
+     defaultSidebarDockedPreference: false,
+@@ -226,6 +228,8 @@ const APP_STATE_STORAGE_CONF = (<
+   boxSelectionMode: { browser: true, export: false, server: false },
+   bindingPreference: { browser: true, export: false, server: false },
+   isMidpointSnappingEnabled: { browser: true, export: false, server: false },
++  rulersEnabled: { browser: true, export: true, server: false },
++  presenterModeEnabled: { browser: false, export: false, server: false },
+   showHints: { browser: true, export: false, server: false },
+   inputDevice: { browser: true, export: false, server: false },
+   defaultSidebarDockedPreference: {
+diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
+index b4fdc3ee..539a90ec 100644
+--- a/packages/excalidraw/components/App.tsx
++++ b/packages/excalidraw/components/App.tsx
+@@ -331,6 +331,8 @@ import {
+   actionToggleObjectsSnapMode,
+   actionToggleArrowBinding,
+   actionToggleMidpointSnapping,
++  actionToggleRulers,
++  actionTogglePresenterMode,
+   actionToggleCropEditor,
+ } from "../actions";
+ import { actionWrapTextInContainer } from "../actions/actionBoundText";
+@@ -13849,6 +13851,7 @@ class App extends React.Component<AppProps, AppState> {
+           actionToggleZenMode,
+           actionToggleViewMode,
+           actionToggleStats,
++          actionToggleRulers,
+         ];
+       }
+ 
+@@ -13866,6 +13869,8 @@ class App extends React.Component<AppProps, AppState> {
+         actionToggleObjectsSnapMode,
+         actionToggleArrowBinding,
+         actionToggleMidpointSnapping,
++        actionToggleRulers,
++        actionTogglePresenterMode,
+         actionToggleZenMode,
+         actionToggleViewMode,
+         actionToggleStats,
+diff --git a/packages/excalidraw/components/HelpDialog.tsx b/packages/excalidraw/components/HelpDialog.tsx
+index 4f373c27..760cb382 100644
+--- a/packages/excalidraw/components/HelpDialog.tsx
++++ b/packages/excalidraw/components/HelpDialog.tsx
+@@ -307,6 +307,14 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
+               label={t("labels.viewMode")}
+               shortcuts={[getShortcutKey("Alt+R")]}
+             />
++            <Shortcut
++              label={t("labels.rulers")}
++              shortcuts={[getShortcutKey("Alt+U")]}
++            />
++            <Shortcut
++              label={t("labels.presenterMode")}
++              shortcuts={[getShortcutKey("Alt+J")]}
++            />
+             {actionManager.isActionEnabled(actionToggleTheme) && (
+               <Shortcut
+                 label={t("labels.toggleTheme")}
+diff --git a/packages/excalidraw/components/main-menu/DefaultItems.tsx b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+index 3b29b6cc..fce8add9 100644
+--- a/packages/excalidraw/components/main-menu/DefaultItems.tsx
++++ b/packages/excalidraw/components/main-menu/DefaultItems.tsx
+@@ -12,6 +12,8 @@ import {
+   actionToggleArrowBinding,
+   actionToggleGridMode,
+   actionToggleMidpointSnapping,
++  actionToggleRulers,
++  actionTogglePresenterMode,
+   actionToggleObjectsSnapMode,
+   actionToggleSearchMenu,
+   actionToggleStats,
+@@ -563,6 +565,40 @@ const PreferencesToggleMidpointSnappingItem = () => {
+   );
+ };
+ 
++const PreferencesToggleRulersItem = () => {
++  const { t } = useI18n();
++  const actionManager = useExcalidrawActionManager();
++  const appState = useUIAppState();
++  return (
++    <DropdownMenuItemCheckbox
++      checked={appState.rulersEnabled}
++      onSelect={(event) => {
++        actionManager.executeAction(actionToggleRulers);
++        event.preventDefault();
++      }}
++    >
++      {t("labels.rulers")}
++    </DropdownMenuItemCheckbox>
++  );
++};
++
++const PreferencesTogglePresenterModeItem = () => {
++  const { t } = useI18n();
++  const actionManager = useExcalidrawActionManager();
++  const appState = useUIAppState();
++  return (
++    <DropdownMenuItemCheckbox
++      checked={appState.presenterModeEnabled}
++      onSelect={(event) => {
++        actionManager.executeAction(actionTogglePresenterMode);
++        event.preventDefault();
++      }}
++    >
++      {t("labels.presenterMode")}
++    </DropdownMenuItemCheckbox>
++  );
++};
++
+ const PreferencesToggleShowHintsItem = () => {
+   const { t } = useI18n();
+   const appState = useUIAppState();
+@@ -682,6 +718,8 @@ export const Preferences = ({
+             <PreferencesToggleElementPropertiesItem />
+             <PreferencesToggleArrowBindingItem />
+             <PreferencesToggleMidpointSnappingItem />
++            <PreferencesToggleRulersItem />
++            <PreferencesTogglePresenterModeItem />
+             <PreferencesToggleShowHintsItem />
+           </>
+         )}
+@@ -697,6 +735,8 @@ Preferences.InputDevice = PreferencesInputDeviceItem;
+ Preferences.ToggleSnapMode = PreferencesToggleSnapModeItem;
+ Preferences.ToggleArrowBinding = PreferencesToggleArrowBindingItem;
+ Preferences.ToggleMidpointSnapping = PreferencesToggleMidpointSnappingItem;
++Preferences.ToggleRulers = PreferencesToggleRulersItem;
++Preferences.TogglePresenterMode = PreferencesTogglePresenterModeItem;
+ Preferences.ToggleShowHints = PreferencesToggleShowHintsItem;
+ Preferences.ToggleGridMode = PreferencesToggleGridModeItem;
+ Preferences.ToggleZenMode = PreferencesToggleZenModeItem;
+diff --git a/packages/excalidraw/locales/en.json b/packages/excalidraw/locales/en.json
+index 5ba1912e..13e2fd71 100644
+--- a/packages/excalidraw/locales/en.json
++++ b/packages/excalidraw/locales/en.json
+@@ -197,6 +197,8 @@
+     "boxSelectionOverlap": "Overlap",
+     "arrowBinding": "Arrow binding",
+     "midpointSnapping": "Snap to midpoints",
++    "rulers": "Rulers",
++    "presenterMode": "Presenter mode",
+     "showHints": "Show hints",
+     "inputDevice": "Input",
+     "inputDeviceTrackpad": "Trackpad",
+diff --git a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
+index 1321699b..ccc7322c 100644
+--- a/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap
+@@ -970,8 +970,10 @@ exports[`contextMenu element > right-clicking on a group should select whole gro
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1181,8 +1183,10 @@ exports[`contextMenu element > selecting 'Add to library' in context menu adds e
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1410,8 +1414,10 @@ exports[`contextMenu element > selecting 'Bring forward' in context menu brings
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1758,8 +1764,10 @@ exports[`contextMenu element > selecting 'Bring to front' in context menu brings
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2106,8 +2114,10 @@ exports[`contextMenu element > selecting 'Copy styles' in context menu copies st
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2335,8 +2345,10 @@ exports[`contextMenu element > selecting 'Delete' in context menu deletes elemen
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2591,8 +2603,10 @@ exports[`contextMenu element > selecting 'Duplicate' in context menu duplicates
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2906,10 +2920,12 @@ exports[`contextMenu element > selecting 'Group selection' in context menu group
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3295,8 +3311,10 @@ exports[`contextMenu element > selecting 'Paste styles' in context menu pastes s
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3832,8 +3850,10 @@ exports[`contextMenu element > selecting 'Send backward' in context menu sends e
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4172,8 +4192,10 @@ exports[`contextMenu element > selecting 'Send to back' in context menu sends el
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4512,10 +4534,12 @@ exports[`contextMenu element > selecting 'Ungroup selection' in context menu ung
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5814,10 +5838,12 @@ exports[`contextMenu element > shows 'Group selection' in context menu for multi
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7048,10 +7074,12 @@ exports[`contextMenu element > shows 'Ungroup selection' in context menu for gro
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7784,6 +7812,30 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+         },
+         "viewMode": false,
+       },
++      {
++        "checked": [Function],
++        "keyTest": [Function],
++        "label": "labels.rulers",
++        "name": "rulers",
++        "perform": [Function],
++        "trackEvent": {
++          "category": "canvas",
++          "predicate": [Function],
++        },
++        "viewMode": true,
++      },
++      {
++        "checked": [Function],
++        "keyTest": [Function],
++        "label": "labels.presenterMode",
++        "name": "presenterMode",
++        "perform": [Function],
++        "trackEvent": {
++          "category": "canvas",
++          "predicate": [Function],
++        },
++        "viewMode": false,
++      },
+       {
+         "checked": [Function],
+         "icon": <svg
+@@ -8025,8 +8077,10 @@ exports[`contextMenu element > shows context menu for canvas > [end of test] app
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9035,8 +9089,10 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10042,8 +10098,10 @@ exports[`contextMenu element > shows context menu for element > [end of test] ap
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+diff --git a/packages/excalidraw/tests/__snapshots__/export.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/export.test.tsx.snap
+index 475a3368..7bf350aa 100644
+--- a/packages/excalidraw/tests/__snapshots__/export.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/export.test.tsx.snap
+@@ -1,7 +1,7 @@
+ // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+ 
+ exports[`export > export svg-embedded scene > svg-embdedded scene export output 1`] = `
+-"<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36"><!-- svg-source:excalidraw --><metadata><!-- payload-type:application/vnd.excalidraw+json --><!-- payload-version:2 --><!-- payload-start -->eyJ2ZXJzaW9uIjoiMSIsImVuY29kaW5nIjoiYnN0cmluZyIsImNvbXByZXNzZWQiOnRydWUsImVuY29kZWQiOiJ4nHVTwY7TMFx1MDAxML3zXHUwMDE1UfaK2LRcYlx1MDAwZb3twq7Yw1wiRJE4IFx1MDAwZW48TUZ1bcuebFuqSnxcdTAwMDY3fpFPYOyEuE6XVorkN555b96Mjy+KoqSDhXJRlLCvhULpxK58XHUwMDE58CdwXHUwMDFljebQPJ696VxcXHUwMDFkb7ZEdnF9rVxmJ7TG0+J1VVV9XHUwMDEyKNiCJs/XvvG5KI7xy1x1MDAxMZQh9SZei8A/XoI9JXTPUDWeXHUwMDBl2WmHklpGZm9HqFx1MDAwNWxayjGhXHUwMDFiXHUwMDA1WaInZzbwzijjXHUwMDAy49VcZsI/ka5EvWmc6bRcdTAwMWPvkFx1MDAxM9pb4biZdG+NSi3pXHUwMDEwq7NcdTAwMWbsVjnh+DpInE/w/2UxadNq8MGw2YhcdTAwMWEraqTQ/KxKXVx1MDAwNIX2QUZvvydNTmzhIZirO6VGXHUwMDE4tYT9XHUwMDE0jC1cdTAwMGVsWcBcdTAwMDPITEFcdTAwMWH+XHUwMDA19tHoOrdcdTAwMTf9e547xVx1MDAxMmuhPCRjXHUwMDAz4V3aiYy0s1LQhLd2cIEp1JtpLu/e5lx1MDAxOb64S+zyn9+/fp6NzWha4o8gel6dXHLdw32KZOVDxr3YolxuM3iTlb9R2Fx1MDAwNF9KXHUwMDA167PVYHNcYvk9jGEyNkVrridQg7tcdTAwMWOUcdigXHUwMDE26suz0kVH5jP4XlwiuVx1MDAwZc5dgVx1MDAwZuP2v5onlUqsQH0yXHUwMDFlqZ9goIuxXHUwMDEzf+PilMLaJbHRXHUwMDFj7Vx1MDAxZigvXHUwMDE3yolHPUZgk1x1MDAwN1x1MDAxMXo0XHUwMDEy7rRYqelcdTAwMDDKJ4Td7eVbulrH39DVMLvHTlx1MDAxMS55b+ogMyzHMeg7RX380GCATn9cdTAwMDFWrz23In0=<!-- payload-end --></metadata><defs><style class="style-fonts">
++"<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36"><!-- svg-source:excalidraw --><metadata><!-- payload-type:application/vnd.excalidraw+json --><!-- payload-version:2 --><!-- payload-start -->eyJ2ZXJzaW9uIjoiMSIsImVuY29kaW5nIjoiYnN0cmluZyIsImNvbXByZXNzZWQiOnRydWUsImVuY29kZWQiOiJ4nHVTwW7bMFxmve8rXHUwMDAy9zqsTortkFu7tWhcdTAwMGZcdTAwMWSGZcBcdTAwMGXDXHUwMDBlis3YRFx1MDAxOEmQ6CZZXHUwMDEwYJ+x235xnzBK9qzYyVx1MDAxMsCAXHUwMDFlRT7y8enwajLJeG8hm08y2Fx1MDAxNYqwdGqbvVx1MDAwZfhcdTAwMGI4j0ZLaFx1MDAxNs/eNK6IN2tmO7++JiNcdLXxPL/J87xNXHUwMDAyglxyaPZy7ZucJ5ND/EpcdTAwMDTLkHpcdTAwMWKvReBcdTAwMWYvw45cdTAwMTO6XHUwMDEzKO9P+8FpiyXXgkzf9VBccljVPMSUrlxiXHUwMDA2iZ6dWcN7Q8ZcdTAwMDXGqymEf1wiXapiXTnT6LK/w05pb5WTYdK9XHUwMDE1XHUwMDEyLXhcdTAwMWari1x1MDAxZaJWNuL42rU4XHUwMDFi4f/LXHUwMDEy0qrW4INg01x1MDAxZTVWXHUwMDE1yGH4aZ6mXGJcdTAwMWTapzJq+z315NRcdTAwMDaegri6Ieph1CXsxmBcdTAwMWOxY1x1MDAxYlx1MDAwNDxAOeggLf9cZvtodDGUXHUwMDE3/Vx1MDAwN9k7x1x1MDAxMitFXHUwMDFlkrCB8D55YkDa2FLxiLdwcIZcdTAwMTHq9ThXvLe+wFx1MDAxN70kKv/5/evnydqM5lx1MDAwNf5cYk3P8pOle3hIkUH5kPGgNkhhXHUwMDA3b1x1MDAwN+VvXHSroEtGsDqxhojDKO+hXHUwMDBms7EpWkg9hVx1MDAxYdz5oozDXG61oi9cdTAwMTdbV1xym8/g21x1MDAxNtk1cKpcbjz27n8zS12SWlx1MDAwMn0yXHUwMDFlud1goIuxo3yjcTJl7YJFaIm2XHUwMDBmVMyF5UijXHUwMDE2Y7BJg1xiPZtcdTAwMTLutVrSeFx1MDAwMZlrSDxyOfaCsL07f2dXq/jrJu72+txcdTAwMTDjQjxVhFx1MDAxMYJxXHUwMDBlofdj7F1cdTAwMWUhdNDxL41NRl4ifQ==<!-- payload-end --></metadata><defs><style class="style-fonts">
+       </style></defs><rect x="0" y="0" width="36" height="36" fill="#ffffff"></rect><g transform="translate(10 10) rotate(0 8 8)" data-id="A"><text x="0" y="17.619999999999997" font-family="Excalifont, Xiaolai, sans-serif, Segoe UI Emoji" font-size="20px" fill="#1e1e1e" text-anchor="start" style="white-space: pre;" direction="ltr" dominant-baseline="alphabetic">😀</text></g></svg>"
+ `;
+ 
+diff --git a/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
+index 9d628d37..94d66bf8 100644
+--- a/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/history.test.tsx.snap
+@@ -92,10 +92,12 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id4": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -745,10 +747,12 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id4": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1328,8 +1332,10 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1706,8 +1712,10 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2085,8 +2093,10 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2362,8 +2372,10 @@ exports[`history > multiplayer undo/redo > conflicts in arrows and their bindabl
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2837,8 +2849,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3161,8 +3175,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3503,8 +3519,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3817,8 +3835,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4121,8 +4141,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4373,8 +4395,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4648,8 +4672,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4939,8 +4965,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5185,8 +5213,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5431,8 +5461,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5696,8 +5728,10 @@ exports[`history > multiplayer undo/redo > conflicts in bound text elements and
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5972,8 +6006,10 @@ exports[`history > multiplayer undo/redo > conflicts in frames and their childre
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -6243,10 +6279,12 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id1": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -6589,10 +6627,12 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id8": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7035,10 +7075,12 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id1": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7431,8 +7473,10 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7757,8 +7801,10 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8064,8 +8110,10 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8309,8 +8357,10 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8680,8 +8730,10 @@ exports[`history > multiplayer undo/redo > should iterate through the history wh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9051,11 +9103,13 @@ exports[`history > multiplayer undo/redo > should not let remote changes to inte
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9475,8 +9529,10 @@ exports[`history > multiplayer undo/redo > should not let remote changes to inte
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9778,8 +9834,10 @@ exports[`history > multiplayer undo/redo > should not let remote changes to inte
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10058,8 +10116,10 @@ exports[`history > multiplayer undo/redo > should not override remote changes on
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10339,8 +10399,10 @@ exports[`history > multiplayer undo/redo > should not override remote changes on
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10589,8 +10651,10 @@ exports[`history > multiplayer undo/redo > should override remotely added groups
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10900,8 +10964,10 @@ exports[`history > multiplayer undo/redo > should override remotely added points
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -11232,8 +11298,10 @@ exports[`history > multiplayer undo/redo > should redistribute deltas when eleme
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -11486,8 +11554,10 @@ exports[`history > multiplayer undo/redo > should redraw arrows on undo > [end o
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -12427,8 +12497,10 @@ exports[`history > multiplayer undo/redo > should update history entries after r
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -12702,8 +12774,10 @@ exports[`history > singleplayer undo/redo > remounting undo/redo buttons should
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -12953,8 +13027,10 @@ exports[`history > singleplayer undo/redo > should clear the redo stack on eleme
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -13206,8 +13282,10 @@ exports[`history > singleplayer undo/redo > should create entry when selecting f
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -13630,8 +13708,10 @@ exports[`history > singleplayer undo/redo > should create new history entry on e
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -13852,8 +13932,10 @@ exports[`history > singleplayer undo/redo > should create new history entry on e
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -14077,8 +14159,10 @@ exports[`history > singleplayer undo/redo > should create new history entry on i
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -14392,8 +14476,10 @@ exports[`history > singleplayer undo/redo > should create new history entry on i
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -14710,8 +14796,10 @@ exports[`history > singleplayer undo/redo > should create new history entry on s
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": -50,
+   "scrollY": -50,
+@@ -14972,8 +15060,10 @@ exports[`history > singleplayer undo/redo > should disable undo/redo buttons whe
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -15225,8 +15315,10 @@ exports[`history > singleplayer undo/redo > should end up with no history entry
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -15478,10 +15570,12 @@ exports[`history > singleplayer undo/redo > should iterate through the history w
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -15740,8 +15834,10 @@ exports[`history > singleplayer undo/redo > should not clear the redo stack on s
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -16091,8 +16187,10 @@ exports[`history > singleplayer undo/redo > should not collapse when applying co
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -16272,8 +16370,10 @@ exports[`history > singleplayer undo/redo > should not end up with history entry
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -16576,8 +16676,10 @@ exports[`history > singleplayer undo/redo > should not end up with history entry
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -16856,8 +16958,10 @@ exports[`history > singleplayer undo/redo > should not modify anything on unrela
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -17020,10 +17124,12 @@ exports[`history > singleplayer undo/redo > should not override appstate changes
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -17320,8 +17426,10 @@ exports[`history > singleplayer undo/redo > should support appstate name or view
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -17492,10 +17600,12 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -18265,10 +18375,12 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -18936,10 +19048,12 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -19607,8 +19721,10 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -20381,10 +20497,12 @@ exports[`history > singleplayer undo/redo > should support bidirectional binding
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -21174,10 +21292,12 @@ exports[`history > singleplayer undo/redo > should support changes in elements'
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -21673,10 +21793,12 @@ exports[`history > singleplayer undo/redo > should support duplication of groups
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id1": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -22207,10 +22329,12 @@ exports[`history > singleplayer undo/redo > should support element creation, del
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -22685,10 +22809,12 @@ exports[`history > singleplayer undo/redo > should support linear element creati
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+diff --git a/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
+index b6d7b5ca..ad7d6074 100644
+--- a/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
++++ b/packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap
+@@ -93,12 +93,14 @@ exports[`given element A and group of elements B and given both are selected whe
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -535,12 +537,14 @@ exports[`given element A and group of elements B and given both are selected whe
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -967,8 +971,10 @@ exports[`regression tests > Cmd/Ctrl-click exclusively select element under poin
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1549,8 +1555,10 @@ exports[`regression tests > Drags selected element when hitting only bounding bo
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -1770,10 +1778,12 @@ exports[`regression tests > adjusts z order when grouping > [end of test] appSta
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2170,10 +2180,12 @@ exports[`regression tests > alt-drag duplicates an element > [end of test] appSt
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2430,8 +2442,10 @@ exports[`regression tests > arrow keys > [end of test] appState 1`] = `
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2624,10 +2638,12 @@ exports[`regression tests > can drag element that covers another element, while
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -2965,8 +2981,10 @@ exports[`regression tests > change the properties of a shape > [end of test] app
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3234,10 +3252,12 @@ exports[`regression tests > click on an element and drag it > [dragged] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3490,10 +3510,12 @@ exports[`regression tests > click on an element and drag it > [end of test] appS
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -3740,10 +3762,12 @@ exports[`regression tests > click to select a shape > [end of test] appState 1`]
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4013,10 +4037,12 @@ exports[`regression tests > click-drag to select a group > [end of test] appStat
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4343,8 +4369,10 @@ exports[`regression tests > deleting last but one element in editing group shoul
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -4794,11 +4822,13 @@ exports[`regression tests > deselects group of selected elements on pointer down
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5093,11 +5123,13 @@ exports[`regression tests > deselects group of selected elements on pointer up w
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5384,10 +5416,12 @@ exports[`regression tests > deselects selected element on pointer down when poin
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5607,10 +5641,12 @@ exports[`regression tests > deselects selected element, on pointer up, when clic
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -5821,8 +5857,10 @@ exports[`regression tests > double click to edit a group > [end of test] appStat
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -6230,11 +6268,13 @@ exports[`regression tests > drags selected elements from point inside common bou
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -6542,8 +6582,10 @@ exports[`regression tests > draw every type of shape > [end of test] appState 1`
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7355,11 +7397,13 @@ exports[`regression tests > given a group of selected elements with an element t
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7705,10 +7749,12 @@ exports[`regression tests > given a selected element A and a not selected elemen
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -7999,10 +8045,12 @@ exports[`regression tests > given selected element A with lower z-index than uns
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8249,10 +8297,12 @@ exports[`regression tests > given selected element A with lower z-index than uns
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8504,8 +8554,10 @@ exports[`regression tests > key 2 selects rectangle tool > [end of test] appStat
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8698,8 +8750,10 @@ exports[`regression tests > key 3 selects diamond tool > [end of test] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -8892,8 +8946,10 @@ exports[`regression tests > key 4 selects ellipse tool > [end of test] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9086,8 +9142,10 @@ exports[`regression tests > key 5 selects arrow tool > [end of test] appState 1`
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9333,8 +9391,10 @@ exports[`regression tests > key 6 selects line tool > [end of test] appState 1`]
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9578,8 +9638,10 @@ exports[`regression tests > key 7 selects freedraw tool > [end of test] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -9788,8 +9850,10 @@ exports[`regression tests > key a selects arrow tool > [end of test] appState 1`
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10035,8 +10099,10 @@ exports[`regression tests > key d selects diamond tool > [end of test] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10229,8 +10295,10 @@ exports[`regression tests > key l selects line tool > [end of test] appState 1`]
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10474,8 +10542,10 @@ exports[`regression tests > key o selects ellipse tool > [end of test] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10668,8 +10738,10 @@ exports[`regression tests > key p selects freedraw tool > [end of test] appState
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -10878,8 +10950,10 @@ exports[`regression tests > key r selects rectangle tool > [end of test] appStat
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -11072,12 +11146,14 @@ exports[`regression tests > make a group and duplicate it > [end of test] appSta
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -11622,10 +11698,12 @@ exports[`regression tests > noop interaction after undo shouldn't create history
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -11917,8 +11995,10 @@ exports[`regression tests > pinch-to-zoom works > [end of test] appState 1`] = `
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": "-6.25000",
+   "scrollY": 0,
+@@ -12053,10 +12133,12 @@ exports[`regression tests > shift click on selected element should deselect it o
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -12267,11 +12349,13 @@ exports[`regression tests > shift-click to multiselect, then drag > [end of test
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -12601,12 +12685,14 @@ exports[`regression tests > should group elements and ungroup them > [end of tes
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id3": true,
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -13046,6 +13132,7 @@ exports[`regression tests > single-clicking on a subgroup of a selected group sh
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+     "id15": true,
+@@ -13053,6 +13140,7 @@ exports[`regression tests > single-clicking on a subgroup of a selected group sh
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -13706,8 +13794,10 @@ exports[`regression tests > spacebar + drag scrolls the canvas > [end of test] a
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 60,
+   "scrollY": 60,
+@@ -13842,10 +13932,12 @@ exports[`regression tests > supports nested groups > [end of test] appState 1`]
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id0": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -14489,11 +14581,13 @@ exports[`regression tests > switches from group of selected elements to another
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id3": true,
+     "id6": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -14845,10 +14939,12 @@ exports[`regression tests > switches selected element on pointer down > [end of
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {
+     "id3": true,
+   },
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -15125,8 +15221,10 @@ exports[`regression tests > two-finger scroll works > [end of test] appState 1`]
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 20,
+   "scrollY": "-18.53553",
+@@ -15261,8 +15359,10 @@ exports[`regression tests > undo/redo drawing an element > [end of test] appStat
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -15641,8 +15741,10 @@ exports[`regression tests > updates fontSize & fontFamily appState > [end of tes
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+@@ -15780,8 +15882,10 @@ exports[`regression tests > zoom hotkeys > [end of test] appState 1`] = `
+     "initialized": true,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,
+diff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts
+index 3a37d94e..2794bb14 100644
+--- a/packages/excalidraw/types.ts
++++ b/packages/excalidraw/types.ts
+@@ -367,6 +367,8 @@ export interface AppState {
+   bindingPreference: "enabled" | "disabled";
+   /** user preference whether arrow snap to midpoints while binding */
+   isMidpointSnappingEnabled: boolean;
++  rulersEnabled: boolean;
++  presenterModeEnabled: boolean;
+   /** user preference whether to show contextual hints above the toolbar */
+   showHints: boolean;
+   /**
+diff --git a/packages/excalidraw/wysiwyg/textWysiwyg.test.tsx b/packages/excalidraw/wysiwyg/textWysiwyg.test.tsx
+index 27305e8a..2a1ec51e 100644
+--- a/packages/excalidraw/wysiwyg/textWysiwyg.test.tsx
++++ b/packages/excalidraw/wysiwyg/textWysiwyg.test.tsx
+@@ -1,4 +1,5 @@
+ import { queryByText } from "@testing-library/react";
++import { vi } from "vitest";
+ 
+ import { pointFrom } from "@excalidraw/math";
+ import {
+@@ -43,6 +44,7 @@ import {
+   mockBoundingClientRect,
+   restoreOriginalGetBoundingClientRect,
+ } from "../tests/test-utils";
++import * as dataModule from "../data";
+ import { actionBindText } from "../actions";
+ import { actionTextAutoResize } from "../actions/actionTextAutoResize";
+ 
+@@ -965,6 +967,28 @@ describe("textWysiwyg", () => {
+       expect(textElement.fontSize).toBe(origFontSize);
+     });
+ 
++    it.each([
++      { label: "Cmd/Ctrl+S", shiftKey: false },
++      { label: "Cmd/Ctrl+Shift+S", shiftKey: true },
++    ])("should commit text before saving via $label", ({ shiftKey }) => {
++      let editingWhenSaved: unknown = "not saved";
++      const saveSpy = vi
++        .spyOn(dataModule, "saveAsJSON")
++        .mockImplementation((async () => {
++          editingWhenSaved = h.state.editingTextElement;
++          return { fileHandle: null };
++        }) as unknown as typeof dataModule.saveAsJSON);
++
++      try {
++        fireEvent.keyDown(textarea, { key: KEYS.S, ctrlKey: true, shiftKey });
++
++        expect(saveSpy).toHaveBeenCalledTimes(1);
++        expect(editingWhenSaved).toBe(null);
++      } finally {
++        saveSpy.mockRestore();
++      }
++    });
++
+     it("zooming via keyboard should zoom canvas", () => {
+       expect(h.state.zoom.value).toBe(1);
+       fireEvent.keyDown(textarea, {
+diff --git a/packages/excalidraw/wysiwyg/textWysiwyg.tsx b/packages/excalidraw/wysiwyg/textWysiwyg.tsx
+index 807eb52f..8fdc956c 100644
+--- a/packages/excalidraw/wysiwyg/textWysiwyg.tsx
++++ b/packages/excalidraw/wysiwyg/textWysiwyg.tsx
+@@ -55,7 +55,7 @@ import type {
+   ExcalidrawTextContainer,
+ } from "@excalidraw/element/types";
+ 
+-import { actionSaveToActiveFile } from "../actions";
++import { actionSaveFileToDisk, actionSaveToActiveFile } from "../actions";
+ 
+ import {
+   parseClipboard,
+@@ -718,7 +718,11 @@ export const textWysiwyg = ({
+     } else if (actionSaveToActiveFile.keyTest(event)) {
+       event.preventDefault();
+       handleSubmit();
+-      app.actionManager.executeAction(actionSaveToActiveFile);
++      app.actionManager.executeAction(actionSaveToActiveFile, "keyboard");
++    } else if (actionSaveFileToDisk.keyTest(event)) {
++      event.preventDefault();
++      handleSubmit();
++      app.actionManager.executeAction(actionSaveFileToDisk, "keyboard");
+     } else if (event.key === KEYS.ENTER && event[KEYS.CTRL_OR_CMD]) {
+       event.preventDefault();
+       if (event.isComposing || event.keyCode === 229) {
+diff --git a/packages/utils/tests/__snapshots__/export.test.ts.snap b/packages/utils/tests/__snapshots__/export.test.ts.snap
+index 618ac57a..23948ab3 100644
+--- a/packages/utils/tests/__snapshots__/export.test.ts.snap
++++ b/packages/utils/tests/__snapshots__/export.test.ts.snap
+@@ -94,8 +94,10 @@ exports[`exportToSvg > with default arguments 1`] = `
+     "initialized": false,
+     "type": "selection",
+   },
++  "presenterModeEnabled": false,
+   "previousSelectedElementIds": {},
+   "resizingElement": null,
++  "rulersEnabled": false,
+   "scrollConstraints": null,
+   "scrollX": 0,
+   "scrollY": 0,

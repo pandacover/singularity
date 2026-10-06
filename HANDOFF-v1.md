@@ -161,6 +161,22 @@ The `UserPromptSubmit` hook, at a session's first prompt:
    numbers (the block's first line, its last entries, its closing line), the
    checks, and the pitfalls once. It stays under 9,800 characters (Claude Code
    cuts a hook's text at 10,000), shortening excerpts to fit.
+5. **Ends with one command** (Finish.ts, memory that knows what its checks
+   rewrite): the chosen workflows' checks in one line, formatters first and
+   tests last, with `git status --short` when snapshots change, and the
+   snapshot files that every earlier run of those workflows regenerated
+   (learned from their diffs, no model). No checks under each workflow; a
+   finishing workflow (no step at a place, leading only to the end) is folded
+   into it. `workflows finish` adds this to memory built before.
+6. **In up to two parts** (the `workflows-split` setup,
+   `SINGULARITY_HANDOVER_PARTS=2`): Claude Code cuts each hook's text on its
+   own, so a second task-start hook doubles the room. Both hooks compute the
+   same hand-over (cues, no model); the first keeps the session, the second
+   prints the rest. The local-first hand-over for the toggle tasks is about
+   13.5k characters, so in one part it was cut to 3 lines of code per place.
+   A place can also be shown as **one whole entry** (`show: "entry"`, learned
+   from results): its last component or tag with its attributes, or for new
+   files the shortest existing one.
 
 ### 5. During and after the task
 
@@ -176,14 +192,28 @@ The `UserPromptSubmit` hook, at a session's first prompt:
 `workflows evolve` takes new runs (records memory hasn't learned from):
 
 1. **Results**: for each, what memory showed it (or, for a run that had no
-   memory, would have shown it), against where its edits went.
+   memory, would have shown it), against where its edits went; and, for runs
+   that had memory, **what they still looked up before their first edit**
+   (Lookups.ts): every read and search of those turns, told against memory's
+   places as found at the run's base commit and the lines of them its
+   hand-over showed ("read DefaultItems.tsx 615-709, around place p-0141a9dc,
+   of which the hand-over showed 2 of 230 lines"; "read an existing file of
+   the kind place p-4eb1f0bc creates").
 2. **Refine**: the inducing model revises the current memory from the new
-   runs, those results, and the revisions rejected before.
-3. **Gate**: current and revised memory are replayed over all runs (the
-   picking step for each task, then the places shown against the places
-   edited); the revision is kept if places-shown-and-edited minus
-   places-shown-and-left-alone doesn't drop. Otherwise it is rejected, with
-   the reason, for next time.
+   runs, those results, and the revisions rejected before. It is told to give
+   knowledge for the lookups, never code to copy: what a step's existing
+   example would have shown, that the listed places are all of them, where to
+   see what a step depends on; and which places to show as a whole entry
+   (`entries`). Memory's own pitfalls stay unless runs show them wrong: runs
+   that no longer hit a pitfall show it works (a first round dropped them all,
+   since its new runs had no such detours).
+3. **Cues** are written again for the revision, from every task memory has
+   learned from, when memory is picked by cues.
+4. **Gate**: current and revised memory are replayed over all runs (the
+   picking step for each task, by cues for memory with cues, then the places
+   shown against the places edited); the revision is kept if
+   places-shown-and-edited minus places-shown-and-left-alone doesn't drop.
+   Otherwise it is rejected, with the reason, for next time.
 
 ## How it is built
 
@@ -204,7 +234,9 @@ TypeScript 7 and Effect 4, run by Node 24 (no build step); conventions in
 | `CueWriter.ts` | writing the cues once, when memory is built: the prompt, the answer's schema, the checks |
 | `Select.ts` | picking workflows by a model call, or by shared words |
 | `Locate.ts` | finding places in the working tree or at a commit, moved files included |
-| `Render.ts` | the hand-over text and its budget |
+| `Render.ts` | the hand-over text and its budget, in one part or two |
+| `Finish.ts` | the finish in one command: the checks folded, the snapshot files expected |
+| `Lookups.ts` | what a run looked up before its first edit, told against memory's places |
 | `Start.ts` | task start: pick, find, render, keep the session's state |
 | `Session.ts` | the session's state, fired pitfalls, the hand-over log |
 | `hook.ts`, `HookStart.ts`, `HookTool.ts`, `HookEnd.ts` | the hooks (entry point and one module per event) |
@@ -231,12 +263,13 @@ in `tenants/<tenant>/records/`.
 
 ```
 node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]
-node src/cli.ts workflows cues [--repo DIR]          # after every build or learning round
+node src/cli.ts workflows cues [--repo DIR]          # after a build (a learning round writes them itself)
+node src/cli.ts workflows finish [--repo DIR]        # memory built before: learn what the checks rewrite
 node src/cli.ts workflows show [AT] [--json]
-node src/cli.ts workflows handover "the task" --cwd REPO [--at COMMIT] [--pick cues|words|model]
-node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR]
+node src/cli.ts workflows handover "the task" --cwd REPO [--at COMMIT] [--pick cues|words|model] [--parts 2]
+node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR] [--dry-run]
 node src/cli.ts workflows candidates
-node src/cli.ts eval run SUITE.toml --setup workflows-cues --memory HOME --frozen
+node src/cli.ts eval run SUITE.toml --setup workflows-split --memory HOME --frozen
 ```
 
 **Hooks** are not installed in the user's own Claude Code settings; eval runs
@@ -443,10 +476,113 @@ from the App.tsx import edit that fails in every setup (its clean run: 8
 turns, 338k, the cheapest presenter run of any v1 version). The user took it
 as v1 not needing the model call, and sealed this as the local-first memory.
 
+### The three next steps (2026-10-06, eighth session)
+
+The user asked for the three "ways on" below, one by one, with results for
+the second and third. Pre-registered in
+`examples/excalidraw/PREREGISTRATION-v1-lookups.md` (1 and 2) and
+`examples/PREREGISTRATION-v1-new-kinds.md` (3), all runs on Claude Code
+2.1.286; scores with `examples/score-phases.ts`.
+
+**1 and 2 on the held-out toggles** (12 runs, $2.90; A = the sealed memory
+with the one-command finish, in two parts; B = A after a learning round on
+what 12 local-first runs looked up):
+
+| Task | Setup | Tokens | Dollars | Turns before the first edit | After the last |
+|---|---|---|---|---|---|
+| rulers | local first | 394k | $0.25 | 3 | 3 |
+| rulers | A | 350k | $0.23 | 4 | 2 |
+| rulers | B | 426k | $0.28 | 2 | 4 |
+| presenter | local first | 538k | $0.32 | 4 | 4 |
+| presenter | A | 372k | $0.26 | 4 | 3 |
+| presenter | B | 288k | $0.13 | 3 | 3 |
+
+- The finish in one command (A): fewer turns after the last edit, and with
+  room for the code, cheaper than local first on both tasks.
+- Learning what runs looked up (B): the first edit came earlier on both
+  tasks; presenter's dollars halved; rulers got dearer. The pre-registered
+  cost rule failed on rulers. Three B runs ran the one command bare and paid
+  1-2 turns reading the test output Claude Code saved to a file; the hand-over
+  now says to keep the last 60 lines. A follow-up of 3 rulers runs with that
+  fix: the finish took 1-2 turns, yet rulers still cost 410k / $0.30, because
+  its runs read the places they edit between edits instead of before.
+
+**3, a second repository (validator.js)**: memory built from two seed tasks'
+runs (4 workflows); on the held-out tasks, 12 runs, all passed: ulid +9%
+tokens / -7% dollars, postal-code-pk +1% / -2% against no memory. The rule
+(tokens below on both) fails. These tasks are small (2-3 turns of looking
+without memory), so the hand-over costs about what it saves.
+
+**3, bug fixes in excalidraw** (12 runs, all passed): the learning round
+turned each seed bug into workflows of its own, cued by that bug's words
+("multi-point", "bound text"). The held-out save-as bug got nothing (+0%
+tokens: its memory runs were runs without memory); the dropdown bug got the
+wrong workflow (its "main menu" cues adding a Preferences toggle), which its
+agents ignored (-19% tokens, +5% dollars, inside the spread of runs without
+memory). The rule fails. What bug fixes share (reproducing the bug in a test,
+checking the one test file) didn't become a workflow: from two bugs in
+different places, the model kept what each did, not what both did.
+
+### A long task (8 runs, $4.29, 2026-10-07, ninth session)
+
+Four changes in one prompt, done in one session, two of them alike:
+toggle-rulers, midpoint-snap-n, toggle-presenter and stats-shortcut-k as a
+numbered list (`examples/excalidraw/long.toml`). Pre-registered in
+`examples/excalidraw/PREREGISTRATION-v1-long.md`: 4 runs without memory, 4
+with the `v1-finish` memory in two parts; the bar is at least 20% fewer
+tokens and 10% fewer dollars than no memory. Scores with
+`examples/excalidraw/score-long.ts` (also change by change).
+
+| Setup | Tokens | Dollars | Turns | Before the first edit |
+|---|---|---|---|---|
+| no memory | 1,902k (1,190k-2,241k) | $0.81 | 28.5 | 8.5 |
+| memory | 423k (293k-498k) | $0.30 | 9.5 | 3.5 |
+
+All 8 passed; both rules hold (-78% tokens, -63% dollars). Asked one per
+session, memory saved 50% of tokens and 34% of dollars on these four; in one
+session it saved more, since its runs edited all four changes within 2-3
+turns and paid the looking and the finish once. Every run, memory or not,
+edited the two alike toggles side by side. All 4 runs without memory fell
+into the keyboard-test trap (1 of 4 with memory, fixed two turns later), so
+part of the gap is the trap; against the cheapest run without memory,
+memory is still -64% / -49%.
+
+**A long task memory only half knows** (8 runs, $4.15): the same toggles
+with two bug fixes memory never saw in place of the shortcut changes
+(`long-mixed-changes`, at `d29d8648`;
+`examples/excalidraw/PREREGISTRATION-v1-long-mixed.md`).
+
+| Setup | Tokens | Dollars | Turns |
+|---|---|---|---|
+| no memory | 1,287k (1,039k-1,423k) | $0.64 | 21.5 |
+| memory | 788k (671k-920k) | $0.40 | 15 |
+
+All 8 passed; the same rules hold (-39% tokens, -38% dollars). The saving
+(499k tokens) is about what memory saves on the two toggles asked one per
+session (514k): the bug fixes cost the same with memory or without, and
+nothing was handed over for them. Memory's runs fixed the bugs first, then
+both toggles in one or two turns.
+
+The free preview first showed a flaw in task start: blanks were filled with
+the first value of their kind anywhere in the prompt (every change got the
+rulers field; the stats change was told Alt+N). A task that lists several
+changes is now picked and filled change by change (`partsChoice`, Cues.ts).
+
 ## Known weaknesses
 
 - **Exploration isn't removed** (the measurement): see above. This is the
-  main open problem.
+  main open problem. Learning what runs looked up moved the first edit
+  earlier, but on rulers the reading moved into the editing turns rather than
+  going away.
+- **Workflows from one bug don't reach other bugs.** Learned from two bug
+  fixes, memory made a workflow of each, cued by that bug's own words; other
+  bugs get nothing, or a workflow of another kind whose cue matches by chance
+  ("main menu").
+- **Small tasks gain nothing**: where the agent finds everything in two or
+  three turns (validator.js), the hand-over costs about what it saves.
+- **The one command's output** is long; the hand-over says to keep its last
+  60 lines, since a bare run makes Claude Code save it to a file the agent
+  then reads.
 - **Learning from results sees too little.** It learns only from where runs
   edited, not from what they had to look up or what they cost; its free gate
   replays place fit, not tokens. Turns can only be measured with runs.
@@ -478,13 +614,22 @@ session: memory helps the agent do the task and never writes or applies the
 change for it (the drafted change and the example to copy were tested and
 dropped; results in `PREREGISTRATION-v1.md`).
 
-Ways on, none started:
+Ways on, from the seventh session, all three done in the eighth (results
+above): the finish in one command; learning what runs still looked up; bug
+fixes and a second repository.
 
-- Fold the finishing steps into one check command learned from past runs
-  (v1's runs take about 4 turns after their last edit, against 3.7 without
-  memory): procedure, no model call.
-- Learning from results, taught what each run still had to look up before
-  its first edit, and writing cues again after each round. About $1 of model
-  calls and $3 of runs to test.
-- More kinds of task (bug fixes), and a second repository, to see where the
-  workflows and their cues hold beyond settings and shortcuts.
+Open after the eighth session (nothing started):
+
+- **What memory carries for one-off work.** v1 helped where a task repeats a
+  past one's procedure across many places (toggles: up to half the dollars).
+  On bug fixes and on small tasks in a second repository it handed over
+  nothing useful. What bug fixes share is how to reproduce and check (the
+  test helpers, which test file, the keyboard-test trap), and induction from
+  two bugs kept each bug's specifics instead. A deliberate "what do these
+  runs have in common" pass, or workflows learned across tasks of a kind
+  rather than per task, would be the thing to try.
+- **Look-alike cues**: a cue phrase ("main menu") picks a workflow for a task
+  of another kind. Cues written from seven tasks still misfire.
+- **Reading moves rather than goes**: with the learned knowledge, rulers runs
+  edit sooner and read between edits. Whether any hand-over can stop the
+  reading short of the finished change is still the open question.

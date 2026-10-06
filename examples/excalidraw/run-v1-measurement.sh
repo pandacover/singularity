@@ -37,6 +37,14 @@
 #       (`--setup workflows-cues`, src/workflows/Cues.ts), from the v1-cues
 #       home (v1-seed plus cues, version 2), on the three toggle tasks
 #       (2.1.286) and the three new ones (2.1.287)
+#   bash examples/excalidraw/run-v1-measurement.sh split-finish FIRST LAST
+#       PREREGISTRATION-v1-lookups.md, A: the v1-finish home (the finish in
+#       one command) handed over in up to two parts (`--setup
+#       workflows-split`), on toggle-rulers and toggle-presenter (2.1.286)
+#   bash examples/excalidraw/run-v1-measurement.sh split-learned FIRST LAST
+#       PREREGISTRATION-v1-lookups.md, B: the v1-learned home (A after a
+#       learning round on what runs looked up), the same way, the tasks in
+#       the other order
 #
 # Two lanes, as before: LANE=2 gives a lane its own clone and output
 # directories (suffix -lane2). The plan:
@@ -53,6 +61,8 @@ cd "$(dirname "$0")/../.."
 SUITE=examples/excalidraw/suite.toml
 V1=runs/excalidraw/memory/v1-seed
 V1CUES=runs/excalidraw/memory/v1-cues
+V1FINISH=runs/excalidraw/memory/v1-finish
+V1LEARNED=runs/excalidraw/memory/v1-learned
 V0=runs/excalidraw/memory/local-seed-spots
 SAVED=runs/excalidraw/memory/saved-scripts
 SAVED2=runs/excalidraw/memory/saved-scripts-2
@@ -132,6 +142,18 @@ pass_cues() {
   run --first-rep "$rep" --claude "$CC287" --setup workflows-cues --memory "$V1CUES" ${NEW[*]} --out "runs/excalidraw/v1cues-new$SUFFIX"
 }
 
+pass_split_finish() {
+  local rep=$1
+  run --first-rep "$rep" --claude "$CC286" --setup workflows-split --memory "$V1FINISH" \
+    --task toggle-rulers --task toggle-presenter --out "runs/excalidraw/v1split-finish$SUFFIX"
+}
+
+pass_split_learned() {
+  local rep=$1
+  run --first-rep "$rep" --claude "$CC286" --setup workflows-split --memory "$V1LEARNED" \
+    --task toggle-presenter --task toggle-rulers --out "runs/excalidraw/v1split-learned$SUFFIX"
+}
+
 pass_drift() {
   local rep=$1
   run --first-rep "$rep" --claude "$CC286" --setup saved-scripts --memory "$SAVED" --task altkey-viewmode-j \
@@ -151,5 +173,7 @@ case "${1:-}" in
   examples) for ((rep = $2; rep <= $3; rep++)); do pass_examples "$rep"; done ;;
   draft) for ((rep = $2; rep <= $3; rep++)); do pass_draft "$rep"; done ;;
   cues) for ((rep = $2; rep <= $3; rep++)); do pass_cues "$rep"; done ;;
-  *) echo "usage: $0 smoke | drift|existing|new|examples|draft|cues FIRST LAST" >&2; exit 2 ;;
+  split-finish) for ((rep = $2; rep <= $3; rep++)); do pass_split_finish "$rep"; done ;;
+  split-learned) for ((rep = $2; rep <= $3; rep++)); do pass_split_learned "$rep"; done ;;
+  *) echo "usage: $0 smoke | drift|existing|new|examples|draft|cues|split-finish|split-learned FIRST LAST" >&2; exit 2 ;;
 esac

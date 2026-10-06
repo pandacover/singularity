@@ -51,10 +51,10 @@ const isOurs = (script: string) => (entry: unknown): boolean => {
   )
 }
 
-/** The `hooks` settings for our hook script, as `claude --settings` takes them. */
-export const hooksSettings = (node: string, script: string): Json => {
+/** The `hooks` settings for our hook script, as `claude --settings` takes them; `extra` adds hooks of its own. */
+export const hooksSettings = (node: string, script: string, extra: ReadonlyArray<HookSpec> = []): Json => {
   const hooks: Record<string, Array<Json>> = {}
-  for (const h of HOOKS) {
+  for (const h of [...HOOKS, ...extra]) {
     const entry: Json = { hooks: [{ type: "command", command: hookCommand(node, script, h.arg), timeout: h.timeout }] }
     if (h.matcher !== undefined) entry.matcher = h.matcher
     hooks[h.event] = [...(hooks[h.event] ?? []), entry]

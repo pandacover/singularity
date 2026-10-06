@@ -64,10 +64,11 @@ export const makeSetup = (
       ? Effect.fail(new MemoryError({ message: "hooks needs the claude command for its model call" }))
       : Effect.succeed(makeHooksMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
   }
-  if (name === "workflows" || name === "workflows-draft" || name === "workflows-cues") {
+  if (name === "workflows" || name === "workflows-draft" || name === "workflows-cues" || name === "workflows-split") {
     // Like hooks: a memory home, handed over by v1's own hooks; their model calls run the agent's Claude Code.
     // workflows-draft hands over the change itself, drafted at task start (workflows/Draft.ts);
-    // workflows-cues makes no model call: memory's cues pick, and fill the blanks the task states (workflows/Cues.ts).
+    // workflows-cues makes no model call: memory's cues pick, and fill the blanks the task states (workflows/Cues.ts);
+    // workflows-split is workflows-cues with a long hand-over carried by two hooks (workflows/HookStart.ts).
     return context.selector === undefined
       ? Effect.fail(new MemoryError({ message: `${name} needs the claude command for its model call` }))
       : Effect.succeed(makeWorkflowsMemory({
@@ -75,7 +76,8 @@ export const makeSetup = (
         claude: context.selector.claude,
         selectorModel: context.selector.model,
         draft: name === "workflows-draft",
-        cues: name === "workflows-cues"
+        cues: name === "workflows-cues" || name === "workflows-split",
+        parts: name === "workflows-split" ? 2 : 1
       }))
   }
   if (name === "graph") {
