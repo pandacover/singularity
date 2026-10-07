@@ -29,7 +29,7 @@ import { removeHooks } from "./HookFiles.ts"
 import { addToPath, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
 import { confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
-import { detectAgents, findExecutable, HOOK_SCRIPT, hookFiles, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
+import { detectAgents, findClaude, findExecutable, HOOK_SCRIPT, hookFiles, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
   /** Take every default and ask nothing. */
@@ -51,7 +51,8 @@ export interface SetupOptions {
 export const INTRO = [
   "Coding agents start every session from zero. singularity remembers how",
   "tasks get done in your repos (where a kind of change goes, how it is",
-  "checked, which traps to avoid) and hands that to the next agent."
+  "checked, which traps to avoid) and hands that to the next agent. On",
+  "excalidraw, changes like ones it had seen took about half the tokens."
 ]
 
 const REACH: Record<Reach, string> = {
@@ -101,8 +102,8 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   yield* say(heading(s, 1, "Your machine"))
   const nodeMajor = Number(process.versions.node.split(".")[0])
   const git = yield* versionOf("git")
-  const claudePath = yield* findExecutable("claude", o.env)
-  const claude = claudePath === undefined ? undefined : yield* versionOf(claudePath)
+  const claudeCommand = yield* findClaude(o.env)
+  const claude = claudeCommand === undefined ? undefined : yield* versionOf(claudeCommand[0], [...claudeCommand.slice(1), "--version"])
   const mark = (ok: boolean) => (ok ? s.green("✓") : s.red("✗"))
   yield* item([
     `${mark(nodeMajor >= MIN_NODE_MAJOR)} node ${process.versions.node}`,
@@ -183,6 +184,11 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   // 4. Learning.
   yield* say(heading(s, 4, "Learning"))
   const prefs = yield* readLearn(home.root)
+  if (claudeCommand === undefined) {
+    yield* item("Memory learns from Claude Code sessions, with Claude Code's model calls.")
+    yield* item(`Install Claude Code, then run ${s.cyan("singularity setup")} again to turn learning on.`)
+    return yield* done(s, o, chosen, bin, newTerminal)
+  }
   for (const line of [
     "Memory learns from Claude Code sessions that end with their change",
     `committed and the tests passing. After every ${prefs.every} such sessions in a repo`,
@@ -210,13 +216,13 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       const subject = yield* Effect.gen(function*() {
         return yield* (yield* RecordStore).subjectFor(repo)
       }).pipe(Effect.provide(layers))
-      if (subject !== undefined && claudePath !== undefined && !o.yes) {
+      if (subject !== undefined && !o.yes) {
         const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now? About ${usd(estimateUsd(n))}.`, true)
         if (go) {
           const learned = yield* withSpinner(
             "learning (a minute or two)",
             learnSubject(subject, {
-              claude: [claudePath],
+              claude: claudeCommand,
               cwd: path.join(defaultWorkspaces(), "_learner"),
               model: DEFAULT_INDUCE_MODEL,
               effort: DEFAULT_INDUCE_EFFORT,
@@ -237,7 +243,13 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     yield* item(s.dim(`In a repo with past Claude Code sessions, ${"`singularity learn --past`"} starts memory from them.`))
   }
 
-  // Done.
+  return yield* done(s, o, chosen, bin, newTerminal)
+})
+
+/** The end of setup: what happens now, and the commands to know. */
+const done = Effect.fnUntraced(function*(s: Style, o: SetupOptions, chosen: ReadonlyArray<Agent>, bin: string, newTerminal: boolean) {
+  const say = (line = "") => Console.log(line)
+  const item = (line: string) => Console.log(`     ${line}`)
   yield* say()
   yield* say(`  ${s.green("✓")} ${s.bold("All set.")}`)
   yield* say()

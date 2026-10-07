@@ -47,6 +47,22 @@ export const CLAUDE_ENV = "SINGULARITY_CLAUDE"
 
 const ClaudeCommand = Schema.fromJsonString(Schema.NonEmptyArray(Schema.String))
 
+/**
+ * The command an npm shim (`claude.cmd`, made by npm on Windows) runs: node
+ * and the script, or the program. Node won't start a `.cmd` without a shell,
+ * and a shell would mangle a model call's arguments, so the shim is run as
+ * what it runs.
+ */
+export const commandOfShim = (text: string, shimDir: string, node: string = process.execPath): ReadonlyArray<string> | undefined => {
+  const targets = [...text.matchAll(/"%dp0%\\([^"%]+)"/gi)].map((m) => m[1]).filter((t) => !/^node\.exe$/i.test(t))
+  const target = targets.at(-1)
+  if (target === undefined) return undefined
+  const full = `${shimDir.replace(/[\\/]+$/, "")}\\${target}`
+  if (/\.[cm]?js$/i.test(target)) return [node, full]
+  if (/\.exe$/i.test(target)) return [full]
+  return undefined
+}
+
 /** `SINGULARITY_CLAUDE`, else the `claude` executable on PATH, resolved to a full path like a shell would. */
 export const defaultClaude = Effect.fn("defaultClaude")(function*() {
   const fs = yield* FileSystem.FileSystem
@@ -62,7 +78,12 @@ export const defaultClaude = Effect.fn("defaultClaude")(function*() {
   for (const dir of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
     for (const ext of exts) {
       const candidate = path.join(dir, `claude${ext}`)
-      if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false))) return [candidate]
+      if (!(yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false)))) continue
+      if (/\.(?:cmd|bat)$/i.test(candidate)) {
+        const shim = commandOfShim(yield* fs.readFileString(candidate).pipe(Effect.orElseSucceed(() => "")), dir)
+        if (shim !== undefined) return shim
+      }
+      return [candidate]
     }
   }
   return yield* new AgentError({ message: "`claude` is not on PATH; pass --claude" })

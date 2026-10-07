@@ -18,7 +18,8 @@
  */
 import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { fileURLToPath } from "node:url"
-import { HOOK_SCRIPT as V0_HOOK_SCRIPT, hasOurHooks, type HookSpec, hooksSettings } from "../handover/Install.ts"
+import { type HookSpec, hooksSettings } from "../handover/Install.ts"
+import { eventsOf, memoryHookEvents } from "../setup/HookFiles.ts"
 import { HOME_ENV, loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
@@ -155,9 +156,10 @@ const refuseInstalledHooks = Effect.fnUntraced(function*() {
   const file = path.join(yield* claudeHome, "settings.json")
   if (!(yield* fs.exists(file))) return
   const settings = Schema.decodeUnknownOption(Settings)(yield* fs.readFileString(file))
-  if (Option.isSome(settings) && (hasOurHooks(settings.value, V0_HOOK_SCRIPT) || hasOurHooks(settings.value, WORKFLOWS_HOOK_SCRIPT))) {
+  // From any checkout or install (`singularity setup` points them at ~/.singularity/app).
+  if (Option.isSome(settings) && memoryHookEvents(eventsOf(settings.value, "wrapped")).length > 0) {
     return yield* new MemoryError({
-      message: `memory hooks are installed in ${file}, so they would run next to the run's own; take them out for the run`
+      message: `memory hooks are installed in ${file}, so they would run next to the run's own; take them out for the run (singularity uninstall)`
     })
   }
 })

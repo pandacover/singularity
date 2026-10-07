@@ -6,6 +6,7 @@
 import { Effect, FileSystem, Path } from "effect"
 import { delimiter } from "node:path"
 import { fileURLToPath } from "node:url"
+import { commandOfShim } from "../eval/Agent.ts"
 import { runProcess } from "../eval/Proc.ts"
 import {
   type Agent,
@@ -38,6 +39,16 @@ export const findExecutable = Effect.fn("findExecutable")(function*(name: string
     }
   }
   return undefined
+})
+
+/** Claude Code's command on PATH: its program, or for npm's `claude.cmd` what that runs (Agent.ts). */
+export const findClaude = Effect.fn("findClaude")(function*(env: Readonly<Record<string, string | undefined>> = process.env) {
+  const found = yield* findExecutable("claude", env)
+  if (found === undefined) return undefined
+  if (!/\.(?:cmd|bat)$/i.test(found)) return [found] as ReadonlyArray<string>
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  return commandOfShim(yield* fs.readFileString(found).pipe(Effect.orElseSucceed(() => "")), path.dirname(found)) ?? [found]
 })
 
 /** The first line a command prints for `--version`, or undefined if it doesn't run. */

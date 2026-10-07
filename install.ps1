@@ -16,23 +16,21 @@
   $root = if ($env:SINGULARITY_HOME) { $env:SINGULARITY_HOME } else { Join-Path $HOME '.singularity' }
   $app = Join-Path $root 'app'
 
-  function Step($n, $text) { Write-Host ''; Write-Host "  $n  " -ForegroundColor Magenta -NoNewline; Write-Host $text }
-  function Ok($text) { Write-Host '     ' -NoNewline; Write-Host ([char]0x2713) -ForegroundColor Green -NoNewline; Write-Host " $text" }
-  function Fail($text) { Write-Host '     ' -NoNewline; Write-Host ([char]0x2717) -ForegroundColor Red -NoNewline; Write-Host " $text"; Write-Host '' }
+  # One line of progress, then setup takes over.
+  function Done($text) { Write-Host "  $text " -NoNewline; Write-Host ([char]0x2713) -ForegroundColor Green -NoNewline }
+  function Fail($text) { Write-Host ''; Write-Host ''; Write-Host '  ' -NoNewline; Write-Host ([char]0x2717) -ForegroundColor Red -NoNewline; Write-Host " $text"; Write-Host '' }
 
   Write-Host ''
-  Write-Host "  $([char]0x25C6) singularity  " -ForegroundColor Magenta -NoNewline
-  Write-Host 'installing memory for your coding agents' -ForegroundColor DarkGray
+  Write-Host "  $([char]0x25C6) " -ForegroundColor Magenta -NoNewline
+  Write-Host 'getting singularity ' -ForegroundColor DarkGray -NoNewline
 
-  Step 1 'Node.js and git'
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail 'Node.js isn''t installed: get version 24 or later from https://nodejs.org, then run this again.'; return }
   $nodeVersion = (node -p 'process.versions.node').Trim()
   if ([int]($nodeVersion.Split('.')[0]) -lt 24) { Fail "Node.js $nodeVersion is too old: singularity needs 24 or later (https://nodejs.org)."; return }
   if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Fail 'npm isn''t on your PATH (it comes with Node.js).'; return }
   if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail 'git isn''t installed: get it from https://git-scm.com, then run this again.'; return }
-  Ok "node $nodeVersion, $((git --version) -replace '^git version ', 'git ')"
+  Done "node $nodeVersion"
 
-  Step 2 'The code'
   if (Test-Path (Join-Path $app '.git')) {
     git -C $app fetch --quiet --depth 1 origin $ref
     if ($LASTEXITCODE -ne 0) { Fail "couldn't fetch $ref from $repo"; return }
@@ -42,13 +40,13 @@
     git clone --quiet --depth 1 --branch $ref $repo $app
     if ($LASTEXITCODE -ne 0) { Fail "couldn't clone $repo"; return }
   }
-  Ok "$app ($ref, $((git -C $app rev-parse --short HEAD).Trim()))"
+  Done "code ($ref, $((git -C $app rev-parse --short HEAD).Trim()))"
 
-  Step 3 'Its dependencies'
   Push-Location $app
   try { npm ci --omit=dev --no-audit --no-fund --loglevel=error | Out-Null } finally { Pop-Location }
-  if ($LASTEXITCODE -ne 0) { Fail 'npm couldn''t install them; the messages above say why.'; return }
-  Ok 'installed'
+  if ($LASTEXITCODE -ne 0) { Fail 'npm couldn''t install the dependencies; the messages above say why.'; return }
+  Done 'dependencies'
+  Write-Host ''
 
   node (Join-Path $app 'src\cli.ts') setup @args
 
