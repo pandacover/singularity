@@ -8,7 +8,14 @@
  * With `--json-schema` it stands in for a structured LLM call instead: it
  * answers with the next entry of the JSON array in $FAKE_CLAUDE_ANSWERS (the
  * last one repeats), and records each call as `<that file>.call<n>.json`.
+ *
+ * With `--settings` that has hooks, it runs them as Claude Code would:
+ * UserPromptSubmit with the prompt, PostToolUse after its Write (and after a
+ * Bash call it pretends to make, if $FAKE_CLAUDE_BASH names a command), and
+ * SessionEnd once the transcript is written. What the hooks print is recorded
+ * with the environment, as `hook_outputs`.
  */
+import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
@@ -40,7 +47,38 @@ if (args.includes("--json-schema")) {
 const sessionId = args[args.indexOf("--session-id") + 1]
 const prompt = readFileSync(0, "utf-8")
 const cwd = process.cwd()
+
+interface HookEntry {
+  readonly matcher?: string
+  readonly hooks?: ReadonlyArray<{ readonly command: string }>
+}
+const settingsArg = args.includes("--settings") ? args[args.indexOf("--settings") + 1] : undefined
+const hooks: Record<string, ReadonlyArray<HookEntry>> = settingsArg === undefined
+  ? {}
+  : JSON.parse(existsSync(settingsArg) ? readFileSync(settingsArg, "utf-8") : settingsArg).hooks ?? {}
+const hookOutputs: Array<{ event: string; stdout: string }> = []
+const runHooks = (event: string, input: Record<string, unknown>) => {
+  for (const entry of hooks[event] ?? []) {
+    const tool = input.tool_name
+    if (entry.matcher !== undefined && typeof tool === "string" && !new RegExp(`^(?:${entry.matcher})$`).test(tool)) continue
+    for (const h of entry.hooks ?? []) {
+      const r = spawnSync(h.command, {
+        shell: true,
+        input: JSON.stringify({ session_id: sessionId, hook_event_name: event, cwd, ...input }),
+        encoding: "utf-8",
+        env: process.env
+      })
+      hookOutputs.push({ event, stdout: r.stdout })
+    }
+  }
+}
+
+runHooks("UserPromptSubmit", { prompt })
 writeFileSync(join(cwd, "answer.txt"), "42\n")
+runHooks("PostToolUse", { tool_name: "Write", tool_input: { file_path: join(cwd, "answer.txt"), content: "42" }, tool_response: {} })
+if (process.env.FAKE_CLAUDE_BASH) {
+  runHooks("PostToolUse", { tool_name: "Bash", tool_input: { command: process.env.FAKE_CLAUDE_BASH }, tool_response: { stdout: "", stderr: "" } })
+}
 
 const ts = (s: number) => `2026-10-01T10:00:0${s}.000Z`
 const usage = { input_tokens: 5, output_tokens: 20, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 }
@@ -61,8 +99,10 @@ const lines = [
 ]
 const project = join(process.env.CLAUDE_CONFIG_DIR!, "projects", cwd.replace(/[^A-Za-z0-9]/g, "-"))
 mkdirSync(project, { recursive: true })
-writeFileSync(join(project, `${sessionId}.jsonl`), lines.map((l) => JSON.stringify(l)).join("\n") + "\n")
-writeFileSync(join(project, `${sessionId}.env.json`), JSON.stringify({ args, env: process.env }))
+const transcript = join(project, `${sessionId}.jsonl`)
+writeFileSync(transcript, lines.map((l) => JSON.stringify(l)).join("\n") + "\n")
+runHooks("SessionEnd", { reason: "other", transcript_path: transcript })
+writeFileSync(join(project, `${sessionId}.env.json`), JSON.stringify({ args, env: process.env, hook_outputs: hookOutputs }))
 
 console.log(
   JSON.stringify({

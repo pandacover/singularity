@@ -76,8 +76,11 @@ prompt = "Do nothing"
   return path
 }
 
-/** What the fake claude recorded about the environment it ran in. */
-export const seenByAgent = (claudeHome: string, sessionId: string): { args: Array<string>; env: Record<string, string> } => {
+/** What the fake claude recorded about the environment it ran in, and what its hooks printed. */
+export const seenByAgent = (
+  claudeHome: string,
+  sessionId: string
+): { args: Array<string>; env: Record<string, string>; hook_outputs: Array<{ event: string; stdout: string }> } => {
   const projects = join(claudeHome, "projects")
   for (const dir of readdirSync(projects)) {
     try {

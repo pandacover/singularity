@@ -22,6 +22,146 @@ node src/cli.ts traces <session id or path to .jsonl> [--json]
 Reads Claude Code's transcript (including subagents) and prints tokens, tool
 calls, failed calls, and repeated file reads.
 
+## Local memory
+
+Memory lives in `~/.singularity` (or `$SINGULARITY_HOME`). It belongs to one
+tenant, named in its `config.json`, and is about subjects: repos, recognized
+by their root commits and remotes, so every clone of a repo is the same
+subject.
+
+**Workflow records**, one per finished run, are the evidence:
+
+```
+node src/cli.ts record import runs/excalidraw/*/ [--task ID ...]   # eval runs (of some tasks only)
+node src/cli.ts record session SESSION_ID              # a session that committed its change with passing tests
+node src/cli.ts record annotate --all --per-task 4     # a model's reading, a few cents a record
+node src/cli.ts record list | show ID
+```
+
+A record holds what the log and the diff show without any model: files
+changed, where in them the run added its lines (the existing lines just above
+and below, never the new ones), every shell command and whether it worked,
+and detours (a call that failed, the later call that fixed it, and the tokens
+in between). The model's
+reading adds the task's kind, its steps (each asked for, needed, or the
+agent's own choice), landmarks in the code, and what each detour teaches, with
+an exact trigger. Every claim is checked against the code at the run's commit
+and against the log, and dropped if it doesn't hold.
+
+**The memory graph** is built from the records: task kinds with their routes
+(required and optional steps, with the condition for each optional one),
+steps with where they happen in each repo, and warnings with their triggers.
+
+```
+node src/cli.ts memory build --conditions   # merge the records; a replay check commits or rejects
+node src/cli.ts memory show [VERSION]
+node src/cli.ts memory replay | triggers | candidates
+```
+
+Each build is a candidate. The replay check asks, for every past task,
+whether the graph would hand it what it needed and nothing else, and whether
+its triggers fire on commands that worked; a build that hands a task a step
+it never asked for is rejected. `memory triggers` replays recorded runs
+through the warnings' triggers, to see which would have arrived before their
+mistake. `--conditions` has a model write the conditions of optional steps
+and decide which near-identical step names are one step (a few cents).
+
+**Search**, exact and by words (search by meaning is for the hosted version):
+
+```
+node src/cli.ts search help dialog shortcut
+node src/cli.ts search --exact handleKeyboardGlobally [--type record|kind|step|warning]
+```
+
+**Hand-over**, through Claude Code hooks:
+
+```
+node src/cli.ts handover --cwd REPO "Change the zen mode shortcut to Alt+M"   # what a task would get
+node src/cli.ts hooks install [--scope user|project|local]                   # or `hooks print`, for claude --settings
+node src/cli.ts hooks status | uninstall
+```
+
+At a session's first prompt, the hook hands over the route for the task and
+the warnings on its steps: word search proposes up to three task kinds, and a
+model confirms one and picks its steps (about $0.03 and a few seconds). With
+the route comes the code at its places: the hook looks up, in the working
+tree, the lines that earlier runs of the kind made each step's edits next to,
+and hands over what is around them now, so the agent can edit without reading
+for the places first. Memory holds which lines to look for, not the code. It
+all stays under 10,000 characters, where Claude Code cuts a hook's text. After
+each shell command or edit, a warning whose exact trigger appears is handed
+over, once a session. When a session ends with a committed change and passing
+tests, it becomes a record. `SINGULARITY_HOOKS=off` turns the hooks off; the
+eval harness sets it, so installed hooks stay out of measurement runs.
+
+That memory is v0 (tag `memory-v0`). Memory v1 lives in the same home, under
+`tenants/<tenant>/workflows/`:
+
+```
+node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)
+node src/cli.ts workflows show [AT] [--json]                                 # print it
+node src/cli.ts workflows cues [--repo DIR]                                   # write cues, so tasks are picked without a model (one model call or two)
+node src/cli.ts workflows finish [--repo DIR]                                 # learn what each workflow's checks rewrite (no model)
+node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--parts 2] [--draft] # preview a task's hand-over
+node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR] [--dry-run] # learn from new runs
+node src/cli.ts workflows common --task ID --task ID ... [--kind WORDS] [--repo DIR] [--dry-run] # learn what runs of different tasks of a kind did alike
+node src/cli.ts workflows candidates                                         # proposals and what became of them
+```
+
+Since the tenth session: **what tasks of a kind share** (`workflows common`,
+`src/workflows/Common.ts`). Learned task by task, two bug fixes became a
+workflow each, which no other bug can use. This pass reads the runs of
+several tasks of one kind (bug fixes) and keeps only what runs of at least two
+different tasks did: how a bug is reproduced in a test here, how the fix is
+checked (the test failing without it, with `git stash`), the mistakes made on
+the way. Its places include blocks runs **read** without changing them
+(`src/workflows/Reads.ts`), such as the test helpers' `Keyboard` class, which
+the hand-over shows as an outline: the block's first line and its members',
+from the code at task start. Run `workflows cues` after it.
+
+Since the eighth session: the hand-over ends with **one command** that runs
+every check its workflows need, with the snapshot files earlier runs
+regenerated (`src/workflows/Finish.ts`); `evolve` also reads **what each run
+still looked up before its first edit** (`src/workflows/Lookups.ts`;
+`--dry-run` prints it), writes the cues again and replays with them; and the
+`workflows-split` setup carries a hand-over longer than one hook can (Claude
+Code cuts each at 10,000 characters) in two parts, from two task-start hooks.
+
+v1 keeps small workflows written with blanks (`{field}`, `{key}`), learned
+from runs, and a graph of them whose edges say when one leads to another. A
+step's place is kept as the blocks that enclose the edit (`class App ›
+getContextMenuItems › if (this.state.viewModeEnabled) › return [`), never as
+code; at task start its hooks (`src/workflows/hook.ts`) pick the workflows the
+task needs, find each place in the code as it is (in the file it moved to, if
+it moved) and hand them over with current line numbers. `evolve` revises
+memory from what new runs did and what it showed them, and keeps the revision
+only if, replayed over the runs, it shows more of the places they edited and
+fewer they left alone.
+
+**Local first** (tag `memory-local-first`): picking makes no model call. Each
+workflow carries cues, phrases that say a task needs it and where a task
+states its blanks' values, written once by `workflows cues`
+(`src/workflows/CueWriter.ts`); at task start they are matched exactly against
+the task, its negated clauses ("don't add a shortcut") left out, and the
+blanks the task states are filled in (`src/workflows/Cues.ts`). That is the
+hook's default and `workflows handover`'s; memory without cues is picked by
+words. `SINGULARITY_SELECTOR=model` (or `--pick model`) has a model call pick
+instead, as v1 was first measured. A build writes workflows without cues: run
+`workflows cues` after it (a learning round on memory with cues writes them
+itself). A task that lists several changes (a numbered or bulleted list) is
+picked and filled change by change: each item, with what the task says of
+all of them, states its own values; a workflow several changes need is shown
+once, with each change's values and the changes it is for.
+
+Tested and dropped (the user's call: memory helps the agent do the task, it
+doesn't do the task): with `--draft` (and in the `workflows-draft` setup), a
+second model call at task start fills the blanks the only way that leaves nothing open: it writes
+the change itself for this task, from those workflows and the code at their
+places (about 5-10 cents, half a minute). Each edit is checked against the
+code before it is handed over (its old lines are in their file exactly once),
+and the agent gets the complete change instead of the steps
+(`src/workflows/Draft.ts`). Memory still keeps no code.
+
 ## Run an evaluation
 
 ```
@@ -46,8 +186,9 @@ never touched, and no branches, tags or reflog, so later commits (which may
 hold hidden tests) stay out of the agent's sight.
 
 Claude Code runs headless with its auto-memory off and no MCP servers. The
-harness runs everything below normal priority, and a suite's `env` table can
-cap test workers, so the machine stays usable. Each run records cost, tokens,
+harness runs everything below normal priority (`--priority normal` when
+nothing else needs the machine), and a suite's `env` table can cap test
+workers, so the machine stays usable. Each run records cost, tokens,
 wall time, tool calls, and check results to `results.jsonl`, and saves the
 transcript and diff alongside. Use `--dry-run` to see the exact `claude`
 command without running anything.
@@ -72,9 +213,36 @@ command without running anything.
   plus the graph's warnings: the mistakes and dead ends recorded on its steps,
   without the checklist. `--memory` is the saved-scripts store and
   `--warnings` the graph store.
+- `hooks`: the local memory, handed over by its own hooks as in daily use.
+  `--memory` is a memory home (a `SINGULARITY_HOME`), copied into each run's
+  directory, so it never changes. Claude Code gets the hooks through
+  `--settings`: the route at the first prompt, a warning when its trigger
+  appears. The route selection's model call runs the same Claude Code as the
+  agent, and counts toward the run. Preview what a task gets with
+  `handover --home HOME --cwd WORKSPACE "the prompt"`.
+- `workflows`: memory v1, handed over by its own hooks the same way:
+  `--memory` is a memory home with v1 memory, copied into each run's
+  directory; the workflows arrive at the first prompt, a pitfall's warning when
+  its trigger appears, and the selection's model call counts toward the run.
+  Each run keeps its hand-over log (what was shown, at which lines), which
+  `workflows evolve` learns from. Preview with `workflows handover`.
+  This setup keeps v1 as it was measured: a model call picks the workflows.
+- `workflows-cues`: the local-first memory: the same hooks, with no model call
+  at task start; memory's cues pick the workflows and fill the blanks the task
+  states (`workflows handover --pick cues`).
+- `workflows-split`: `workflows-cues` with a hand-over longer than one hook can
+  carry sent in two parts, from two task-start hooks
+  (`workflows handover --parts 2`).
+- `workflows-draft` (tested and dropped): the same, but the agent gets the
+  change itself, drafted at task start from the workflows and the code
+  (`workflows handover --draft`); the drafting call counts toward the run too.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs so memory doesn't change while it's being measured.
+
+`--claude PATH` runs another Claude Code, e.g. a pinned copy of an earlier
+version (`~/.local/share/claude/versions/` keeps a few), so a run is compared
+with baselines from the same version. Runs never update Claude Code.
 
 Build memory from runs already recorded, without running the agent again:
 
