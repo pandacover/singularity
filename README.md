@@ -5,6 +5,59 @@ repeated and similar tasks take less time and fewer tokens. See `HANDOFF.md`
 for the design, decisions and results, and `CLAUDE.md` for how the code is
 written.
 
+## Install
+
+One command. It checks your machine, puts singularity in `~/.singularity`,
+and walks you through setting memory up in the coding agents it finds.
+
+macOS, Linux, WSL or Git Bash:
+
+```
+curl -fsSL https://raw.githubusercontent.com/pandacover/singularity/main/install.sh | sh
+```
+
+Windows PowerShell:
+
+```
+irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex
+```
+
+You need Node.js 24 or later and git. Memory learns from Claude Code
+sessions, and with Claude Code's model calls, so have Claude Code too.
+
+| Agent | What memory does there | What setup adds |
+|---|---|---|
+| Claude Code | hands over at task start, warns during the task, learns from sessions | hooks in `~/.claude/settings.json`, skill |
+| Codex | hands over at task start, warns during the task (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
+| Gemini CLI | hands over at task start, warns during the task | hooks in `~/.gemini/settings.json`, skill |
+| Droid | hands over at task start, warns during the task | hooks in `~/.factory/hooks.json`, skill |
+| Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | skill |
+
+Setup also puts the `singularity` command on your PATH and asks whether
+memory may learn on its own (about $0.25 a round on your Claude account, at
+most $1 a day). It never touches the rest of an agent's settings, and keeps a
+copy of each file it changes (`<file>.before-singularity`).
+
+How memory gets to know a repo: a Claude Code session that ends with its
+change committed and its tests passing becomes a record. After a few records
+in a repo, memory learns workflows from them (where each kind of change goes,
+how it is checked, the mistakes made on the way). From then on, a task that
+needs them gets them with its first prompt, found in the code as it is that
+day. In a repo with earlier Claude Code sessions, setup offers to start from
+those.
+
+```
+singularity status              # which agents have memory, and what it knows per repo
+singularity recall "<task>"     # what a task here would be handed (no model call)
+singularity learn [--past]      # learn now; --past starts from this repo's earlier sessions
+singularity setup               # again, to update or change your answers
+singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
+```
+
+From a clone instead: `npm install`, then `node src/cli.ts setup`.
+
+## Develop
+
 TypeScript 7 and Effect 4, run directly by Node 24 (no build step):
 
 ```
@@ -94,8 +147,14 @@ over, once a session. When a session ends with a committed change and passing
 tests, it becomes a record. `SINGULARITY_HOOKS=off` turns the hooks off; the
 eval harness sets it, so installed hooks stay out of measurement runs.
 
-That memory is v0 (tag `memory-v0`). Memory v1 lives in the same home, under
-`tenants/<tenant>/workflows/`:
+That memory is v0 (tag `memory-v0`); `hooks install` installs its hooks.
+Memory v1 is what `singularity setup` installs for daily use (above), and
+lives in the same home, under `tenants/<tenant>/workflows/`. Setup replaces
+v0's hooks if it finds them. In daily use v1 learns repo by repo
+(`src/workflows/Learn.ts`): a repo's memory is learned alone and merged back,
+so one repo never replaces another's, and ids two repos share get the second
+repo's id appended. The commands below are the parts it is made of, as the
+eval suites use them:
 
 ```
 node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)

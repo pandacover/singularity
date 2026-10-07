@@ -3,17 +3,48 @@
  * call, warn when a pitfall's exact trigger appears, once per pitfall per
  * session. Runs after every call, so it loads only the file system, never git
  * or a model.
+ *
+ * Other agents' hooks send their own tool names (Gemini CLI's
+ * `run_shell_command`, Droid's `Execute`); they are read as Claude Code's,
+ * which triggers are written against.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as NodePath from "@effect/platform-node/NodePath"
 import { DateTime, Effect, Layer } from "effect"
-import { decodeHookInput, eventOfHook } from "../handover/HookInput.ts"
+import { decodeHookInput, eventOfHook, type HookInput } from "../handover/HookInput.ts"
 import { loadHome } from "../local/Home.ts"
 import { matchTrigger, type ToolEvent } from "../records/Triggers.ts"
 import type { Pitfall } from "./Models.ts"
 import { appendFired, logHandover, readFired, readSession } from "./Session.ts"
 
 const layer = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)
+
+/** Other agents' shell and edit tools, by Claude Code's names. */
+const CLAUDE_NAMES: Readonly<Record<string, string>> = {
+  run_shell_command: "Bash",
+  Execute: "Bash",
+  exec_command: "Bash",
+  replace: "Edit",
+  write_file: "Write",
+  Create: "Write"
+}
+
+/** A tool call another agent reports, as Claude Code would: its name, a command as one line, an edit's new text. */
+export const asClaudeCall = (input: HookInput): HookInput => {
+  const name = input.tool_name === undefined ? undefined : CLAUDE_NAMES[input.tool_name] ?? input.tool_name
+  const args = input.tool_input
+  if (name === undefined || args === undefined) return input
+  const command = args.command ?? args.cmd
+  return {
+    ...input,
+    tool_name: name,
+    tool_input: {
+      ...args,
+      ...(command === undefined ? {} : { command: Array.isArray(command) ? command.join(" ") : command }),
+      ...(args.new_string === undefined && args.new_str !== undefined ? { new_string: args.new_str } : {})
+    }
+  }
+}
 
 /** Pitfalls whose trigger this event matches and that haven't fired yet this session. */
 export const firing = (triggers: ReadonlyArray<Pitfall>, fired: ReadonlySet<string>, event: ToolEvent): Array<Pitfall> =>
@@ -51,8 +82,9 @@ export const onToolEvent = Effect.fn("workflows.onToolEvent")(function*(tenantDi
 export const postToolUse = (stdin: string): Promise<string | undefined> =>
   Effect.runPromise(
     Effect.gen(function*() {
-      const input = decodeHookInput(stdin)
-      if (input === undefined) return undefined
+      const decoded = decodeHookInput(stdin)
+      if (decoded === undefined) return undefined
+      const input = asClaudeCall(decoded)
       const home = yield* loadHome()
       const state = yield* readSession(home.tenantDir, input.session_id)
       if (state === undefined) return undefined
@@ -60,7 +92,7 @@ export const postToolUse = (stdin: string): Promise<string | undefined> =>
       if (event === undefined) return undefined
       const text = yield* onToolEvent(home.tenantDir, input.session_id, event)
       if (text === undefined) return undefined
-      const hookEventName = input.hook_event_name === "PostToolUseFailure" ? "PostToolUseFailure" : "PostToolUse"
+      const hookEventName = input.hook_event_name ?? "PostToolUse"
       return JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: text } })
     }).pipe(Effect.provide(layer))
   )
