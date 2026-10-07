@@ -1,7 +1,89 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-07, in the ninth session. Start here, then see
+Last updated 2026-10-07, in the tenth session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
+
+## Status: bug-fix memory built and checked for free; its measurement is pre-registered, waiting for a go (2026-10-07, tenth session)
+
+The user had the ninth session's two commits pushed (`local-memory`, PR #4)
+and asked to start on the bug-fix memory: what memory can carry for bug
+fixes, where the remaining cost of the long tasks was.
+
+**Where bug-fix runs spend their turns** (the 16 runs of the eighth session's
+four bugs, read turn by turn): finding and fixing the bug takes 3-8 turns;
+the regression test and the checks take the rest, 4-19 turns. Every run
+looked for the test file that covers the code and read its setup and a
+neighbouring test; 9 of 16 looked up the test helpers (`Keyboard` in
+`tests/helpers/ui.ts`, `API`); all 16 showed the test fails without the fix
+with `git stash`, in a turn of its own; then a turn of typecheck and whole
+suite; 3 passed `--watch=false` to `yarn test:update`. The traps cost most:
+the eraser runs spent 13 turns on key presses that never reached the app
+(`handleKeyboardGlobally`), save-as runs 1-2 on keys sent to the document
+instead of the text editor's textarea, an edit-arrow run 6 on typed test
+elements.
+
+**Built** (`npm test`: 227 passed, typecheck clean; nothing committed):
+
+- **Learning across tasks of a kind** (`src/workflows/Common.ts`, `workflows
+  common --task A --task B ... [--kind "fixing a bug"]`): one model call reads
+  the runs of several tasks of one kind and keeps only what runs of at least
+  two different tasks did (each workflow and each place a step names; checked
+  mechanically with induction's other checks, `minTasks` in `checkAnswer`).
+  The workflows join memory as the kind's own (`kind` on the workflow); a
+  later pass for the same kind replaces them; the per-task workflows stay. A
+  kind's workflows are never folded into the finish: their steps carry the
+  knowledge; their checks join the one command.
+- **Places runs read** (`src/workflows/Reads.ts`, `placesOfRead` and
+  `membersOf` in `Places.ts`): blocks a run read in code it didn't change (a
+  `Read` with a range, `sed -n`, `head`, a `Grep` or `grep -n` in one file that
+  printed lines; a search hitting more than 5 blocks counts as none), as the
+  outermost block up to 600 lines (`class Keyboard`; in `class App`, the
+  member). Gathered as `readPlaces` in the evidence; `reads` and `show:
+  "outline"` on the place. The hand-over shows one as its first line and its
+  members' first lines (stepping into a lone inner function: `App.onKeyDown`
+  shows its guards). Learning from results never counts one as "shown, left
+  alone" (`fit`, feedback kind `read-place`).
+
+**Free check, leave one bug out** ($0.74 of model calls, one of them a
+discarded first answer): memory learned from
+three bugs, previewed on the fourth. Holding out save-as: three workflows
+(write the regression test; show it fails without the fix; format, typecheck,
+whole suite once), five pitfalls, no place (no block was read by two of the
+other three bugs). Holding out dropdown: one workflow of seven steps with
+two read places (`Keyboard`'s methods, `App.onKeyDown`'s guards) and the
+save-as runs' lesson about the textarea. The cues now rule the setting and
+shortcut workflows out on "Bug:", which ends the eighth session's misfire.
+Neither hand-over names its bug's place, test file or trap. A first answer
+listed alternatives as checks (the whole suite three times in the one
+command); the prompt now asks for each check once.
+
+**Next, for the user's go**: `examples/excalidraw/PREREGISTRATION-v1-bugfix-common.md`,
+8 runs, about $1.5 (3 per held-out bug with its memory, 1 each without as a
+drift check; the eighth session's no-memory runs are the baseline), run by
+`examples/run-bugfix-common.sh`. The rule is the eighth session's for new
+kinds: success no worse, median tokens below no memory on both, dollars at
+most +10%. My expectation: modest, 1-3 turns of 9-14, which three runs may
+not tell from the spread (save-as 346k-499k without memory).
+
+Known weaknesses of this memory: `workflows evolve` revises a kind's
+workflows with the per-task prompt (it keeps their `kind`, not the two-task
+rule); conditional steps learned from one bug come with their conditions
+when the cue writer gives them no cues (the dropdown fold shows two keyboard
+places it doesn't need); with four bugs, few blocks were read by two.
+
+**A visual of v1's lifecycle, asked for by the user**:
+`examples/excalidraw/memory-in-a-conversation.html` (self-contained, open it
+in a browser). A first version with 14 dense steps was too cluttered for the
+user; it is now seven steps around one loop diagram (top half: after a
+session, memory learns; bottom half: when a task starts, memory helps), a
+plain chat (You, Claude, Memory) and memory as four boxes (records,
+workflows, known mistakes, cues). A session without memory leaves a trace;
+memory reads it into a record; learns workflows and cues; picks 6 of 8 for a
+new prompt (matched words highlighted in it); hands them to Claude; watches
+tool calls (the real warning from a bug-fix run); learns from how it went
+(the gate, and the cost per run over versions 2-4). Real data throughout;
+the exact hand-over text sits behind "see the exact text".
+`how-v1-works.html` covers the same loop as detailed cards.
 
 ## Status: long tasks measured: memory -78% / -63%, and -39% / -38% when it knows half the changes (2026-10-07, ninth session)
 

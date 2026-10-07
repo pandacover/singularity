@@ -18,7 +18,8 @@ import { EDIT_TOOLS, parseSession, type ToolCall } from "../traces/index.ts"
 import { editsOfDiff, placeOfEdit } from "./Edits.ts"
 import { type Looking, lookingOf } from "./Lookups.ts"
 import type { Place } from "./Models.ts"
-import { placeKey, type PlaceShape, sharedNameStart } from "./Places.ts"
+import { placeKey, placesOfRead, type PlaceShape, sharedNameStart } from "./Places.ts"
+import { linesOfSpan, MAX_SEARCH_PLACES, type ReadSpan, readSpans } from "./Reads.ts"
 
 export interface PlaceUse {
   readonly place: string
@@ -53,10 +54,15 @@ export interface RunEvidence {
   readonly cwd: string | undefined
   /** What it looked up before its first edit (Lookups.ts); null without its log. */
   readonly looking: Looking | null
+  /** Places it read in files it didn't change (Reads.ts), in the order first read, with the turn (from 0). */
+  readonly reads: ReadonlyArray<{ readonly place: string; readonly file: string; readonly turn: number }>
 }
 
 export interface Evidence {
+  /** Places runs edited, pooled across runs. */
   readonly places: ReadonlyArray<Place>
+  /** Places runs read in files they didn't change, pooled across runs (`reads` set). */
+  readonly readPlaces: ReadonlyArray<Place>
   readonly runs: ReadonlyArray<RunEvidence>
   /** Runs left out, and why. */
   readonly skipped: ReadonlyArray<string>
@@ -110,19 +116,23 @@ const splitName = (file: string) => {
   return { dir, stem: dot <= 0 ? name : name.slice(0, dot), ext: dot <= 0 ? "" : name.slice(dot) }
 }
 
-/** The order a run first edited each file in, and what it read before creating each new file. */
+/** The order a run first edited each file in, what it read before creating each new file, and the parts of files it read. */
 const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: ReadonlyArray<string>) {
   const fs = yield* FileSystem.FileSystem
   const order = new Map<string, number>()
   const readFirst = new Map<string, Array<string>>()
-  const none = { order, readFirst, calls: [] as ReadonlyArray<ToolCall>, cwd: undefined as string | undefined, looking: null as Looking | null }
+  const spans: Array<ReadSpan & { readonly turn: number }> = []
+  const none = { order, readFirst, spans, calls: [] as ReadonlyArray<ToolCall>, cwd: undefined as string | undefined, looking: null as Looking | null }
   if (!(yield* fs.exists(r.run.log).pipe(Effect.orElseSucceed(() => false)))) return none
   const trace = yield* parseSession(r.run.log).pipe(Effect.option)
   if (Option.isNone(trace)) return none
   const relative = relativizer(trace.value.cwd)
   const reads: Array<string> = []
   const calls = trace.value.toolCalls.filter((c) => c.agentId === undefined)
+  const turnOf = new Map<string, number>()
+  trace.value.responses.filter((x) => x.agentId === undefined).forEach((x, i) => x.toolCallIds.forEach((id) => turnOf.set(id, i)))
   for (const call of calls) {
+    for (const s of readSpans(call, relative)) spans.push({ ...s, turn: turnOf.get(call.id) ?? 0 })
     const raw = call.input.file_path ?? call.input.notebook_path
     if (typeof raw !== "string") continue
     const file = relative(raw)
@@ -134,7 +144,7 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
       readFirst.set(file, [...new Set(reads.filter((f) => f !== file && splitName(f).dir === dir))])
     }
   }
-  return { order, readFirst, calls, cwd: trace.value.cwd, looking: lookingOf(trace.value, relative) }
+  return { order, readFirst, spans, calls, cwd: trace.value.cwd, looking: lookingOf(trace.value, relative) }
 })
 
 const IDENT = /[A-Za-z_$][\w$]{3,}/g
@@ -197,6 +207,8 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
   const fs = yield* FileSystem.FileSystem
   const shapes = new Map<string, { readonly subject: string; readonly shape: PlaceShape; readonly newFile: Place["new_file"] }>()
   const pooled = new Map<string, { evidence: Set<string>; tasks: Set<string>; add: number; change: number; create: number }>()
+  const readShapes = new Map<string, { readonly subject: string; readonly shape: PlaceShape }>()
+  const readPooled = new Map<string, { evidence: Set<string>; tasks: Set<string> }>()
   const files = new Map<string, ReadonlyArray<string> | undefined>()
   const runs: Array<RunEvidence> = []
   const skipped: Array<string> = []
@@ -245,7 +257,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       pooled.set(id, p)
     }
     const uses: Array<PlaceUse & { readonly order: number }> = []
-    const { order, readFirst, calls, cwd, looking } = yield* fromTranscript(r, d.created.map((c) => c.file))
+    const { order, readFirst, spans, calls, cwd, looking } = yield* fromTranscript(r, d.created.map((c) => c.file))
     const orderOf = (file: string, fallback: number) => order.get(file) ?? 1000 + fallback
     const before: Array<{ readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
 
@@ -271,6 +283,26 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       uses.push({ place: id, kind: "create", file: c.file, added: clip(c.content), removed: "", order: orderOf(c.file, d.edits.length + i) })
     }
     uses.sort((a, b) => a.order - b.order)
+
+    // What it read in files it didn't change: the blocks those lines are in, at its base commit.
+    const changed = new Set([...d.edits.map((e) => e.file), ...d.created.map((c) => c.file), ...d.deleted])
+    const reads: Array<{ place: string; file: string; turn: number }> = []
+    for (const s of spans) {
+      if (changed.has(s.file)) continue
+      const lines = yield* linesAt(s.file)
+      if (lines === undefined) continue
+      const shapes = placesOfRead(s.file, lines, linesOfSpan(lines, s))
+      if (s.pattern !== undefined && shapes.length > MAX_SEARCH_PLACES) continue
+      for (const shape of shapes) {
+        const id = placeIdOf(r.subject, placeKey(shape))
+        if (!readShapes.has(id)) readShapes.set(id, { subject: r.subject, shape })
+        const p = readPooled.get(id) ?? { evidence: new Set<string>(), tasks: new Set<string>() }
+        p.evidence.add(r.id)
+        p.tasks.add(label)
+        readPooled.set(id, p)
+        if (!reads.some((x) => x.place === id)) reads.push({ place: id, file: s.file, turn: s.turn })
+      }
+    }
 
     // For each command that checks (tests, typecheck, lint, build) and worked: the shortest line that ran it.
     const shortest = new Map<string, string>()
@@ -300,7 +332,8 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       values,
       calls,
       cwd,
-      looking
+      looking,
+      reads
     })
   }
 
@@ -319,7 +352,24 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
     }
   })
   places.sort((a, b) => b.evidence.length - a.evidence.length || a.file.localeCompare(b.file) || a.id.localeCompare(b.id))
-  return { places, runs, skipped, families } satisfies Evidence
+  const readPlaces: Array<Place> = [...readShapes.entries()].map(([id, s]) => {
+    const p = readPooled.get(id)!
+    return {
+      id,
+      subject: s.subject,
+      file: s.shape.file,
+      chain: s.shape.chain,
+      group: s.shape.group,
+      new_file: null,
+      evidence: [...p.evidence].sort(),
+      tasks: [...p.tasks].sort(),
+      edits: { add: 0, change: 0, create: 0 },
+      reads: p.evidence.size,
+      show: "outline" as const
+    }
+  })
+  readPlaces.sort((a, b) => b.tasks.length - a.tasks.length || b.evidence.length - a.evidence.length || a.file.localeCompare(b.file) || a.id.localeCompare(b.id))
+  return { places, readPlaces, runs, skipped, families } satisfies Evidence
 })
 
 /** A place as a PlaceShape, for finding it in code. */

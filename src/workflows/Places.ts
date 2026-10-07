@@ -305,6 +305,72 @@ const uniqueAmongSiblings = (lines: ReadonlyArray<string>, block: Found, parent:
   return same <= 1
 }
 
+/** The longest block a place that runs read may be: a class or function up to this many lines; a longer one (`class App`) is read member by member. */
+export const MAX_READ_BLOCK = 600
+
+/** The blocks a line is in, outermost first; with the block it opens, when its statement opens one (a member's first line, a class's). */
+const blocksOfLine = (lines: ReadonlyArray<string>, index: number): Array<Found> => {
+  const chain = enclosing(lines, index - 1, indentOf(lines[index])).reverse()
+  const start = statementStart(lines, index)
+  let next = index + 1
+  while (next < lines.length && (blank(lines[next]) || comment(lines[next]))) next++
+  if (next >= lines.length || indentOf(lines[next]) <= indentOf(lines[start])) return chain
+  const inner = enclosing(lines, next - 1, indentOf(lines[next]))[0]
+  return inner !== undefined && inner.start === start ? [...chain, inner] : chain
+}
+
+/**
+ * The places of lines a run read (from 0): for each line, the outermost block
+ * it is in, or opens, that is no longer than `max` lines (a test helper's
+ * class, a function; in a longer class, its member), as a chain from the
+ * file's top level. Lines in no block (imports, top-level one-liners) belong
+ * to no place. One place per block, in the order first read.
+ */
+export const placesOfRead = (file: string, lines: ReadonlyArray<string>, read: ReadonlyArray<number>, max = MAX_READ_BLOCK): Array<PlaceShape> => {
+  const out = new Map<string, PlaceShape>()
+  for (const index of read) {
+    if (index < 0 || index >= lines.length || blank(lines[index]) || comment(lines[index])) continue
+    const chain = blocksOfLine(lines, index)
+    if (chain.length === 0) continue
+    const fits = chain.findIndex((f) => endOf(lines, f.open) - f.start + 1 <= max)
+    const upTo = fits < 0 ? chain.length - 1 : fits
+    const shape: PlaceShape = { file, chain: chain.slice(0, upTo + 1).map((f) => blockOf(lines, f)), group: null }
+    const key = placeKey(shape)
+    if (!out.has(key)) out.set(key, shape)
+  }
+  return [...out.values()]
+}
+
+/** Statement starts among the lines from `from` to `to` at their least indentation. */
+const childStarts = (lines: ReadonlyArray<string>, from: number, to: number): Array<number> => {
+  const inner: Array<number> = []
+  for (let i = from; i <= to; i++) if (!blank(lines[i]) && !comment(lines[i])) inner.push(i)
+  if (inner.length === 0) return []
+  const depth = Math.min(...inner.map((i) => indentOf(lines[i])))
+  return inner.filter((i) => indentOf(lines[i]) === depth && !continues(lines[i]) && !closing(lines[i]))
+}
+
+/**
+ * The first line of each member of a found block: its direct children that
+ * start a statement (a class's methods, an object's keys, a function's
+ * statements), in order, as line numbers from 0. A block whose one child
+ * opens a block of its own (`withBatchedUpdates((event) => {`) has that
+ * block's members.
+ */
+export const membersOf = (lines: ReadonlyArray<string>, r: Region): Array<number> => {
+  if (r.members.length > 0) return [...r.members]
+  let members = childStarts(lines, (r.openLine ?? r.from) + 1, r.closeLine === null ? r.to : r.closeLine - 1)
+  for (let depth = 0; members.length === 1 && depth < 3; depth++) {
+    const only = members[0]
+    const end = endOf(lines, only)
+    if (end <= only) break
+    const inner = childStarts(lines, only + 1, end - 1)
+    if (inner.length === 0) break
+    members = [only, ...inner]
+  }
+  return members
+}
+
 /** A stable key for places that are the same: file, chain and group. */
 export const placeKey = (p: PlaceShape): string =>
   JSON.stringify([p.file, p.chain.map((b) => [b.head, b.open, b.opener, b.close]), p.group])

@@ -26,9 +26,11 @@ import type { Evidence, RunEvidence } from "./Evidence.ts"
 import { describePlace, type InduceConfig, induce } from "./Induce.ts"
 import { type CodeSource, type Located, locatePlaces } from "./Locate.ts"
 import { describeLookup } from "./Lookups.ts"
-import type { Place, WorkflowMemory } from "./Models.ts"
+import { isReadPlace, type Place, withShow, type WorkflowMemory } from "./Models.ts"
 import { selectWorkflows, type SelectorConfig, wordChoice } from "./Select.ts"
 import type { ReplayNumbers, WorkflowCandidate } from "./WorkflowStore.ts"
+
+export { withShow }
 
 /** How workflows are picked when replaying: by a model call, or by memory's cues with none (local first). */
 export type Picker = SelectorConfig | "cues" | undefined
@@ -60,21 +62,28 @@ export const wouldShow = Effect.fn("wouldShow")(function*(memory: WorkflowMemory
   return { shown: { workflows: s.chosen.map((c) => c.workflow.id), places, handed: false } satisfies Shown, costUsd: s.call?.costUsd ?? 0 }
 })
 
-/** How well what was shown fits what the run did. */
-export const fit = (run: RunEvidence, shown: Shown) => {
+/**
+ * How well what was shown fits what the run did. Places runs read (`read`: a
+ * test helper's class) are shown to be read, not edited: never left alone.
+ */
+export const fit = (run: RunEvidence, shown: Shown, read: ReadonlySet<string> = new Set()) => {
   const edited = new Set(run.uses.map((u) => u.place))
   const places = new Set(shown.places)
   return {
     edited: edited.size,
     hit: [...edited].filter((p) => places.has(p)),
     missed: [...edited].filter((p) => !places.has(p)),
-    unused: [...places].filter((p) => !edited.has(p))
+    unused: [...places].filter((p) => !edited.has(p) && !read.has(p))
   }
 }
+
+/** The ids of the places runs read, among `places`. */
+const readIds = (places: Iterable<Place>): Set<string> => new Set([...places].filter(isReadPlace).map((p) => p.id))
 
 /** The results, in words, for the refining model. */
 export const resultsText = (runs: ReadonlyArray<{ readonly run: RunEvidence; readonly shown: Shown }>, places: ReadonlyMap<string, Place>, memory: WorkflowMemory): string => {
   const known = new Set(memory.places.map((p) => p.id))
+  const read = readIds(places.values())
   const name = (id: string) => {
     const p = places.get(id)
     return p === undefined ? id : `${id} (${describePlace(p)})`
@@ -87,7 +96,7 @@ export const resultsText = (runs: ReadonlyArray<{ readonly run: RunEvidence; rea
     ""
   ]
   for (const { run, shown } of runs) {
-    const f = fit(run, shown)
+    const f = fit(run, shown, read)
     lines.push(
       `- Run ${run.record} (task ${JSON.stringify(run.task)}), ${shown.handed ? "handed" : "would have been handed"}: ${shown.workflows.join(", ") || "nothing"}.`,
       `  Shown and edited: ${f.hit.length}. Shown, left alone: ${f.unused.map(name).join("; ") || "none"}.`,
@@ -121,6 +130,7 @@ export const replay = Effect.fn("replayWorkflows")(function*(memory: WorkflowMem
   let shownUnused = 0
   let workflows = 0
   const byPrompt = new Map<string, Shown>()
+  const read = readIds(memory.places)
   for (const run of runs) {
     let shown = byPrompt.get(run.prompt)
     if (shown === undefined) {
@@ -129,7 +139,7 @@ export const replay = Effect.fn("replayWorkflows")(function*(memory: WorkflowMem
       shown = w.shown
       byPrompt.set(run.prompt, shown)
     }
-    const f = fit(run, shown)
+    const f = fit(run, shown, read)
     edited += f.edited
     shownAndEdited += f.hit.length
     shownUnused += f.unused.length
@@ -200,12 +210,13 @@ export const refine = Effect.fn("refine")(function*(
   const lookups = looked === undefined ? "" : yield* lookupsText(current, results, looked.repo, looked.texts)
   const notes = [resultsText(results, places, current), lookups, rejectionsText(rejected)].filter((t) => t !== "")
   const induced = yield* induce(config, merged, current.tenant, current, notes)
-  // A workflow that keeps its id keeps the runs it was learned from.
+  // A workflow that keeps its id keeps the runs it was learned from, and the kind of task it serves.
   const before = new Map(current.workflows.map((w) => [w.id, w]))
   const workflows = induced.memory.workflows.map((w) => {
     const old = before.get(w.id)
     return old === undefined ? w : {
       ...w,
+      ...(old.kind === undefined ? {} : { kind: old.kind }),
       evidence: [...new Set([...old.evidence, ...w.evidence])].sort(),
       tasks: [...new Set([...old.tasks, ...w.tasks])].sort()
     }
@@ -234,12 +245,6 @@ export const refine = Effect.fn("refine")(function*(
 export const describeReplay = (r: ReplayNumbers): string =>
   `${r.runs} runs: ${r.shown_and_edited} of ${r.edited} edited places shown, ${r.shown_unused} shown and left alone, ` +
   `${r.runs === 0 ? 0 : (r.workflows / r.runs).toFixed(1)} workflows per run`
-
-/** A place shown as a whole entry, or as the end of its block. */
-export const withShow = (p: Place, entry: boolean): Place => {
-  const { show: _show, ...rest } = p
-  return entry ? { ...rest, show: "entry" } : rest
-}
 
 /** The lines of each file a hand-over showed: the numbered excerpt lines under each place. */
 export const shownInText = (text: string): Map<string, Set<number>> => {

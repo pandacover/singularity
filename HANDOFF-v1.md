@@ -215,6 +215,26 @@ The `UserPromptSubmit` hook, at a session's first prompt:
    places-shown-and-edited minus places-shown-and-left-alone doesn't drop.
    Otherwise it is rejected, with the reason, for next time.
 
+### 7. What tasks of a kind share (tenth session)
+
+Learned task by task, two bug fixes became a workflow each, cued by that
+bug's words: no other bug could use them. What bug fixes in one repository
+share is how a bug is reproduced in a test and the fix checked. `workflows
+common --task A --task B ...` (`Common.ts`) reads the runs of several tasks
+of one kind and keeps only what runs of at least two of the tasks did: each
+workflow, and each place a step names, must come from two tasks' runs. The
+workflows carry the kind (`kind: "fixing a bug"`) and join memory next to
+the per-task ones; a later pass for the kind replaces them; their checks join
+the one command, their steps are never folded into it.
+
+Its places include **places runs read** in code they didn't change
+(`Reads.ts`): a `Read` with a range, `sed -n`, `head`, or a search in one file
+that printed lines, placed in the outermost block of up to 600 lines that
+holds them (`class Keyboard` in the test helpers; in `class App`, the member).
+The hand-over shows one as an outline: the block's first line and its
+members' first lines, from the code at task start, never code to copy.
+Learning from results doesn't count one as shown and left alone.
+
 ## How it is built
 
 TypeScript 7 and Effect 4, run by Node 24 (no build step); conventions in
@@ -242,6 +262,8 @@ TypeScript 7 and Effect 4, run by Node 24 (no build step); conventions in
 | `hook.ts`, `HookStart.ts`, `HookTool.ts`, `HookEnd.ts` | the hooks (entry point and one module per event) |
 | `Feedback.ts` | what became of each piece of memory a run got |
 | `Evolve.ts` | learning from results: results, refinement, the gate |
+| `Common.ts` | what runs of different tasks of a kind did alike: the prompt, the two-task checks, joining memory |
+| `Reads.ts` | the parts of files a run read, from its tool calls |
 | `Describe.ts` | memory in words |
 
 Also: `src/eval/WorkflowsMemory.ts` (the eval setups: `workflows-cues`, the

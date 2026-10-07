@@ -36,7 +36,8 @@ const run = (record: string, snapshots: ReadonlyArray<string>): RunEvidence => (
   values: [],
   calls: [],
   cwd: undefined,
-  looking: null
+  looking: null,
+  reads: []
 })
 
 const field = workflow("add-field", {

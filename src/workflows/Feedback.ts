@@ -22,6 +22,8 @@ export interface Handed {
   readonly workflows: ReadonlyArray<{ readonly id: string; readonly places: ReadonlyArray<string> }>
   /** Places shown (ids). */
   readonly shown: ReadonlyArray<string>
+  /** Of those, places shown to be read (a test helper's class), which a run isn't expected to edit. */
+  readonly read?: ReadonlyArray<string>
   /** Pitfalls handed over at the start, and those whose trigger fired during the run (with when). */
   readonly pitfalls: ReadonlyArray<string>
   readonly fired: ReadonlyArray<{ readonly pitfall: string; readonly at: number }>
@@ -39,7 +41,8 @@ export const SETUP = "workflows"
 
 export const feedbackOf = (handed: Handed, did: Did): MemoryUse => {
   const items: Array<MemoryItem> = []
-  const shown = new Set(handed.shown)
+  const read = new Set(handed.read ?? [])
+  const shown = new Set(handed.shown.filter((p) => !read.has(p)))
   for (const w of handed.workflows) {
     const mine = w.places.filter((p) => shown.has(p))
     const used = mine.filter((p) => did.edited.has(p))
@@ -52,6 +55,10 @@ export const feedbackOf = (handed: Handed, did: Did): MemoryUse => {
     })
   }
   for (const p of handed.shown) {
+    if (read.has(p)) {
+      items.push({ id: p, kind: "read-place", moment: "start", outcome: "unknown", note: "shown to read" })
+      continue
+    }
     const edited = did.edited.has(p)
     items.push({ id: p, kind: "place", moment: "start", outcome: edited ? "followed" : "ignored", note: edited ? null : "shown, not edited" })
   }

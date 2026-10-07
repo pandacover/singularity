@@ -40,7 +40,10 @@ looked up before their first edit (`src/workflows/Lookups.ts`, in
 task-start hooks (`workflows-split`), and a task that lists several changes
 picked and filled change by change (`partsChoice` in `Cues.ts`; the long task
 is `examples/excalidraw/long.toml`). A second repository's suite is
-`examples/validator/`. Keep v0 and v1 apart: v1 reuses the
+`examples/validator/`. For kinds of task like bug fixes, what runs of
+different tasks did alike is learned in a pass of its own
+(`src/workflows/Common.ts`, `workflows common`), with places runs read as
+well as edited (`src/workflows/Reads.ts`), shown as outlines. Keep v0 and v1 apart: v1 reuses the
 records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
 ## Writing Effect 4 code

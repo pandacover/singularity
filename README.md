@@ -104,8 +104,20 @@ node src/cli.ts workflows cues [--repo DIR]                                   # 
 node src/cli.ts workflows finish [--repo DIR]                                 # learn what each workflow's checks rewrite (no model)
 node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--parts 2] [--draft] # preview a task's hand-over
 node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR] [--dry-run] # learn from new runs
+node src/cli.ts workflows common --task ID --task ID ... [--kind WORDS] [--repo DIR] [--dry-run] # learn what runs of different tasks of a kind did alike
 node src/cli.ts workflows candidates                                         # proposals and what became of them
 ```
+
+Since the tenth session: **what tasks of a kind share** (`workflows common`,
+`src/workflows/Common.ts`). Learned task by task, two bug fixes became a
+workflow each, which no other bug can use. This pass reads the runs of
+several tasks of one kind (bug fixes) and keeps only what runs of at least two
+different tasks did: how a bug is reproduced in a test here, how the fix is
+checked (the test failing without it, with `git stash`), the mistakes made on
+the way. Its places include blocks runs **read** without changing them
+(`src/workflows/Reads.ts`), such as the test helpers' `Keyboard` class, which
+the hand-over shows as an outline: the block's first line and its members',
+from the code at task start. Run `workflows cues` after it.
 
 Since the eighth session: the hand-over ends with **one command** that runs
 every check its workflows need, with the snapshot files earlier runs

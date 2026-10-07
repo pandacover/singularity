@@ -19,7 +19,7 @@ import { relativizer } from "../records/Extract.ts"
 import { describeTrigger, eventOfCall, Trigger, triggerProblem } from "../records/Triggers.ts"
 import type { ToolCall } from "../traces/index.ts"
 import { type Evidence, type RunEvidence, shapeOf } from "./Evidence.ts"
-import { Blank, Edge, END, FORMAT, type Pitfall, type Place, START, type Workflow, type WorkflowMemory } from "./Models.ts"
+import { Blank, Edge, END, FORMAT, isReadPlace, type Pitfall, type Place, START, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
 import { describeChain } from "./Places.ts"
 
 export const ProposedStep = Schema.Struct({
@@ -136,7 +136,7 @@ const fixEdits = (r: RunEvidence, failedAt: number, fixedAt: number): Array<stri
   return out.length > MAX_FIX_EDITS ? [...out.slice(0, MAX_FIX_EDITS - 1), `… and ${out.length - MAX_FIX_EDITS + 1} more edits`, out[out.length - 1]] : out
 }
 
-const describeDetour = (r: RunEvidence, i: number): string => {
+export const describeDetour = (r: RunEvidence, i: number): string => {
   const d = r.detours[i]
   const call = (c: typeof d.failed) => c.command !== null ? `${c.tool} ${code(clip(oneLine(c.command), 160))}` : `${c.tool}${c.file ? ` ${c.file}` : ""}`
   const edits = fixEdits(r, d.failed.call, d.fixed.call)
@@ -169,7 +169,8 @@ export const inductionPrompt = (
     )
   }
   lines.push("## Places where the runs edited", "", "Use these ids in steps. Each is a block found by the blocks around it, a group of top-level statements that start alike, or a directory new files go in.", "")
-  for (const p of evidence.places) {
+  const read = evidence.places.filter(isReadPlace)
+  for (const p of evidence.places.filter((x) => !isReadPlace(x))) {
     const counts = [p.edits.add > 0 ? `added ${p.edits.add}` : "", p.edits.change > 0 ? `changed ${p.edits.change}` : "", p.edits.create > 0 ? `created ${p.edits.create}` : ""].filter(Boolean).join(", ")
     const weak = placeProblem(p, evidence.families)
     lines.push(
@@ -177,6 +178,16 @@ export const inductionPrompt = (
         (weak === undefined ? "" : `. Not for a step: ${weak}`) +
         (p.show === "entry" ? ". Shown as a whole entry (in `entries`)" : "")
     )
+  }
+  if (read.length > 0) {
+    lines.push(
+      "",
+      "## Places runs read",
+      "",
+      "Blocks in code runs read without changing it (a test helper's class); a step may name one where the agent should look, and the hand-over shows it as an outline: its first line and the first line of each member.",
+      ""
+    )
+    for (const p of read) lines.push(`- ${p.id} ${describePlace(p)}: read by ${p.evidence.length} runs of ${p.tasks.length} task${p.tasks.length === 1 ? "" : "s"} (${p.tasks.join(", ")})`)
   }
   lines.push("", "## Tasks and their runs", "")
   const tasks = [...new Set(evidence.runs.map((r) => r.task))]
@@ -256,11 +267,21 @@ const median = (xs: ReadonlyArray<number>) => {
  * little to go on, and a file that is one of many named alike
  * (`actionToggle…`), edited by one task only, is that task's own instance.
  */
-export const placeProblem = (p: Place, families: ReadonlyMap<string, string>): string | undefined => {
-  if (p.evidence.length < 2) return "which only one run edited"
+export const placeProblem = (p: Place, families: ReadonlyMap<string, string>, minTasks = 1): string | undefined => {
+  const did = isReadPlace(p) ? "read" : "edited"
+  if (p.evidence.length < 2) return `which only one run ${did}`
+  if (minTasks > 1 && p.tasks.length < minTasks) return `which runs of only ${p.tasks.length} task${p.tasks.length === 1 ? "" : "s"} ${did}: it must be shared by ${minTasks}`
   const family = p.new_file === null ? families.get(p.file) : undefined
   if (family !== undefined && p.tasks.length < 2) return `whose file is one of several named ${JSON.stringify(family + "…")} that only one task edited: that task's own file`
   return undefined
+}
+
+export interface CheckOptions {
+  /**
+   * For memory learned across tasks of a kind (Common.ts): how many tasks'
+   * runs a workflow, and a place a step names, must come from.
+   */
+  readonly minTasks?: number
 }
 
 /**
@@ -268,10 +289,11 @@ export const placeProblem = (p: Place, families: ReadonlyMap<string, string>): s
  * `current`, a pitfall it already has may come back without new detours: the
  * runs that avoided its mistake don't make it wrong.
  */
-export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant: string, current?: WorkflowMemory): Checked => {
+export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant: string, current?: WorkflowMemory, options: CheckOptions = {}): Checked => {
   const problems: Array<string> = []
+  const minTasks = options.minTasks ?? 1
   const places = new Map(evidence.places.map((p) => [p.id, p]))
-  const placeProblem_ = (p: Place) => placeProblem(p, evidence.families)
+  const placeProblem_ = (p: Place) => placeProblem(p, evidence.families, minTasks)
   const runs = new Map(evidence.runs.map((r) => [r.record, r]))
   const values = [...new Set(evidence.runs.flatMap((r) => r.values))]
   const subject = evidence.runs[0]?.subject ?? evidence.places[0]?.subject ?? ""
@@ -365,6 +387,11 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
     const fromRuns = w.from_runs.filter((r) => runs.has(r))
     const used = steps.flatMap((s) => (s.place === null ? [] : [places.get(s.place)!]))
     const evidence = [...new Set([...fromRuns, ...used.flatMap((p) => p.evidence)])].sort()
+    const tasks = [...new Set(evidence.map((r) => runs.get(r)?.task).filter((t): t is string => t !== undefined))].sort()
+    if (minTasks > 1 && tasks.length < minTasks) {
+      problems.push(`${where} comes from runs of ${tasks.length === 0 ? "no task" : `only ${tasks.join(", ")}`}: it must be what runs of ${minTasks} different tasks did; dropped`)
+      continue
+    }
     workflows.push({
       id,
       subject,
@@ -376,7 +403,7 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       checks: w.checks.map((c) => c.trim()).filter((c) => c !== ""),
       pitfalls: w.pitfalls.map(slug).filter((p) => pitfallIds.has(p)),
       evidence,
-      tasks: [...new Set(evidence.map((r) => runs.get(r)?.task).filter((t): t is string => t !== undefined))].sort()
+      tasks
     })
   }
 
@@ -401,7 +428,7 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
   }
 
   const usedPlaces = new Set(workflows.flatMap((w) => w.steps.flatMap((s) => (s.place === null ? [] : [s.place]))))
-  const unused = evidence.places.filter((p) => !usedPlaces.has(p.id) && p.tasks.length > 1)
+  const unused = evidence.places.filter((p) => !usedPlaces.has(p.id) && p.tasks.length > 1 && !isReadPlace(p))
   for (const p of unused) problems.push(`place ${p.id} (${describePlace(p)}), edited by ${p.tasks.length} tasks, is in no workflow`)
   const entries = [...new Set(answer.entries)].filter((id) => {
     if (usedPlaces.has(id)) return true
@@ -413,10 +440,7 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
     memory: {
       format: FORMAT,
       tenant,
-      places: evidence.places.filter((p) => usedPlaces.has(p.id)).map((p) => {
-        const { show: _show, ...rest } = p
-        return entries.includes(p.id) ? { ...rest, show: "entry" as const } : rest
-      }),
+      places: evidence.places.filter((p) => usedPlaces.has(p.id)).map((p) => withShow(p, entries.includes(p.id))),
       workflows,
       edges,
       // Pitfalls in no workflow still warn when their trigger fires.

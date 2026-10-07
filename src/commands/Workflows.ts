@@ -8,6 +8,7 @@
  *     workflows evolve [--task ID ...] [--records-from HOME] [--repo DIR]    learn from new runs
  *     workflows cues [--repo DIR] [--dry-run]                              write cues for picking without a model
  *     workflows finish [--repo DIR]                                        learn what the checks rewrite (no model)
+ *     workflows common --task ID --task ID ... [--kind WORDS] [--repo DIR]  learn what runs of different tasks of a kind did alike
  *
  * Local first: at task start memory is picked by its cues, with no model
  * call (`--pick cues`, the hook's default). Building memory, writing its cues
@@ -27,6 +28,7 @@ import { loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
+import { commonPrompt, describeReadPlaces, learnCommon, MIN_TASKS, withKind } from "../workflows/Common.ts"
 import { cuesPrompt, writeCues } from "../workflows/CueWriter.ts"
 import { describeMemory } from "../workflows/Describe.ts"
 import { gatherEvidence } from "../workflows/Evidence.ts"
@@ -338,6 +340,61 @@ const cues = Command.make(
   }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
 ).pipe(Command.withDescription("write cues so tasks can be given workflows without a model: phrases, step conditions and blank values (one model call or two)"))
 
+const common = Command.make(
+  "common",
+  {
+    task: Flag.String("task").pipe(Flag.atLeast(2), Flag.withDescription("the eval tasks of the kind, at least two (repeatable)")),
+    kind: Flag.String("kind").pipe(Flag.withDefault("fixing a bug"), Flag.withDescription("the kind of task they are, in words")),
+    repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("a clone to read files at the runs' base commits from")),
+    model: Flag.String("model").pipe(Flag.withDefault(DEFAULT_INDUCE_MODEL)),
+    effort: Flag.String("effort").pipe(Flag.withDefault(DEFAULT_INDUCE_EFFORT)),
+    dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("show what the model would read, and stop")),
+    claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
+    home: homeFlag
+  },
+  Effect.fn(function*(args) {
+    yield* lowerPriority
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const records = (yield* (yield* RecordStore).find({ outcome: "success" }))
+      .filter((r) => r.run.task_id !== null && args.task.includes(r.run.task_id))
+    const evidence = yield* gatherEvidence(records, { repo: Option.getOrUndefined(args.repo) })
+    const tasks = new Set(evidence.runs.map((r) => r.task))
+    const shared = evidence.readPlaces.filter((p) => p.tasks.length >= MIN_TASKS)
+    yield* Console.log(`${evidence.runs.length} runs of ${tasks.size} tasks; ${evidence.readPlaces.length} places read, ${shared.length} of them by runs of ${MIN_TASKS} tasks or more`)
+    for (const line of describeReadPlaces(shared)) yield* Console.log(`  ${line}`)
+    for (const s of evidence.skipped) yield* Console.log(`  skipped ${s}`)
+    if (tasks.size < MIN_TASKS) return yield* Console.log(`what tasks share needs runs of ${MIN_TASKS} tasks or more`)
+    const store = yield* WorkflowStore
+    const current = yield* store.memory()
+    if (args.dryRun) return yield* Console.log(`\n${commonPrompt(evidence, args.kind, current)}`)
+    const baseVersion = yield* store.head()
+    const cwd = path.join(defaultWorkspaces(), "_learner")
+    yield* fs.makeDirectory(cwd, { recursive: true })
+    const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
+    const result = yield* learnCommon({ claude, cwd, model: args.model, effort: args.effort }, evidence, store.tenant, args.kind, current)
+    // What the kind's checks rewrite, from its own runs; the other workflows keep theirs.
+    const m = withKind(current, withSnapshots(result.memory, evidence.runs), args.kind)
+    yield* Console.log(`${result.memory.workflows.length} workflows for ${JSON.stringify(args.kind)}, ${result.memory.places.length} places, ${result.memory.pitfalls.length} pitfalls; ` +
+      `${result.calls} model call${result.calls === 1 ? "" : "s"}, $${result.costUsd.toFixed(3)}`)
+    for (const p of result.problems) yield* Console.log(`  ${p}`)
+    const candidate = yield* store.propose(m, {
+      baseVersion,
+      rationale: result.rationale,
+      records: evidence.runs.map((r) => r.record),
+      model: args.model,
+      costUsd: result.costUsd,
+      report: { problems: result.problems, replay: null }
+    })
+    if (result.memory.workflows.length === 0) {
+      yield* store.reject(candidate.id, "no workflow runs of several tasks share")
+      return yield* Console.log(`rejected ${candidate.id}: no workflow runs of several tasks share`)
+    }
+    const version = yield* store.commit(candidate.id)
+    yield* Console.log(`committed ${candidate.id} as version ${version}; write cues for it with \`workflows cues\``)
+  }, (effect, args) => Effect.provide(effect, bothLayers(args.home)))
+).pipe(Command.withDescription("learn what runs of different tasks of one kind did alike, such as how bug fixes here are tested and checked (one model call or two)"))
+
 const finish = Command.make(
   "finish",
   {
@@ -368,5 +425,5 @@ const finish = Command.make(
 
 export const workflowsCommand = Command.make("workflows").pipe(
   Command.withDescription("memory v1: workflows with blanks, connected in a graph that learns from results"),
-  Command.withSubcommands([build, show, candidates, handover, evolve, cues, finish])
+  Command.withSubcommands([build, show, candidates, handover, evolve, cues, finish, common])
 )
