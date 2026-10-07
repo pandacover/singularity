@@ -26,6 +26,8 @@ import { WorkflowStore } from "./WorkflowStore.ts"
 export interface SessionOutcome {
   /** The record's id, when one was made (or existed already). */
   readonly record: string | undefined
+  /** The repo's subject, once the session's repo is known. */
+  readonly subject?: string | undefined
   readonly reason: string
 }
 
@@ -38,7 +40,13 @@ const baseSince = Effect.fn("workflows.baseSince")(function*(repo: string, since
 })
 
 export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function*(
-  input: { readonly sessionId: string; readonly transcript: string; readonly cwd: string },
+  input: {
+    readonly sessionId: string
+    readonly transcript: string
+    readonly cwd: string
+    /** The session's commits, for a session that ended long ago (Backfill.ts); else those since it started, up to HEAD. */
+    readonly range?: { readonly base: string; readonly head: string } | undefined
+  },
   tenantDir: string
 ) {
   const store = yield* RecordStore
@@ -49,16 +57,17 @@ export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function
   const subject = yield* store.subjectFor(repo, { create: true })
   if (subject === undefined) return { record: undefined, reason: "no subject" } satisfies SessionOutcome
   const id = recordId(subject.id, trace.sessionId)
-  if (yield* store.has(id)) return { record: id, reason: "already recorded" } satisfies SessionOutcome
+  if (yield* store.has(id)) return { record: id, subject: subject.id, reason: "already recorded" } satisfies SessionOutcome
 
-  const base = state?.head ?? (trace.startedAt === undefined ? undefined : yield* baseSince(repo.root, trace.startedAt))
-  if (base === undefined || base === repo.head) return { record: undefined, reason: "nothing was committed" } satisfies SessionOutcome
+  const head = input.range?.head ?? repo.head
+  const base = input.range?.base ?? state?.head ?? (trace.startedAt === undefined ? undefined : yield* baseSince(repo.root, trace.startedAt))
+  if (base === undefined || base === head) return { record: undefined, reason: "nothing was committed" } satisfies SessionOutcome
   const m = extractMechanical(trace, "", { succeeded: true })
   const last = m.commands.filter((c) => c.keys.some((k) => classifyKey(k) === "test")).at(-1)
   if (last === undefined) return { record: undefined, reason: "no tests were run" } satisfies SessionOutcome
   if (!last.ok) return { record: undefined, reason: "the last test run failed" } satisfies SessionOutcome
 
-  const diff = yield* git(repo.root, ["diff", "--binary", base, repo.head]).pipe(Effect.map((s) => s.replace(/\r\n?/g, "\n")))
+  const diff = yield* git(repo.root, ["diff", "--binary", base, head]).pipe(Effect.map((s) => s.replace(/\r\n?/g, "\n")))
   const cost = trace.costState?.totalCostUSD
   const record = buildRecord({
     tenant: store.tenant,
@@ -77,7 +86,7 @@ export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function
       task_id: null,
       repo: repo.root,
       base_commit: base,
-      head_commit: repo.head,
+      head_commit: head,
       started_at: trace.startedAt === undefined ? null : DateTime.formatIso(trace.startedAt),
       cost_usd: typeof cost === "number" ? cost : null,
       tokens: usageTotal(traceUsage(trace))
@@ -116,7 +125,7 @@ export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function
     )
   }
   yield* store.put({ ...record, memory })
-  return { record: record.id, reason: "recorded" } satisfies SessionOutcome
+  return { record: record.id, subject: subject.id, reason: "recorded" } satisfies SessionOutcome
 })
 
 export const sessionEnd = (stdin: string): Promise<SessionOutcome | undefined> =>
