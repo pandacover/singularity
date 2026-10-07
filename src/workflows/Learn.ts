@@ -13,7 +13,7 @@
  * workflow or pitfall gets the repo's id appended, so each repo's graph stays
  * its own (Start.ts's forSubject keeps edges by workflow id).
  */
-import { DateTime, Effect } from "effect"
+import { DateTime, Effect, FileSystem } from "effect"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import type { Subject } from "../records/Subjects.ts"
@@ -153,6 +153,8 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
   const state = yield* learnState(subject.id)
   const waiting = waitReason(state, config.every, config.now === true)
   if (waiting !== undefined) return { kind: "waiting", subject: subject.id, reason: waiting, costUsd: 0 } satisfies LearnOutcome
+  // The model runs in a directory of its own, which a fresh machine doesn't have yet.
+  yield* (yield* FileSystem.FileSystem).makeDirectory(config.cwd, { recursive: true }).pipe(Effect.ignore)
   const baseVersion = yield* store.head()
   const full = yield* store.memory()
   const first = state.memory.workflows.length === 0

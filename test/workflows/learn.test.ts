@@ -214,7 +214,7 @@ describe("learning repo by repo", () => {
     const root = tempDir()
     const claudeHome = join(root, "claude")
     const homeDir = join(root, "home")
-    const config = { claude: FAKE_CLAUDE, cwd: root, model: "sonnet", effort: "high", every: 3 }
+    const config = { claude: FAKE_CLAUDE, cwd: join(root, "not-yet", "_learner"), model: "sonnet", effort: "high", every: 3 }
     const home = await run(loadHome(homeDir))
 
     const learnRepo = async (name: string) => {
