@@ -207,8 +207,12 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     const name = path.basename(repo.root)
     yield* say()
     yield* item(`This repo, ${s.bold(name)}, has ${plural(past.length, "past Claude Code session")}.`)
-    const result = yield* withSpinner("reading them", backfill(repo.root, claudeHomeDir, home.tenantDir).pipe(Effect.provide(layers)), o.interactive)
-    const n = result.recorded.length
+    const read = yield* withSpinner("reading them", backfill(repo.root, claudeHomeDir, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
+    if (read._tag === "Failure") {
+      yield* item(`${s.red("✗")} couldn't read them (${read.failure.message}); ${s.cyan("singularity learn --past")} tries again`)
+      return yield* done(s, o, chosen, bin, newTerminal)
+    }
+    const n = read.success.recorded.length
     if (n === 0) {
       yield* item(`${s.dim("·")} none of them committed a change with passing tests; memory learns as you work`)
     } else {
