@@ -71,33 +71,44 @@ export const readJsonFile = Effect.fn("readJsonFile")(function*(file: string) {
   if (!(yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false)))) return {} as Json
   const text = yield* fs.readFileString(file).pipe(Effect.mapError((e) => new HookFileError({ file, message: e.message })))
   if (text.trim() === "") return {} as Json
-  return yield* Schema.decodeUnknownEffect(JsonObject)(text.replace(/^﻿/, "")).pipe(
+  return yield* Schema.decodeUnknownEffect(JsonObject)(text.replace(/^\uFEFF/, "")).pipe(
     Effect.mapError(() => new HookFileError({ file, message: "isn't plain JSON (comments, perhaps), so it was left alone" }))
   )
 })
 
-/** Write a JSON file whole, keeping the file as it was before the first change. */
-export const writeJsonFile = Effect.fn("writeJsonFile")(function*(file: string, json: Json) {
+/**
+ * Write a JSON file whole. With `keepOriginal`, a file that exists and has
+ * no copy yet is copied first: the user's file as it was before setup.
+ */
+export const writeJsonFile = Effect.fn("writeJsonFile")(function*(file: string, json: Json, keepOriginal = false) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   yield* fs.makeDirectory(path.dirname(file), { recursive: true })
   const backup = `${file}.before-singularity`
-  if ((yield* fs.exists(file)) && !(yield* fs.exists(backup))) yield* fs.copyFile(file, backup)
+  if (keepOriginal && (yield* fs.exists(file)) && !(yield* fs.exists(backup))) yield* fs.copyFile(file, backup)
   yield* writeFileWhole(fs, file, JSON.stringify(json, null, 2) + "\n")
 })
 
-/** Add memory's hooks to a hook file. */
+/** Add memory's hooks to a hook file, keeping a copy of the user's file the first time. */
 export const installHooks = Effect.fn("installHooks")(function*(target: HookFile, ours: HookEvents) {
   const json = yield* readJsonFile(target.file)
-  yield* writeJsonFile(target.file, withEvents(json, target.layout, withMemoryHooks(eventsOf(json, target.layout), ours)))
+  const events = eventsOf(json, target.layout)
+  yield* writeJsonFile(target.file, withEvents(json, target.layout, withMemoryHooks(events, ours)), memoryHookEvents(events).length === 0)
 })
 
-/** Take memory's hooks out of a hook file; whether there were any. */
+/**
+ * Take memory's hooks out of a hook file; whether there were any. A file
+ * setup made itself (there was none to keep a copy of) goes when nothing
+ * else is left in it.
+ */
 export const removeHooks = Effect.fn("removeHooks")(function*(target: HookFile) {
+  const fs = yield* FileSystem.FileSystem
   const json = yield* readJsonFile(target.file)
   const events = eventsOf(json, target.layout)
   if (memoryHookEvents(events).length === 0) return false
-  yield* writeJsonFile(target.file, withEvents(json, target.layout, withoutMemoryHooks(events)))
+  const rest = withEvents(json, target.layout, withoutMemoryHooks(events))
+  if (Object.keys(rest).length === 0 && !(yield* fs.exists(`${target.file}.before-singularity`))) yield* fs.remove(target.file)
+  else yield* writeJsonFile(target.file, rest)
   return true
 })
 

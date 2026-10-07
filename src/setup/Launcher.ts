@@ -108,15 +108,20 @@ if ($new -ne $old) {
   $key.SetValue('Path', $new, [Microsoft.Win32.RegistryValueKind]::ExpandString)
   [Environment]::SetEnvironmentVariable('SINGULARITY_PATH_CHANGED', '1', 'User')
   [Environment]::SetEnvironmentVariable('SINGULARITY_PATH_CHANGED', $null, 'User')
-}
+  'changed'
+} else { 'unchanged' }
 `
 
+/** Whether the user's Path in the registry changed; undefined if PowerShell failed. */
 const windowsPath = (bin: string, add: boolean) =>
   runProcess("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WINDOWS_PATH_SCRIPT(add)], {
     cwd: process.cwd(),
     timeoutS: 60,
     env: { ...process.env, SINGULARITY_BIN: backslashes(bin) }
-  }).pipe(Effect.map((r) => r.exitCode === 0))
+  }).pipe(
+    Effect.map((r) => (r.exitCode === 0 ? r.stdout.trim().split(/\r?\n/).at(-1)?.trim() === "changed" : undefined)),
+    Effect.orElseSucceed(() => undefined)
+  )
 
 export interface PathChange {
   /** "already": it was on PATH; "added": new terminals have it; "failed": the user must add it. */
@@ -129,8 +134,8 @@ export interface PathChange {
 export const addToPath = Effect.fn("addToPath")(function*(bin: string, options: { readonly home: string; readonly shell: string | undefined; readonly platform: NodeJS.Platform; readonly pathValue: string | undefined }) {
   if (onPath(bin, options.pathValue, options.platform)) return { state: "already" } satisfies PathChange
   if (options.platform === "win32") {
-    const ok = yield* windowsPath(bin, true).pipe(Effect.orElseSucceed(() => false))
-    return { state: ok ? "added" : "failed" } satisfies PathChange
+    const changed = yield* windowsPath(bin, true)
+    return { state: changed === undefined ? "failed" : changed ? "added" : "already" } satisfies PathChange
   }
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
@@ -145,7 +150,7 @@ export const addToPath = Effect.fn("addToPath")(function*(bin: string, options: 
 
 /** Take `bin` off the user's PATH: the registry entry, or setup's line in any startup file it may be in. */
 export const removeFromPath = Effect.fn("removeFromPath")(function*(bin: string, options: { readonly home: string; readonly platform: NodeJS.Platform }) {
-  if (options.platform === "win32") return yield* windowsPath(bin, false).pipe(Effect.orElseSucceed(() => false))
+  if (options.platform === "win32") return (yield* windowsPath(bin, false)) === true
   const fs = yield* FileSystem.FileSystem
   let removed = false
   for (const file of [".zshrc", ".bashrc", ".bash_profile", ".profile"].map((f) => join(options.home, f))) {

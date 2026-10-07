@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { agents, hookEvents, isMemoryHookCommand, type Launch } from "../../src/setup/Agents.ts"
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
@@ -10,6 +10,7 @@ import { readLearn } from "../../src/setup/Preferences.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
 import { agentStates, detectAgents, unwireAll } from "../../src/setup/Wiring.ts"
+import { commandOfShim } from "../../src/eval/Agent.ts"
 import { asClaudeCall } from "../../src/workflows/HookTool.ts"
 import { run, tempDir, withEnv } from "../eval/helpers.ts"
 
@@ -123,6 +124,21 @@ describe("other agents' tool calls", () => {
   })
 })
 
+describe("finding Claude Code", () => {
+  it("runs npm's claude.cmd as the script it runs, since node won't start a .cmd without a shell", () => {
+    const shim = [
+      "@ECHO off",
+      String.raw`IF EXIST "%dp0%\node.exe" (`,
+      String.raw`  SET "_prog=%dp0%\node.exe"`,
+      ")",
+      String.raw`endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\@anthropic-ai\claude-code\cli.js" %*`
+    ].join("\r\n")
+    expect(commandOfShim(shim, String.raw`C:\npm`, "node.exe")).toEqual(["node.exe", String.raw`C:\npm\node_modules\@anthropic-ai\claude-code\cli.js`])
+    expect(commandOfShim(String.raw`"%dp0%\bin\claude.exe" %*`, String.raw`C:\npm`)).toEqual([String.raw`C:\npm\bin\claude.exe`])
+    expect(commandOfShim("@echo off", String.raw`C:\npm`)).toBeUndefined()
+  })
+})
+
 describe("the singularity command", () => {
   it("writes launchers that fall back to the node on PATH", () => {
     expect(shLauncher("C:\\node.exe", "C:\\app\\src\\cli.ts")).toContain('exec "$node" "C:/app/src/cli.ts" "$@"')
@@ -145,18 +161,47 @@ describe("the singularity command", () => {
   })
 })
 
-/** A home with agents' directories, and the options setup runs with there (no PATH, so only directories count). */
+/**
+ * Claude Code as npm installs it on Windows: a `claude.cmd` shim that runs a
+ * script with node (and `claude` for other systems); its script prints a version.
+ */
+const fakeClaude = (bin: string) => {
+  mkdirSync(join(bin, "node_modules", "fake-claude"), { recursive: true })
+  writeFileSync(join(bin, "node_modules", "fake-claude", "cli.js"), "console.log('2.1.0 (Claude Code)')\n")
+  writeFileSync(join(bin, "claude.cmd"), [
+    "@ECHO off",
+    "GOTO start",
+    ":find_dp0",
+    "SET dp0=%~dp0",
+    "EXIT /b",
+    ":start",
+    "SETLOCAL",
+    "CALL :find_dp0",
+    String.raw`IF EXIST "%dp0%\node.exe" (`,
+    String.raw`  SET "_prog=%dp0%\node.exe"`,
+    ") ELSE (",
+    `  SET "_prog=node"`,
+    ")",
+    String.raw`endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\fake-claude\cli.js" %*`,
+    ""
+  ].join("\r\n"))
+  writeFileSync(join(bin, "claude"), `#!/bin/sh\nexec node "${join(bin, "node_modules", "fake-claude", "cli.js")}" "$@"\n`)
+  chmodSync(join(bin, "claude"), 0o755)
+}
+
+/** A home with agents' directories, and the options setup runs with there (only Claude Code on PATH, so directories decide the rest). */
 const sandbox = (agentDirs: ReadonlyArray<string>) => {
   const root = tempDir()
   const home = join(root, "home")
   for (const d of agentDirs) mkdirSync(join(home, d), { recursive: true })
+  fakeClaude(join(root, "bin"))
   const options: SetupOptions = {
     yes: true,
     only: [],
     path: false,
     cwd: root,
     home,
-    env: { PATH: join(root, "empty-path") },
+    env: { PATH: join(root, "bin"), PATHEXT: ".EXE;.CMD;.BAT" },
     interactive: false,
     color: false
   }
@@ -198,6 +243,9 @@ describe("setup", () => {
     const removed = await run(unwireAll(dirs))
     expect(removed.hookFiles).toHaveLength(4)
     expect(json(join(home, ".claude", "settings.json"))).toEqual({ model: "opus", hooks: { Stop: [{ hooks: [{ type: "command", command: "say done" }] }] } })
+    // Files setup made itself go.
+    expect(existsSync(join(home, ".codex", "hooks.json"))).toBe(false)
+    expect(existsSync(join(home, ".gemini", "settings.json"))).toBe(false)
     expect(await run(skillState(join(home, ".agents", "skills")))).toBe("missing")
   }, 60_000)
 

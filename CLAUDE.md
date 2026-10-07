@@ -46,6 +46,19 @@ different tasks did alike is learned in a pass of its own
 well as edited (`src/workflows/Reads.ts`), shown as outlines. Keep v0 and v1 apart: v1 reuses the
 records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
+Daily use, for anyone (`singularity setup | status | recall | learn |
+uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
+the code into `~/.singularity/app` and run setup, which lives in
+`src/setup/`: the agents memory can be set up in and what each gets
+(`Agents.ts`: Claude Code learns and hands over; Codex, Gemini CLI and Droid
+hand over through hooks in Claude Code's format; Cursor and OpenCode get the
+skill), their hook files (`HookFiles.ts`), the skill (`Skill.ts`), the
+`singularity` command on PATH (`Launcher.ts`), learning on its own after a
+recorded session (`AutoLearn.ts`) and the onboarding itself (`Setup.ts`).
+Learning in daily use goes repo by repo (`src/workflows/Learn.ts`), and a
+repo's earlier Claude Code sessions can be recorded after the fact
+(`src/workflows/Backfill.ts`).
+
 ## Writing Effect 4 code
 
 Before writing Effect code, read `node_modules/effect/AGENTS.md`. Its examples
@@ -112,7 +125,9 @@ records use those keys.
   --priority normal` only when the user asks for it.
 - Heavy folders (workspaces, node_modules of target repos) live outside this
   repo, in `C:\singularity-workspaces`.
-- Hooks run in the user's own sessions once installed. They must never break
+- Hooks run in the user's own sessions once installed, in every agent setup
+  wired (other agents send Claude Code's format with their own event and tool
+  names; `src/workflows/HookTool.ts` maps them). They must never break
   a session (errors go to `~/.singularity/hook-errors.log`, exit 0), and the
   tool-call hook runs after every call, so `src/hook.ts` checks the session
   file with plain `node:fs` and loads modules only for the event at hand.
@@ -124,3 +139,9 @@ records use those keys.
   takes room from the code it shows.
 - Model calls that build memory (`record annotate`, `memory build
   --conditions`) cost a few cents each; run them on a few records first.
+- Learning on its own spends on the user's Claude account: only when they
+  said yes at setup, within the daily limit in `config.json`, and never in
+  eval runs (`SINGULARITY_AUTOLEARN=off`, set by the hook setups). Setup's
+  `--yes` never learns right away. Tests never run setup against the real
+  home or the real agents' settings: they pass a temporary home and an
+  environment without agents on PATH.
