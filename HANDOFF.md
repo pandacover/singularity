@@ -95,6 +95,30 @@ carry the hand-over after the first tool call); recording other agents'
 sessions (a parser for each transcript format); an MCP server (the hosted
 version's door).
 
+**Then, the one-liner in WSL "wouldn't start"** (the user's report). Two
+causes, one after the other. From the user's network one of GitHub's four
+raw-content addresses (185.199.109.133) never answers, even from Windows;
+plain curl waited on it 35 s to over two minutes before trying another,
+printing nothing. Once the script arrived, WSL's Ubuntu had no Node.js, so it
+stopped at its first check. Fixed:
+
+- The one-liner passes `--connect-timeout 10` (the same case: 5 s).
+- Both installers fetch their own Node.js 24 into `~/.singularity/node`,
+  checked against nodejs.org's checksums, when the one on PATH is missing or
+  older than 24 (`SINGULARITY_OWN_NODE=1` forces it). npm runs through the
+  node it came with, never Windows' npm that WSL puts on PATH.
+- In WSL, setup ignores the Windows programs WSL puts on PATH (Gemini CLI and
+  Cursor had been "found" through `/mnt/c`, so their hooks would have gone
+  in WSL's home, which Windows' agents never read), and tells the user to run
+  the PowerShell command for the agents they use on Windows.
+- On macOS and Linux every agent's hooks use the full path to the node setup
+  ran with (they run hooks in sh), so they never find an older one.
+
+Checked: the one-liner from GitHub in WSL with a throwaway home (18 s with its
+own Node.js 24.21, no WSL agents found, the WSL hint, the command works in a
+new shell), and `install.ps1` fetching its own Node.js in a Windows sandbox.
+`npm test`: 249 passed.
+
 ## Status: bug-fix memory built and checked for free; its measurement is pre-registered, waiting for a go (2026-10-07, tenth session)
 
 The user had the ninth session's two commits pushed (`local-memory`, PR #4)
