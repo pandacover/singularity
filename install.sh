@@ -106,7 +106,7 @@ fi
 done_ "code ${D}($REF, $(git -C "$APP" rev-parse --short HEAD))${X}"
 
 # npm runs with its own node first on PATH, so it never picks up another.
-(cd "$APP" && PATH="$(dirname "$NODE"):$PATH" "$NPM" ci --omit=dev --no-audit --no-fund --loglevel=error >/dev/null) ||
+(cd "$APP" && PATH="$(dirname "$NODE"):$PATH" "$NPM" ci --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error >/dev/null) ||
   fail "npm couldn't install the dependencies; the messages above say why."
 done_ "dependencies"
 printf '\n'

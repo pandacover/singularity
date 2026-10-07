@@ -9,7 +9,7 @@ import { cmdLauncher, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine 
 import { readLearn } from "../../src/setup/Preferences.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
-import { agentStates, detectAgents, unwireAll } from "../../src/setup/Wiring.ts"
+import { agentStates, detectAgents, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
 import { asClaudeCall } from "../../src/workflows/HookTool.ts"
 import { run, tempDir, withEnv } from "../eval/helpers.ts"
@@ -121,6 +121,17 @@ describe("other agents' tool calls", () => {
     expect(asClaudeCall({ session_id: "s", tool_name: "Execute", tool_input: { cmd: ["git", "status"] } })).toMatchObject({ tool_name: "Bash", tool_input: { command: "git status" } })
     expect(asClaudeCall({ session_id: "s", tool_name: "replace", tool_input: { file_path: "a.ts", new_str: "x" } })).toMatchObject({ tool_name: "Edit", tool_input: { new_string: "x" } })
     expect(asClaudeCall({ session_id: "s", tool_name: "Edit", tool_input: { file_path: "a.ts", new_string: "y" } }).tool_name).toBe("Edit")
+  })
+})
+
+describe("finding agents", () => {
+  it("in WSL, leaves out the Windows programs WSL puts on PATH", () => {
+    const wsl = { WSL_DISTRO_NAME: "Ubuntu" }
+    expect(isWindowsFromWsl("/mnt/c/Users/a/AppData/Roaming/npm", wsl, "linux")).toBe(true)
+    expect(isWindowsFromWsl("/mnt/c", wsl, "linux")).toBe(true)
+    expect(isWindowsFromWsl("/usr/local/bin", wsl, "linux")).toBe(false)
+    expect(isWindowsFromWsl("/mnt/data/bin", wsl, "linux")).toBe(false)
+    expect(isWindowsFromWsl("/mnt/c/tools", {}, "linux")).toBe(false)
   })
 })
 

@@ -80,8 +80,8 @@
   $npmCli = Join-Path (Split-Path $node) 'node_modules\npm\bin\npm-cli.js'
   Push-Location $app
   try {
-    if (Test-Path $npmCli) { & $node $npmCli ci --omit=dev --no-audit --no-fund --loglevel=error | Out-Null }
-    else { npm ci --omit=dev --no-audit --no-fund --loglevel=error | Out-Null }
+    if (Test-Path $npmCli) { & $node $npmCli ci --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error | Out-Null }
+    else { npm ci --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error | Out-Null }
   } finally { Pop-Location }
   if ($LASTEXITCODE -ne 0) { Fail 'npm couldn''t install the dependencies; the messages above say why.'; return }
   Done 'dependencies'

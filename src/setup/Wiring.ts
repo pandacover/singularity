@@ -27,12 +27,19 @@ export const HOOK_SCRIPT = fileURLToPath(new URL("../workflows/hook.ts", import.
 /** The oldest node the code runs on: it strips TypeScript's types itself. */
 export const MIN_NODE_MAJOR = 24
 
-/** An executable on PATH, as a shell would find it (with PATHEXT on Windows). */
+/**
+ * WSL puts Windows' PATH after its own, under /mnt/: what is found there is a
+ * Windows program, whose settings live in the Windows home, not this one.
+ */
+export const isWindowsFromWsl = (dir: string, env: Readonly<Record<string, string | undefined>>, platform: NodeJS.Platform = process.platform): boolean =>
+  platform === "linux" && env.WSL_DISTRO_NAME !== undefined && /^\/mnt\/[a-z]\//i.test(dir.replace(/\/*$/, "/"))
+
+/** An executable on PATH, as a shell would find it (with PATHEXT on Windows); in WSL, not Windows' own. */
 export const findExecutable = Effect.fn("findExecutable")(function*(name: string, env: Readonly<Record<string, string | undefined>> = process.env) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const exts = process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""]
-  for (const dir of (env.PATH ?? env.Path ?? "").split(delimiter).filter(Boolean)) {
+  for (const dir of (env.PATH ?? env.Path ?? "").split(delimiter).filter((d) => d !== "" && !isWindowsFromWsl(d, env))) {
     for (const ext of exts) {
       const candidate = path.join(dir, `${name}${ext}`)
       if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false))) return candidate
