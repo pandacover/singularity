@@ -4,7 +4,9 @@
 import { Effect } from "effect"
 import type { LearnerConfig } from "./GraphLearner.ts"
 import { makeGraphMemory } from "./GraphMemory.ts"
+import { makeHooksMemory } from "./HooksMemory.ts"
 import { makeSavedScripts } from "./SavedScripts.ts"
+import { makeWorkflowsMemory } from "./WorkflowsMemory.ts"
 import type { MemorySetup } from "./Setups.ts"
 import { combine, MemoryError, NoMemory, SETUPS } from "./Setups.ts"
 import type { SelectorConfig } from "./StepSelector.ts"
@@ -22,7 +24,11 @@ export interface SetupContext {
   readonly learner?: LearnerConfig | undefined
 }
 
-/** Setups that learn need `memoryDir`; `frozen` makes them read-only (for measurement runs). */
+/**
+ * Setups that learn need `memoryDir`; `frozen` makes them read-only (for
+ * measurement runs). For `hooks` and `workflows` it is a memory home, which is
+ * never changed.
+ */
 export const makeSetup = (
   name: string,
   memoryDir?: string,
@@ -51,6 +57,28 @@ export const makeSetup = (
       handOver: "warnings"
     })
     return Effect.succeed(combine(name, makeSavedScripts(memoryDir, frozen), warnings, "warnings"))
+  }
+  if (name === "hooks") {
+    // The memory directory is a memory home; the hooks' model call runs the agent's Claude Code.
+    return context.selector === undefined
+      ? Effect.fail(new MemoryError({ message: "hooks needs the claude command for its model call" }))
+      : Effect.succeed(makeHooksMemory({ home: memoryDir, claude: context.selector.claude, selectorModel: context.selector.model }))
+  }
+  if (name === "workflows" || name === "workflows-draft" || name === "workflows-cues" || name === "workflows-split") {
+    // Like hooks: a memory home, handed over by v1's own hooks; their model calls run the agent's Claude Code.
+    // workflows-draft hands over the change itself, drafted at task start (workflows/Draft.ts);
+    // workflows-cues makes no model call: memory's cues pick, and fill the blanks the task states (workflows/Cues.ts);
+    // workflows-split is workflows-cues with a long hand-over carried by two hooks (workflows/HookStart.ts).
+    return context.selector === undefined
+      ? Effect.fail(new MemoryError({ message: `${name} needs the claude command for its model call` }))
+      : Effect.succeed(makeWorkflowsMemory({
+        home: memoryDir,
+        claude: context.selector.claude,
+        selectorModel: context.selector.model,
+        draft: name === "workflows-draft",
+        cues: name === "workflows-cues" || name === "workflows-split",
+        parts: name === "workflows-split" ? 2 : 1
+      }))
   }
   if (name === "graph") {
     return context.graphId === undefined

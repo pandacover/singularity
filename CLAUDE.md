@@ -2,7 +2,8 @@
 
 Procedural memory for coding agents: learn from past Claude Code sessions so
 repeated and similar tasks take fewer tokens. `HANDOFF.md` has the design,
-decisions, results and next steps; read it first.
+decisions, results and next steps; read it first. `HANDOFF-v1.md` describes
+memory v1 on its own.
 
 ## Stack
 
@@ -14,8 +15,36 @@ decisions, results and next steps; read it first.
   that the code and the docs below describe in sync.
 
 Layout: `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
-procedural graph store), `src/eval/` (the eval harness and memory setups),
-`src/cli.ts` (the command line). Tests mirror it under `test/`.
+procedural graph store of the first graph setup), `src/eval/` (the eval
+harness and memory setups), `src/cli.ts` (the command line). The local memory
+from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
+`src/records/` (workflow records: extraction, where edits went, the model's
+reading, the store), `src/memory/` (the memory graph: build, replay, store),
+`src/search/` (exact and word search), `src/handover/` (task start and the
+code at its places, triggers, session end, hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
+hook entry point). That local memory is v0, frozen at tag `memory-v0`.
+Memory v1 is `src/workflows/`: workflows with blanks induced from runs, a graph
+of them that learns from results, places kept as the blocks around an edit
+and found in the code at use, its own hooks (`src/workflows/hook.ts`) and eval
+setup (`src/eval/WorkflowsMemory.ts`). It is local first (tag
+`memory-local-first`): at task start workflows are picked by cues with no
+model call and the blanks the task states are filled in (`src/workflows/Cues.ts`,
+the `workflows-cues` setup); the cues are written once, when memory is built
+(`src/workflows/CueWriter.ts`). The `workflows` setup keeps v1 as first
+measured, picked by a model call. The change drafted at task start
+(`src/workflows/Draft.ts`, `workflows-draft`) was tested and dropped: memory
+helps the agent do the task, it never writes the change for it. Since: the
+finish in one command (`src/workflows/Finish.ts`), learning what runs still
+looked up before their first edit (`src/workflows/Lookups.ts`, in
+`workflows evolve`), the hand-over in up to two parts, from two
+task-start hooks (`workflows-split`), and a task that lists several changes
+picked and filled change by change (`partsChoice` in `Cues.ts`; the long task
+is `examples/excalidraw/long.toml`). A second repository's suite is
+`examples/validator/`. For kinds of task like bug fixes, what runs of
+different tasks did alike is learned in a pass of its own
+(`src/workflows/Common.ts`, `workflows common`), with places runs read as
+well as edited (`src/workflows/Reads.ts`), shown as outlines. Keep v0 and v1 apart: v1 reuses the
+records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
 ## Writing Effect 4 code
 
@@ -61,7 +90,8 @@ and `src/graph/PythonCompat.ts` (Python's JSON layout, sort order and
 comparable.
 
 Graph `command_patterns` are JavaScript regular expressions. Prompts that ask
-an LLM to write them must say so.
+an LLM to write them must say so. Warning triggers in the memory graph are
+plain substrings, never regular expressions, and prompts say that too.
 
 Everything written to disk keeps the snake_case keys the Python version used:
 `results.jsonl`, saved-scripts memory entries, graph store files. Old runs in
@@ -73,7 +103,24 @@ records use those keys.
 - Commit only when the user asks. Work on a feature branch, not `main`.
 - Eval runs spend real money on the user's Claude account. Use `--dry-run`
   first and keep `max_budget_usd` set in suites.
+- Compare runs only with runs of the same Claude Code version: it updates
+  itself, and each turn rereads its own prompt. Pin a measurement with
+  `--claude` and a copy of the version its baselines used (Claude Code keeps
+  a few in `~/.local/share/claude/versions/`); runs never update it.
 - The user needs their computer during runs: suites cap vitest workers and the
-  harness runs everything below normal priority. Keep it that way.
+  harness runs everything below normal priority. Keep it that way; `eval run
+  --priority normal` only when the user asks for it.
 - Heavy folders (workspaces, node_modules of target repos) live outside this
   repo, in `C:\singularity-workspaces`.
+- Hooks run in the user's own sessions once installed. They must never break
+  a session (errors go to `~/.singularity/hook-errors.log`, exit 0), and the
+  tool-call hook runs after every call, so `src/hook.ts` checks the session
+  file with plain `node:fs` and loads modules only for the event at hand.
+  Keep it fast (about 0.1 s without memory, 0.4 s with). Tests use a temporary
+  `SINGULARITY_HOME`, never the real one.
+- Claude Code cuts a hook's text at 10,000 characters and hands the agent a
+  file path instead. The hand-over at task start stays under
+  `MAX_HANDOVER_CHARS` (`src/handover/TaskStart.ts`); anything added to it
+  takes room from the code it shows.
+- Model calls that build memory (`record annotate`, `memory build
+  --conditions`) cost a few cents each; run them on a few records first.

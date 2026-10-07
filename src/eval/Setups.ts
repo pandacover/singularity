@@ -2,8 +2,8 @@
  * Memory setups: what the agent is given before a run, and what it learns after.
  *
  * The evaluation compares setups on the same tasks: no memory, saved scripts,
- * the procedural graph, and saved scripts with the graph's warnings. Each one
- * plugs in here.
+ * the procedural graph, saved scripts with the graph's warnings, and the
+ * local memory handed over by its hooks. Each one plugs in here.
  */
 import type { FileSystem, Path } from "effect"
 import { Effect, Schema } from "effect"
@@ -16,6 +16,12 @@ export class MemoryError extends Schema.TaggedError<MemoryError>()("MemoryError"
   message: Schema.String
 }) {}
 
+/** What memory cost to prepare or hand over, when it called a model. */
+export interface Spent {
+  readonly costUsd: number
+  readonly usage: Usage
+}
+
 export interface Injection {
   /** Appended to Claude Code's system prompt for this run. */
   readonly systemPrompt: string | undefined
@@ -25,8 +31,26 @@ export interface Injection {
    * What preparing the memory cost, if it called a model. The run's totals
    * include it, so setups that spend tokens on retrieval are compared fairly.
    */
-  readonly spent?: { readonly costUsd: number; readonly usage: Usage } | undefined
+  readonly spent?: Spent | undefined
+  /** More arguments for Claude Code, e.g. `--settings` with hooks. */
+  readonly args?: ReadonlyArray<string> | undefined
+  /** More environment for Claude Code, and so for its hooks. */
+  readonly env?: Readonly<Record<string, string>> | undefined
+  /**
+   * For memory handed over during the run (by hooks) rather than before it:
+   * read once the agent has finished, it adds what was handed over to `info`
+   * and what that cost to `spent`.
+   */
+  readonly delivered?: Effect.Effect<Delivered, MemoryError, SetupServices> | undefined
 }
+
+export interface Delivered {
+  readonly info: Readonly<Record<string, unknown>>
+  readonly spent?: Spent | undefined
+}
+
+export const addSpent = (a: Spent | undefined, b: Spent | undefined): Spent | undefined =>
+  a === undefined || b === undefined ? a ?? b : { costUsd: a.costUsd + b.costUsd, usage: addUsage(a.usage, b.usage) }
 
 /** What a setup sees after a run, to learn from it. */
 export interface Outcome {
@@ -42,8 +66,11 @@ export type SetupServices = FileSystem.FileSystem | Path.Path | ChildProcessSpaw
 
 export interface MemorySetup {
   readonly name: string
-  /** Prepare memory for this run. May write files into the workspace. */
-  readonly beforeRun: (task: Task, workspace: string) => Effect.Effect<Injection, MemoryError, SetupServices>
+  /**
+   * Prepare memory for this run. May write files into the workspace, and into
+   * the run's output directory (absent for previews).
+   */
+  readonly beforeRun: (task: Task, workspace: string, runDir?: string) => Effect.Effect<Injection, MemoryError, SetupServices>
   /** Learn from a finished run. Called once checks have run. */
   readonly afterRun: (outcome: Outcome) => Effect.Effect<void, MemoryError, SetupServices>
 }
@@ -65,17 +92,14 @@ export const combine = (name: string, first: MemorySetup, second: MemorySetup, k
       const a = yield* first.beforeRun(task, workspace)
       const b = yield* second.beforeRun(task, workspace)
       const texts = [a.systemPrompt, b.systemPrompt].filter((t): t is string => t !== undefined && t !== "")
-      const spent = a.spent === undefined || b.spent === undefined
-        ? a.spent ?? b.spent
-        : { costUsd: a.spent.costUsd + b.spent.costUsd, usage: addUsage(a.spent.usage, b.spent.usage) }
       return {
         systemPrompt: texts.length > 0 ? texts.join("\n") : undefined,
         info: { ...a.info, [key]: b.info },
-        spent
+        spent: addSpent(a.spent, b.spent)
       } satisfies Injection
     }),
   afterRun: (outcome) => Effect.andThen(first.afterRun(outcome), second.afterRun(outcome))
 })
 
-export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "saved-scripts-warnings", "graph"] as const
+export const SETUPS = ["no-memory", "saved-scripts", "saved-scripts-top2", "saved-scripts-warnings", "graph", "hooks", "workflows", "workflows-draft", "workflows-cues", "workflows-split"] as const
 export type SetupName = (typeof SETUPS)[number]

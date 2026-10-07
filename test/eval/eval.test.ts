@@ -1,17 +1,28 @@
 import { assert, describe, it } from "@effect/vitest"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
 import { join } from "node:path"
-import { agentEnv, buildCommand, parseResult } from "../../src/eval/Agent.ts"
+import { agentEnv, buildCommand, defaultClaude, parseResult } from "../../src/eval/Agent.ts"
+import { makeSetup } from "../../src/eval/Memory.ts"
 import { lowerPriority, runProcess } from "../../src/eval/Proc.ts"
 import type { RunRecord } from "../../src/eval/Report.ts"
-import { compare, loadRecords, summarize } from "../../src/eval/Report.ts"
+import { compare, loadRecords, runKind, summarize } from "../../src/eval/Report.ts"
 import { runSuite } from "../../src/eval/Runner.ts"
 import { NoMemory } from "../../src/eval/Setups.ts"
 import type { AgentConfig } from "../../src/eval/Suite.ts"
 import { loadSuite } from "../../src/eval/Suite.ts"
 import { makeWorkspace, resetWorkspace, resolveRef, workspaceDiff } from "../../src/eval/Workspace.ts"
+import { HOOK_SCRIPT, withOurHooks } from "../../src/handover/Install.ts"
+import { identifyRepo } from "../../src/local/Git.ts"
+import { loadHome } from "../../src/local/Home.ts"
+import { buildGraph } from "../../src/memory/Build.ts"
+import * as JsonMemoryStore from "../../src/memory/JsonMemoryStore.ts"
+import { diffGraphs, emptyGraph } from "../../src/memory/Models.ts"
+import { MemoryStore } from "../../src/memory/MemoryStore.ts"
+import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
+import { RecordStore } from "../../src/records/RecordStore.ts"
+import { flagLesson, readRecord, step } from "../memory/fixtures.ts"
 import { FAKE_CLAUDE, run, git, makeRepo, seenByAgent, tempDir, withEnv, writeSuite } from "./helpers.ts"
 
 // Git may check files out with CRLF (core.autocrlf), so compare text with LF.
@@ -128,7 +139,23 @@ describe("agent", () => {
     assert.strictEqual(cmd.at(-1), "--safe-mode")
 
     const env = agentEnv({ PATH: "x", CLAUDECODE: "1", CLAUDE_EFFORT: "max", CLAUDE_CONFIG_DIR: "c", ANTHROPIC_API_KEY: "k" })
-    assert.deepStrictEqual(env, { PATH: "x", CLAUDE_CONFIG_DIR: "c", ANTHROPIC_API_KEY: "k", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" })
+    assert.deepStrictEqual(env, {
+      PATH: "x",
+      CLAUDE_CONFIG_DIR: "c",
+      ANTHROPIC_API_KEY: "k",
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      DISABLE_AUTOUPDATER: "1",
+      SINGULARITY_HOOKS: "off"
+    })
+  })
+
+  it("finds claude where SINGULARITY_CLAUDE says: a path, or a command with its first arguments", async () => {
+    await withEnv({ SINGULARITY_CLAUDE: "C:/tools/claude.exe" }, async () =>
+      assert.deepStrictEqual(await run(defaultClaude()), ["C:/tools/claude.exe"]))
+    await withEnv({ SINGULARITY_CLAUDE: JSON.stringify(FAKE_CLAUDE) }, async () =>
+      assert.deepStrictEqual(await run(defaultClaude()), FAKE_CLAUDE))
+    await withEnv({ SINGULARITY_CLAUDE: "[1]" }, async () =>
+      assert.include((await run(Effect.flip(defaultClaude()))).message, "SINGULARITY_CLAUDE"))
   })
 
   it("parses the result despite noise", () => {
@@ -174,6 +201,7 @@ describe("runSuite", () => {
       const seen = seenByAgent(home, r.session_id)
       assert.notProperty(seen.env, "CLAUDECODE")
       assert.strictEqual(seen.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1")
+      assert.strictEqual(seen.env.SINGULARITY_HOOKS, "off")
 
       const table = summarize(await run(loadRecords([out])))
       assert.include(table, "| no-memory | t1")
@@ -231,6 +259,102 @@ describe("runSuite", () => {
       assert.strictEqual(seenByAgent(home, r.session_id).env.MY_CAP, "4")
     })
   })
+})
+
+describe("the hooks setup", () => {
+  /** A memory home that knows the repo: one kind of task like t1, with the doubled-flag warning on its test step. */
+  const seedHome = (homeDir: string, repo: string) =>
+    run(Effect.gen(function*() {
+      const home = yield* loadHome(homeDir)
+      return yield* Effect.gen(function*() {
+        const subject = (yield* (yield* RecordStore).subjectFor((yield* identifyRepo(repo))!, { create: true }))!
+        const g = buildGraph([
+          readRecord("Write 41 to answer.txt", "write an answer", [step("write the answer file", "asked", ["answer.txt"]), step("run the tests", "needed")], {
+            subject: subject.id,
+            flag: true,
+            lessons: [flagLesson("run the tests")]
+          })
+        ], { tenant: home.tenant })
+        const memory = yield* MemoryStore
+        yield* memory.commit((yield* memory.propose(diffGraphs(emptyGraph, g), { rationale: "test", records: [] })).id)
+        return g.kinds[0]
+      }).pipe(Effect.provide(Layer.merge(
+        JsonRecordStore.layer(home.tenantDir, home.tenant),
+        JsonMemoryStore.layer(join(home.tenantDir, "memory"), home.tenant)
+      )))
+    }))
+
+  it("hands memory over through the hooks during the run, and counts the route's model call", async () => {
+    const root = tempDir()
+    const repo = makeRepo(root)
+    const claudeHome = join(root, "claude-home")
+    const homeDir = join(root, "memory-home")
+    const answers = join(root, "answers.json")
+    await withEnv({
+      CLAUDE_CONFIG_DIR: claudeHome,
+      SINGULARITY_WORKSPACES: join(root, "workspaces"),
+      FAKE_CLAUDE_ANSWERS: answers,
+      FAKE_CLAUDE_BASH: "yarn test:update --watch=false"
+    }, async () => {
+      const kind = await seedHome(homeDir, repo)
+      const route = kind.route.map((e) => e.step)
+      writeFileSync(answers, JSON.stringify([{ kind: kind.id, why: "same task", steps: route.map((id) => ({ id, why: "needed", applies: true })) }]))
+      const suite = await run(loadSuite(writeSuite(root, repo)))
+      const setup = await run(makeSetup("hooks", homeDir, true, { selector: { claude: FAKE_CLAUDE, cwd: join(root, "llm"), model: "sonnet" } }))
+      const out = join(root, "out")
+      const [r] = (await run(
+        runSuite(suite, setup, out, FAKE_CLAUDE, { workspaces: join(root, "ws"), taskIds: ["t1"] })
+      )) as Array<Record<string, any>>
+      const runDir = join(out, "runs", r.run_id)
+      assert.isTrue(r.success)
+
+      // The hooks ran in the agent's session, against the run's own copy of the home.
+      const seen = seenByAgent(claudeHome, r.session_id)
+      assert.strictEqual(seen.env.SINGULARITY_HOOKS, "on")
+      assert.strictEqual(seen.env.SINGULARITY_HOME, join(runDir, "memory-home"))
+      assert.include(seen.args, "--settings")
+      const said = (event: string): Array<string> =>
+        seen.hook_outputs.filter((o) => o.event === event && o.stdout !== "").map((o) => JSON.parse(o.stdout).hookSpecificOutput.additionalContext)
+      // The route at the first prompt; the warning once its trigger appeared, and only then.
+      assert.include(said("UserPromptSubmit")[0], "**write the answer file**")
+      assert.deepStrictEqual(said("PostToolUse").length, 1)
+      assert.include(said("PostToolUse")[0], "--watch=false")
+
+      // The run's record says what was handed over, and the route's model call ($0.01 and 150 tokens) counts toward it.
+      assert.deepStrictEqual([r.injection.task_start, r.injection.kind, r.injection.nodes, r.injection.hook_errors], [true, kind.id, route, 0])
+      assert.deepStrictEqual(r.injection.fired.map((f: { tool: string }) => f.tool), ["Bash"])
+      assert.strictEqual(r.injection.version, 1)
+      assert.strictEqual(runKind(r), "similar task")
+      assert.include(readFileSync(join(runDir, "injected.md"), "utf-8"), "**write the answer file**")
+      assert.strictEqual(r.memory_spent.cost_usd, 0.01)
+      assert.strictEqual(r.memory_spent.tokens.total, 150)
+      assert.closeTo(r.cost_usd, 0.0123 + 0.01, 1e-9)
+      assert.strictEqual(r.tokens.total, 1360 + 150)
+
+      // The home is as it was; the run's copy keeps only what the session wrote.
+      const tenant = (home: string) => join(home, "tenants", "local")
+      assert.isFalse(existsSync(join(tenant(homeDir), "sessions")))
+      assert.isFalse(existsSync(join(tenant(homeDir), "handovers.jsonl")))
+      assert.isTrue(existsSync(join(tenant(join(runDir, "memory-home")), "handovers.jsonl")))
+      assert.isFalse(existsSync(join(tenant(join(runDir, "memory-home")), "memory")))
+    })
+  }, 60_000)
+
+  it("won't run next to hooks installed for daily work, which would hand everything over twice", async () => {
+    const root = tempDir()
+    const repo = makeRepo(root)
+    const claudeHome = join(root, "claude-home")
+    mkdirSync(claudeHome)
+    writeFileSync(join(claudeHome, "settings.json"), JSON.stringify(withOurHooks({}, process.execPath, HOOK_SCRIPT)))
+    await withEnv({ CLAUDE_CONFIG_DIR: claudeHome }, async () => {
+      const homeDir = join(root, "memory-home")
+      await run(loadHome(homeDir))
+      const suite = await run(loadSuite(writeSuite(root, repo)))
+      const setup = await run(makeSetup("hooks", homeDir, true, { selector: { claude: FAKE_CLAUDE, cwd: root, model: "sonnet" } }))
+      const failure = await run(Effect.flip(runSuite(suite, setup, join(root, "out"), FAKE_CLAUDE, { workspaces: join(root, "ws"), taskIds: ["t1"] })))
+      assert.include(failure.message, "installed")
+    })
+  }, 30_000)
 })
 
 describe("processes", () => {

@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How memory works, in one example</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page: #f7f7f5;
+    --surface: #ffffff;
+    --soft: #f1f0ec;
+    --ink: #111110;
+    --ink-2: #55544f;
+    --muted: #8a8984;
+    --line: #e4e3dd;
+    --axis: #c3c2b7;
+    /* memory: categorical slot 1, wherever memory appears */
+    --accent: #2a78d6;
+    --accent-soft: rgba(42, 120, 214, 0.09);
+    --accent-mid: rgba(42, 120, 214, 0.22);
+    /* status, always with an icon */
+    --good: #0ca30c;
+    --bad: #d03b3b;
+    --bad-soft: rgba(208, 59, 59, 0.07);
+    --warn: #fab219;
+    --warn-soft: rgba(250, 178, 25, 0.15);
+    --shadow: 0 1px 2px rgba(17, 17, 16, 0.04), 0 10px 30px rgba(17, 17, 16, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #0e0e0d; --surface: #1a1a19; --soft: #242422; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #8a8984;
+      --line: #2c2c2a; --axis: #45453f; --accent: #3987e5; --accent-soft: rgba(57, 135, 229, 0.12); --accent-mid: rgba(57, 135, 229, 0.28);
+      --bad-soft: rgba(208, 59, 59, 0.13); --warn-soft: rgba(250, 178, 25, 0.12);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --page: #0e0e0d; --surface: #1a1a19; --soft: #242422; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #8a8984;
+    --line: #2c2c2a; --axis: #45453f; --accent: #3987e5; --accent-soft: rgba(57, 135, 229, 0.12); --accent-mid: rgba(57, 135, 229, 0.28);
+    --bad-soft: rgba(208, 59, 59, 0.13); --warn-soft: rgba(250, 178, 25, 0.12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root { min-height: 100vh; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 18px 24px 28px; }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.88em; background: var(--soft); border-radius: 4px; padding: 0 4px; font-variant-ligatures: none; overflow-wrap: anywhere; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  h1 { font-size: 20px; font-weight: 650; margin: 0; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 2px 0 0; }
+  .theme { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 3px 10px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+
+  /* ---------- the loop and the story ---------- */
+  .top { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 28px; align-items: center; margin: 12px 0 16px; }
+  .loop { margin: 0; }
+  .loop svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .loop .arc { fill: none; stroke: var(--axis); stroke-width: 2; }
+  .loop .arc.on { stroke: var(--accent); stroke-width: 3; }
+  .loop .st circle { fill: var(--surface); stroke: var(--axis); stroke-width: 1.5; transition: fill 0.3s, stroke 0.3s; }
+  .loop .st .glyph { fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.3s; }
+  .loop .st.on circle { fill: var(--accent); stroke: var(--accent); }
+  .loop .st.on .glyph { stroke: #ffffff; }
+  .loop .st text { fill: var(--ink-2); font-size: 12px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .loop .st.on text { fill: var(--ink); font-weight: 650; }
+  .loop .half { fill: var(--muted); font-size: 11px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .loop .head { fill: var(--axis); }
+  .loop .head.on { fill: var(--accent); }
+
+  .kicker { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+  .story h2 { font-size: 24px; line-height: 1.2; margin: 2px 0 8px; font-weight: 650; }
+  .story p { font-size: 16px; color: var(--ink-2); margin: 0; max-width: 680px; min-height: 72px; }
+  .nav { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 7px 14px; cursor: pointer; font-size: 14px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn[disabled] { opacity: 0.35; cursor: default; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; border: none; padding: 0; background: var(--axis); cursor: pointer; }
+  .dot.on { background: var(--accent); transform: scale(1.25); }
+
+  /* ---------- the two panels ---------- */
+  .stage { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 0; height: clamp(420px, calc(100vh - 330px), 640px); }
+  .p-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .p-title { font-weight: 650; font-size: 14px; }
+  .p-sub { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag { margin-left: auto; font-size: 12px; border-radius: 999px; padding: 2px 10px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+  .tag.mem { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+  .p-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; position: relative; scroll-behavior: smooth; }
+
+  /* chat */
+  .chat { display: flex; flex-direction: column; gap: 14px; }
+  .msg { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: start; }
+  .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+  .av.you { background: #8a8984; }
+  .av.claude { background: #d97757; }
+  .av.memory { background: var(--accent); }
+  .who { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .who b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+  .bubble { border-radius: 12px; padding: 10px 13px; }
+  .you .bubble { background: var(--soft); }
+  .claude .bubble { background: var(--surface); border: 1px solid var(--line); }
+  .memory .bubble { background: var(--accent-soft); border: 1px solid var(--accent-mid); }
+  .memory.warning .bubble { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+  .memory.warning .av { background: var(--warn); color: #111; }
+  .prompt-text { white-space: pre-wrap; }
+  .prompt-text.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .prompt-text mark { background: var(--accent-mid); color: var(--ink); border-radius: 3px; padding: 0 2px; }
+  .prompt-text del { color: var(--muted); text-decoration-color: var(--bad); text-decoration-thickness: 2px; }
+  .link { border: none; background: none; padding: 0; color: var(--accent); cursor: pointer; font-size: 12.5px; margin-top: 4px; }
+  .rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .rows li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; border-radius: 8px; padding: 2px 4px; transition: background 0.3s, box-shadow 0.3s; }
+  .rows li.sub { margin-left: 26px; grid-template-columns: 16px minmax(0, 1fr); font-size: 13.5px; color: var(--ink-2); }
+  .ic { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; font-weight: 800; color: #fff; margin-top: 2px; }
+  .ic.ok { background: var(--good); }
+  .ic.bad { background: var(--bad); }
+  .ic.warn { background: var(--warn); color: #111; }
+  .ic.dot { background: var(--axis); width: 8px; height: 8px; margin: 7px 4px 0; }
+  .stats { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .hl { background: var(--accent-soft); box-shadow: 0 0 0 1.5px var(--accent); }
+  .hook { align-self: center; font-size: 12px; color: var(--ink-2); background: var(--surface); border: 1px dashed var(--accent); border-radius: 999px; padding: 3px 12px; }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+  .divider::before, .divider::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+  .ho-list { margin: 6px 0 0; padding-left: 18px; }
+  .ho-list li { margin: 2px 0; }
+  pre.raw { white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11.5px; line-height: 1.45; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 8px 0 0; max-height: 320px; overflow: auto; font-variant-ligatures: none; }
+  .between { margin: auto; text-align: center; max-width: 360px; color: var(--ink-2); padding: 40px 10px; }
+  .between .big { font-size: 34px; color: var(--accent); line-height: 1; margin-bottom: 8px; }
+  .between b { color: var(--ink); }
+  .enter { animation: enter 0.5s cubic-bezier(.2, .7, .2, 1) both; }
+  @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* memory */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface); transition: border-color 0.3s, background 0.3s, opacity 0.3s; min-width: 0; }
+  .tile.dim { opacity: 0.5; }
+  .tile.lit { border-color: var(--accent); background: var(--accent-soft); opacity: 1; }
+  .t-name { font-size: 12px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 8px; }
+  .t-name span:last-child { color: var(--muted); }
+  .t-n { font-size: 26px; font-weight: 650; line-height: 1.15; margin-top: 2px; }
+  .t-n.none { color: var(--axis); }
+  .t-ex { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; min-height: 19px; }
+  .now { margin-top: 14px; border-radius: 12px; background: var(--soft); padding: 12px 14px; }
+  .now h3 { font-size: 13px; margin: 0 0 6px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+  .now h3 .free { font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0 7px; }
+  .now p { margin: 0 0 6px; color: var(--ink-2); font-size: 13.5px; }
+  .now ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13.5px; }
+  .now li { margin: 3px 0; }
+  .wf { border-left: 3px solid var(--accent); padding: 2px 0 2px 10px; margin-top: 6px; font-size: 13.5px; }
+  .wf b { display: block; margin-bottom: 2px; }
+  .picks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+  .picks li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; }
+  .picks .why { color: var(--muted); }
+  .pulse { animation: pulse 1.1s ease-out; }
+  @keyframes pulse { from { box-shadow: 0 0 0 0 var(--accent-mid); } to { box-shadow: 0 0 0 12px transparent; } }
+  .chip { position: fixed; z-index: 50; pointer-events: none; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 999px; padding: 4px 11px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); white-space: nowrap; }
+
+  /* the small chart */
+  .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart text { fill: var(--ink-2); font-size: 11.5px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .chart .lbl { fill: var(--ink); }
+  .chart .val { fill: var(--ink); font-weight: 650; }
+  .chart .bar { fill: var(--accent); }
+  .chart .grid { stroke: var(--line); }
+  .chart .base { stroke: var(--axis); }
+  .chart .hit { fill: transparent; }
+  .chart g.mark:hover .bar, .chart g.mark:focus-within .bar { opacity: 0.8; }
+  .tip { position: fixed; z-index: 60; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; color: var(--ink-2); box-shadow: var(--shadow); display: none; }
+  .tip b { color: var(--ink); }
+  table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  table.data th, table.data td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+  table.data th:first-child, table.data td:first-child { text-align: left; }
+  table.data th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+  .gate { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 4px 10px; align-items: baseline; font-size: 13.5px; color: var(--ink-2); margin: 4px 0 8px; }
+  .gate b { color: var(--ink); font-size: 15px; }
+  .gate .arrow { color: var(--muted); }
+
+  footer { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+
+  @media (max-width: 960px) {
+    .top { grid-template-columns: 1fr; gap: 8px; }
+    .loop { max-width: 420px; }
+    .stage { grid-template-columns: 1fr; }
+    .panel { height: auto; max-height: none; }
+    .p-body { max-height: 70vh; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .enter, .pulse { animation: none !important; }
+    .p-body { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>How memory works, in one example</h1>
+        <p class="sub">Real Claude Code sessions in the excalidraw repository, in seven steps. Use Next or the arrow keys.</p>
+      </div>
+      <button class="theme" id="theme" type="button">Light / dark</button>
+    </header>
+
+    <section class="top">
+      <figure class="loop" id="loop" aria-label="The memory loop"></figure>
+      <div class="story" aria-live="polite">
+        <div class="kicker" id="kicker"></div>
+        <h2 id="title"></h2>
+        <p id="text"></p>
+        <div class="nav">
+          <button class="btn" id="back" type="button">← Back</button>
+          <div class="dots" id="dots"></div>
+          <button class="btn primary" id="next" type="button">Next →</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="stage">
+      <div class="panel" aria-label="The conversation">
+        <div class="p-head">
+          <div style="min-width:0">
+            <div class="p-title">Claude Code</div>
+            <div class="p-sub" id="chat-sub"></div>
+          </div>
+          <span class="tag" id="chat-tag"></span>
+        </div>
+        <div class="p-body" id="chat-body"></div>
+      </div>
+      <div class="panel" aria-label="Memory">
+        <div class="p-head">
+          <div style="min-width:0">
+            <div class="p-title">Memory</div>
+            <div class="p-sub">kept for this repository, on your machine</div>
+          </div>
+          <span class="tag mem" id="mem-tag"></span>
+        </div>
+        <div class="p-body" id="mem-body"></div>
+      </div>
+    </section>
+
+    <footer>Everything shown is from real runs: the prompts, what Claude did, memory's text, and the numbers (Claude Code 2.1.286 for every run compared). Claude's work is summarized; “see the exact text” shows what memory really added.</footer>
+  </div>
+  <div class="tip" id="tip"></div>
+</div>
+
+<script type="text/plain" id="handover">
+# Workflows from earlier work in this repository
+
+Reusable steps learned from earlier tasks here. Values your task states are filled in; blanks in braces stand for the rest of your task's own names and values. Places are found in the code as it is now (current line numbers); the lines shown are excerpts.
+
+## 1. Add a persisted field to the app state
+Filled from your task: {field} = `presenterModeEnabled`, {default} = `false`
+1. Add `presenterModeEnabled: {type};` to the AppState interface.
+   `packages/excalidraw/types.ts:326-587` in export interface AppState {
+   ```
+     326| export interface AppState {
+        ⋮
+     581|     stickyNoteStroke: readonly string[] | null;
+     582|     stickyNoteBackground: readonly string[] | null;
+     583|   };
+     584|   /** user-customized font-picker top picks (pinned via drag & drop from the
+     585|    * font picker popup). `null` means no customization (defaults are used) */
+     586|   fontTopPicks: readonly FontFamilyValues[] | null;
+     587| }
+   ```
+2. Add `presenterModeEnabled: false,` to the default app state returned by getDefaultAppState.
+   `packages/excalidraw/appState.ts:28-146` in export const getDefaultAppState = (): Omit< › return {
+   ```
+      28|   return {
+        ⋮
+     140|       elementBackground: null,
+     141|       bucketFill: null,
+     142|       stickyNoteStroke: null,
+     143|       stickyNoteBackground: null,
+     144|     },
+     145|     fontTopPicks: null,
+     146|   };
+   ```
+3. Add `presenterModeEnabled: { browser: <bool>, export: <bool>, server: <bool> }` to the storage config, following the storage rules the task states (e.g. browser true, export false, server false).
+   `packages/excalidraw/appState.ts:153-291` in const APP_STATE_STORAGE_CONF = (<
+   ```
+     153| const APP_STATE_STORAGE_CONF = (<
+        ⋮
+     285|   searchMatches: { browser: false, export: false, server: false },
+     286|   lockedMultiSelections: { browser: true, export: true, server: true },
+     287|   activeLockedId: { browser: false, export: false, server: false },
+     288|   bindMode: { browser: true, export: false, server: false },
+     289|   colorTopPicks: { browser: true, export: false, server: false },
+     290|   fontTopPicks: { browser: true, export: false, server: false },
+     291| });
+   ```
+4. Regenerate snapshots (see the last section) since a new app-state field changes many snapshots.
+Watch out: `yarn test:update` already passes a --watch option, so adding `--watch=false` fails with 'Expected a single value for option -w, --watch'. Run plain `yarn test:update`.
+
+## 2. Create a toggle action for a boolean app-state field
+Filled from your task: {field} = `presenterModeEnabled`
+Blanks: {action} exported action const name, e.g. actionToggle{Thing}; {actionName} the string action name registered in ActionName; {label} the i18n label key and its English text
+1. Create the new action file modelled on an existing toggle action (e.g. the grid-mode or objects-snap-mode toggle): `register({ name: "{actionName}", label: "labels.{label}", viewMode: true if it must work in view mode, trackEvent with predicate on !appState.presenterModeEnabled, perform returning appState with presenterModeEnabled flipped and CaptureUpdateAction.EVENTUALLY, checked: (appState) => appState.presenterModeEnabled })`.
+   a new file in `packages/excalidraw/actions/`, named like the 8 there that start with `actionToggle`; shortest first: actionToggleMidpointSnapping.tsx (24 lines), actionToggleArrowBinding.tsx (27 lines), actionToggleStats.tsx (29 lines), actionToggleGridMode.tsx (35 lines), actionToggleObjectsSnapMode.tsx (35 lines), actionToggleShapeSwitch.tsx (36 lines)
+2. Add `| "{actionName}"` to the ActionName union.
+   `packages/excalidraw/actions/types.ts:45-144` in export type ActionName =
+   ```
+      45| export type ActionName =
+        ⋮
+     138|   | "searchMenu"
+     139|   | "copyElementLink"
+     140|   | "linkToElement"
+     141|   | "cropEditor"
+     142|   | "wrapSelectionInFrame"
+     143|   | "toggleShapeSwitch"
+     144|   | "togglePolygon";
+   ```
+3. Export the action: `export { {action} } from "./{action file}";`.
+   `packages/excalidraw/actions/index.ts:80-94` the top-level `{ actionToggle…` statements
+   ```
+        ⋮
+      83| export { actionToggleArrowBinding } from "./actionToggleArrowBinding";
+      84| export { actionToggleMidpointSnapping } from "./actionToggleMidpointSnapping";
+      86| export { actionToggleStats } from "./actionToggleStats";
+      89| export { actionToggleElementLock } from "./actionElementLock";
+      90| export { actionToggleLinearEditor } from "./actionLinearEditor";
+      92| export { actionToggleSearchMenu } from "./actionToggleSearchMenu";
+      94| export { actionToggleCropEditor } from "./actionCropEditor";
+   ```
+4. Add the English label under labels: `"{label}": "<text>"`.
+   `packages/excalidraw/locales/en.json:2-204` in { › "labels": {
+   ```
+       2|   "labels": {
+        ⋮
+     198|     "arrowBinding": "Arrow binding",
+     199|     "midpointSnapping": "Snap to midpoints",
+     200|     "showHints": "Show hints",
+     201|     "inputDevice": "Input",
+     202|     "inputDeviceTrackpad": "Trackpad",
+     203|     "inputDeviceMouse": "Mouse"
+     204|   },
+   ```
+
+## 3. Give an action a keyboard shortcut and list it in the help dialog
+Filled from your task: {shortcut} = `Alt+J`
+Blanks: {action} the action that gets the shortcut; {actionName} the string action name used as ShortcutName; {code} key code property name in CODES and its event.code value; {label} the i18n label key of the action
+1. Add `{code}: "<EventCode>",` to CODES if it isn't there already. (only if the key code is not already defined)
+   `packages/common/src/keys.ts:5-28` in export const CODES = {
+   ```
+       5| export const CODES = {
+        ⋮
+      22|   H: "KeyH",
+      23|   V: "KeyV",
+      24|   Z: "KeyZ",
+      25|   Y: "KeyY",
+      26|   R: "KeyR",
+      27|   S: "KeyS",
+      28| } as const;
+   ```
+2. Add `| "{actionName}"` to the ShortcutName union.
+   `packages/excalidraw/actions/shortcuts.ts:11-51` in export type ShortcutName = › | SubtypeOf<
+   ```
+      11|   | SubtypeOf<
+        ⋮
+      45|       | "zoomToFitSelectionInViewport"
+      46|       | "zoomToFitSelection"
+      47|       | "saveFileToDisk"
+      48|       | "saveToActiveFile"
+      49|       | "toggleShortcuts"
+      50|       | "wrapSelectionInFrame"
+      51|     >
+   ```
+3. Add `{actionName}: [getShortcutKey("Alt+J")],` to the shortcut map.
+   `packages/excalidraw/actions/shortcuts.ts:58-116` in const shortcutMap: Record<ShortcutName, string[]> = {
+   ```
+      58| const shortcutMap: Record<ShortcutName, string[]> = {
+        ⋮
+     110|   saveFileToDisk: [getShortcutKey("CtrlOrCmd+S")],
+     111|   saveToActiveFile: [getShortcutKey("CtrlOrCmd+S")],
+     112|   toggleShortcuts: [getShortcutKey("?")],
+     113|   searchMenu: [getShortcutKey("CtrlOrCmd+F")],
+     114|   wrapSelectionInFrame: [],
+     115|   toolLock: [getShortcutKey("Q")],
+     116| };
+   ```
+4. In the action's own file add `keyTest: (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.{code}` (match the modifiers of the shortcut).
+5. Add `<Shortcut label={t("labels.{label}")} shortcuts={[getShortcutKey("Alt+J")]} />` to the shortcuts island in the help dialog.
+   `packages/excalidraw/components/HelpDialog.tsx:262-335` in … › <Dialog › <Section title={t("helpDialog.shortcuts")}> › <ShortcutIsland
+   ```
+     262|           <ShortcutIsland
+        ⋮
+     329|                   : [
+     330|                       getShortcutFromShortcutName("commandPalette"),
+     331|                       getShortcutFromShortcutName("commandPalette", 1),
+     332|                     ]
+     333|               }
+     334|             />
+     335|           </ShortcutIsland>
+   ```
+
+# Workflows from earlier work in this repository (continued)
+
+## 4. Add an action to the canvas right-click menu
+Blanks: {action} the action const to add; {actionName} its shortcut/action name string used in the context-menu test
+1. Import {action} in the actions import list.
+   `packages/excalidraw/components/App.tsx:302-335` in import {
+   ```
+     302| import {
+        ⋮
+     329|   actionToggleElementLock,
+     330|   actionToggleLinearEditor,
+     331|   actionToggleObjectsSnapMode,
+     332|   actionToggleArrowBinding,
+     333|   actionToggleMidpointSnapping,
+     334|   actionToggleCropEditor,
+     335| } from "../actions";
+   ```
+2. Add {action} to the canvas menu item list in getContextMenuItems.
+   `packages/excalidraw/components/App.tsx:13855-13872` in … › private getContextMenuItems = ( › if (type === "canvas") { › return [
+   ```
+   13855|       return [
+        ⋮
+   13866|         actionToggleObjectsSnapMode,
+   13867|         actionToggleArrowBinding,
+   13868|         actionToggleMidpointSnapping,
+   13869|         actionToggleZenMode,
+   13870|         actionToggleViewMode,
+   13871|         actionToggleStats,
+   13872|       ];
+   ```
+3. Add "{actionName}" to expectedShortcutNames in the canvas context menu test, in the same position as in the menu.
+   `packages/excalidraw/tests/contextmenu.test.tsx:90-98` in describe("contextMenu element", () => { › it("shows context menu for canvas", () => { › const expectedShortcutNames: ShortcutName[] = [
+   ```
+      90|     const expectedShortcutNames: ShortcutName[] = [
+        ⋮
+      92|       "selectAll",
+      93|       "gridMode",
+      94|       "objectsSnapMode",
+      95|       "zenMode",
+      96|       "viewMode",
+      97|       "stats",
+      98|     ];
+   ```
+4. Regenerate snapshots (see the last section).
+Watch out: The same action name appears in several similar lists in App.tsx (and similar lists in other files), so an edit with a short old-string matches more than one place and fails. Include enough surrounding context (neighbouring entries) for a unique match, or edit each list separately.
+
+## 5. Add a toggle to Preferences in the main menu
+Blanks: {action} toggle action const; {Item} new component name PreferencesToggle{Thing}Item; {Thing} suffix used for Preferences.Toggle{Thing}; {field} appState field shown as checked
+1. Import {action} in the actions import list of the default items file.
+   `packages/excalidraw/components/main-menu/DefaultItems.tsx:7-20` in import {
+   ```
+       7| import {
+        ⋮
+      14|   actionToggleMidpointSnapping,
+      15|   actionToggleObjectsSnapMode,
+      16|   actionToggleSearchMenu,
+      17|   actionToggleStats,
+      18|   actionToggleTheme,
+      19|   actionToggleZenMode,
+      20| } from "../../actions";
+   ```
+2. Add an exported `{Item}` component modelled on the other PreferencesToggle…Item components (useI18n, useExcalidrawActionManager, useUIAppState; a checked DropdownMenuItem calling actionManager.executeAction({action})).
+   `packages/excalidraw/components/main-menu/DefaultItems.tsx:428-657` the top-level `PreferencesToggle…` statements
+   ```
+        ⋮
+     532| const PreferencesToggleArrowBindingItem = () => {
+     549| const PreferencesToggleMidpointSnappingItem = () => {
+     566| const PreferencesToggleShowHintsItem = () => {
+     583| export const PreferencesToggleGridModeItem = () => {
+     602| export const PreferencesToggleZenModeItem = () => {
+     620| const PreferencesToggleViewModeItem = () => {
+     641| const PreferencesToggleElementPropertiesItem = () => {
+   ```
+3. Render <{Item} /> in the Preferences submenu default children.
+   `packages/excalidraw/components/main-menu/DefaultItems.tsx:674-686` in … › <DropdownMenuSub.Content className="excalidraw-main-menu-preference... › {children || ( › <>
+   ```
+     674|           <>
+        ⋮
+     680|             <PreferencesToggleZenModeItem />
+     681|             <PreferencesToggleViewModeItem />
+     682|             <PreferencesToggleElementPropertiesItem />
+     683|             <PreferencesToggleArrowBindingItem />
+     684|             <PreferencesToggleMidpointSnappingItem />
+     685|             <PreferencesToggleShowHintsItem />
+     686|           </>
+   ```
+4. Expose it: `Preferences.Toggle{Thing} = {Item};`.
+   `packages/excalidraw/components/main-menu/DefaultItems.tsx:694-704` the top-level `Preferences.Toggle…` statements
+   ```
+        ⋮
+     698| Preferences.ToggleArrowBinding = PreferencesToggleArrowBindingItem;
+     699| Preferences.ToggleMidpointSnapping = PreferencesToggleMidpointSnappingItem;
+     700| Preferences.ToggleShowHints = PreferencesToggleShowHintsItem;
+     701| Preferences.ToggleGridMode = PreferencesToggleGridModeItem;
+     702| Preferences.ToggleZenMode = PreferencesToggleZenModeItem;
+     703| Preferences.ToggleViewMode = PreferencesToggleViewModeItem;
+     704| Preferences.ToggleElementProperties = PreferencesToggleElementPropertiesItem;
+   ```
+Watch out: `prettier --check` over several paths fails the chained command; use `yarn prettier --write` on the edited files (or --list-different to find which) instead of chaining checks.
+
+## Last: check it all with one command
+When all your edits are in, run once: `yarn prettier --write packages/excalidraw/components/main-menu/DefaultItems.tsx; yarn test:typecheck; yarn test:update; git status --short`
+These are the checks earlier runs of these workflows passed, in one call.
+In those runs the checks rewrote these test snapshots, as expected for this kind of change: `packages/excalidraw/tests/__snapshots__/contextmenu.test.tsx.snap`, `packages/excalidraw/tests/__snapshots__/history.test.tsx.snap`, `packages/excalidraw/tests/__snapshots__/regressionTests.test.tsx.snap`, `packages/utils/tests/__snapshots__/export.test.ts.snap`.
+</script>
+
+<script>
+(() => {
+  "use strict"
+
+  // ---------- small helpers: text always goes in as text ----------
+  const $ = (s) => document.querySelector(s)
+  const el = (tag, props = {}, ...kids) => {
+    const n = document.createElement(tag)
+    for (const [k, v] of Object.entries(props)) {
+      if (v === undefined || v === null || v === false) continue
+      if (k === "class") n.className = v
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v)
+      else n.setAttribute(k, v === true ? "" : String(v))
+    }
+    for (const kid of kids.flat()) if (kid !== undefined && kid !== null && kid !== false) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)))
+    return n
+  }
+  /** Text with `code` in backticks. */
+  const rich = (t) => {
+    const f = document.createDocumentFragment()
+    String(t).split("`").forEach((p, i) => f.append(i % 2 ? el("code", {}, p) : document.createTextNode(p)))
+    return f
+  }
+  const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const HANDOVER = $("#handover").textContent.replace(/^\n/, "").replace(/\s+$/, "")
+  const kch = (n) => `${(n / 1000).toFixed(1)}k`
+
+  // ---------- the loop: after a session memory learns (top half), when a task starts memory helps (bottom half) ----------
+  const STATIONS = [
+    { id: "session", label: "Session", deg: 180, glyph: "M-7 -5 h14 v8 h-8 l-4 4 v-4 h-2 z" },
+    { id: "trace", label: "Trace", deg: 240, glyph: "M-5 -7 h7 l3 3 v11 h-10 z M-2 -1 h5 M-2 2 h5" },
+    { id: "records", label: "Records", deg: 300, glyph: "M-7 -5 h14 v4 h-14 z M-6 -1 v7 h12 v-7 M-2 2 h4" },
+    { id: "workflows", label: "Workflows", deg: 360, glyph: "M-6 -5 m-2 0 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 M6 0 m-2 0 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 M-6 5 m-2 0 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 M-4 -4 L4 -1 M-4 4 L4 1" },
+    { id: "pick", label: "Pick", deg: 60, glyph: "M-7 -2 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0 M2 2 l5 5" },
+    { id: "handover", label: "Hand-over", deg: 120, glyph: "M-7 0 h9 M-1 -4 l4 4 l-4 4 M4 -7 h3 v14 h-3" }
+  ]
+  const CX = 200, CY = 92, RX = 152, RY = 58
+  const pt = (deg) => [CX + RX * Math.cos((deg * Math.PI) / 180), CY + RY * Math.sin((deg * Math.PI) / 180)]
+  const SVGNS = "http://www.w3.org/2000/svg"
+  const sv = (tag, attrs = {}, ...kids) => {
+    const n = document.createElementNS(SVGNS, tag)
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v))
+    for (const kid of kids) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)))
+    return n
+  }
+  function drawLoop(on, arcs) {
+    const svg = sv("svg", { viewBox: "0 0 400 190", role: "img", "aria-label": `The memory loop. Now: ${on.join(", ")}` })
+    STATIONS.forEach((s, i) => {
+      const next = STATIONS[(i + 1) % STATIONS.length]
+      const d0 = s.deg + 13
+      const d1 = (next.deg < s.deg ? next.deg + 360 : next.deg) - 15
+      const [x0, y0] = pt(d0)
+      const [x1, y1] = pt(d1)
+      const lit = arcs.includes(`${s.id}-${next.id}`)
+      svg.append(sv("path", { class: `arc${lit ? " on" : ""}`, d: `M${x0},${y0} A${RX},${RY} 0 0 1 ${x1},${y1}` }))
+      // An arrowhead at the arc's end, along the ellipse.
+      const t = (d1 * Math.PI) / 180
+      const dx = -RX * Math.sin(t), dy = RY * Math.cos(t)
+      const len = Math.hypot(dx, dy)
+      const ux = dx / len, uy = dy / len
+      const tipP = [x1 + ux * 4, y1 + uy * 4]
+      const a = [x1 - ux * 5 - uy * 4, y1 - uy * 5 + ux * 4]
+      const b = [x1 - ux * 5 + uy * 4, y1 - uy * 5 - ux * 4]
+      svg.append(sv("path", { class: `head${lit ? " on" : ""}`, d: `M${tipP[0]},${tipP[1]} L${a[0]},${a[1]} L${b[0]},${b[1]} z` }))
+    })
+    svg.append(sv("text", { class: "half", x: CX, y: CY - 10, "text-anchor": "middle" }, "after a session: memory learns →"))
+    svg.append(sv("text", { class: "half", x: CX, y: CY + 18, "text-anchor": "middle" }, "← when a task starts: memory helps"))
+    for (const s of STATIONS) {
+      const [x, y] = pt(s.deg)
+      const g = sv("g", { class: `st${on.includes(s.id) ? " on" : ""}`, transform: `translate(${x},${y})` })
+      g.append(sv("circle", { r: 17 }))
+      g.append(sv("path", { class: "glyph", d: s.glyph }))
+      const above = s.deg === 240 || s.deg === 300
+      g.append(sv("text", { x: 0, y: above ? -24 : 32, "text-anchor": "middle" }, s.label))
+      svg.append(g)
+    }
+    $("#loop").replaceChildren(svg)
+  }
+
+  // ---------- the two conversations ----------
+  const MINIMAP = "Add a \"Minimap\" toggle setting. Nothing draws a minimap yet; this is just the setting. Store it in a new appState field `minimapEnabled` (default false), saved to the browser's local storage but not to exported files or the collaboration server. Users should be able to toggle it with Alt+M, from the canvas right-click menu (also in view mode), and from Preferences in the main menu, and the help dialog should list the shortcut. Make sure the tests and the typecheck pass."
+  const PRESENTER = "Add a \"Presenter mode\" toggle setting. Nothing uses it yet; this is just the setting. Store it in a new appState field `presenterModeEnabled` (default false) that isn't saved anywhere: not local storage, exported files, or the collaboration server. Users should be able to toggle it with Alt+J, from the canvas right-click menu (but not in view mode, where it shouldn't be offered), and from Preferences in the main menu, and the help dialog should list the shortcut. Make sure the tests and the typecheck pass."
+  /** What the cues matched, and what the task rules out (taken out before matching). */
+  const MARKS = [
+    ["toggle setting", "mark"], ["appState field", "mark"], ["n't saved anywhere", "del"], ["not local storage", "del"], ["right-click menu", "mark"],
+    ["not in view mode", "del"], ["n't be offered", "del"], ["from Preferences", "mark"], ["help dialog", "mark"], ["tests", "mark"]
+  ]
+
+  function marked(text) {
+    const spans = MARKS.map(([s, k]) => ({ at: text.indexOf(s), s, k })).filter((m) => m.at >= 0).sort((a, b) => a.at - b.at)
+    const f = document.createDocumentFragment()
+    let i = 0
+    for (const m of spans) {
+      if (m.at < i) continue
+      f.append(rich(text.slice(i, m.at)), el(m.k, {}, text.slice(m.at, m.at + m.s.length)))
+      i = m.at + m.s.length
+    }
+    f.append(rich(text.slice(i)))
+    return f
+  }
+
+  const AVATAR = { you: "Y", claude: "C", memory: "M", warning: "!" }
+  function msg(kind, name, note, ...body) {
+    const who = kind.includes("warning") ? "warning" : kind.split(" ")[0]
+    return el("div", { class: `msg ${kind}` },
+      el("div", { class: `av ${kind.split(" ")[0]}`, "aria-hidden": "true" }, AVATAR[who]),
+      el("div", {}, el("div", { class: "who" }, el("b", {}, name), note ?? ""), el("div", { class: "bubble" }, ...body)))
+  }
+  const ICON = { ok: "✓", bad: "✕", warn: "!", dot: "" }
+  const row = (icon, key, ...text) => el("li", { "data-key": key }, el("span", { class: `ic ${icon}`, "aria-hidden": "true" }, ICON[icon]), el("span", {}, ...text))
+  const sub = (icon, ...text) => {
+    const li = row(icon, undefined, ...text)
+    li.classList.add("sub")
+    return li
+  }
+
+  function youSay(text, withMarks, clamp) {
+    const p = el("div", { class: `prompt-text${clamp ? " clamp" : ""}` }, withMarks ? marked(text) : rich(text))
+    const parts = [p]
+    if (clamp) {
+      const more = el("button", { class: "link", type: "button" }, "show the whole prompt")
+      more.addEventListener("click", () => {
+        p.classList.toggle("clamp")
+        more.textContent = p.classList.contains("clamp") ? "show the whole prompt" : "show less"
+      })
+      parts.push(more)
+    }
+    return msg("you", "You", null, ...parts)
+  }
+
+  /** The messages of each session, by id; a step shows some of them. */
+  const CHAT = {
+    A: {
+      sub: "Session 1 · 2026-10-01 · a “Minimap” setting",
+      tag: "no memory yet",
+      items: {
+        prompt: () => youSay(MINIMAP, false, true),
+        work: () => msg("claude", "Claude", "worked for 18 turns",
+          el("ul", { class: "rows" },
+            row("dot", "look", "Looked around first: 5 turns, 17 reads and searches"),
+            row("dot", "edits", "Edited 11 files"),
+            row("bad", "mistakes", "Made 3 mistakes, and fixed each:"),
+            sub("bad", "an edit to App.tsx matched two places"),
+            sub("bad", rich("`yarn test:update --watch=false` failed: the script already passes --watch")),
+            sub("bad", rich("`prettier --check` over several folders failed")),
+            row("ok", "done", "Done: the tests and the typecheck pass")),
+          el("div", { class: "stats" }, "819k tokens · $0.43"))
+      }
+    },
+    B: {
+      sub: "Session 2 · 2026-10-06 · a “Presenter mode” setting",
+      tag: "memory on",
+      items: {
+        prompt: () => youSay(PRESENTER, true, false),
+        hook: () => el("div", { class: "hook" }, "memory runs before Claude starts"),
+        handover: () => {
+          const raw = el("pre", { class: "raw", hidden: true }, HANDOVER)
+          const label = () => (raw.hidden ? `see the exact text (${kch(HANDOVER.length)} characters)` : "hide the exact text")
+          const toggle = el("button", { class: "link", type: "button" })
+          toggle.textContent = label()
+          toggle.addEventListener("click", () => { raw.hidden = !raw.hidden; toggle.textContent = label() })
+          return msg("memory", "Memory", "added before Claude's first turn",
+            el("div", {}, "Steps from earlier, similar tasks:"),
+            el("ul", { class: "ho-list" },
+              el("li", {}, "6 workflows, in the order to do them"),
+              el("li", {}, rich("filled in from your prompt: `presenterModeEnabled`, `false`, `Alt+J`")),
+              el("li", {}, "18 places in the code, with today's line numbers"),
+              el("li", {}, "3 known mistakes to avoid"),
+              el("li", {}, "1 command that checks everything at the end")),
+            toggle, raw)
+        },
+        work: () => msg("claude", "Claude", "worked for 8 turns",
+          el("ul", { class: "rows" },
+            row("dot", "look2", "Looked around first: 4 turns"),
+            row("ok", "edits2", "Made all 18 edits in one turn, at the places memory showed"),
+            row("ok", "check2", "Ran memory's one check command: everything passes"),
+            row("ok", "nomistake", "No mistakes")),
+          el("div", { class: "stats" }, "353k tokens · $0.28")),
+        elsewhere: () => el("div", { class: "divider" }, "meanwhile, in a bug-fix session the same day"),
+        fail: () => msg("claude", "Claude", null, el("ul", { class: "rows" }, row("bad", "failcmd", rich("Ran `yarn test:update --watch=false`: it failed")))),
+        warn: () => msg("memory warning", "Memory", "right after the failed command",
+          rich("What you just did matches a mistake made before: `yarn test:update` already passes a --watch option, so adding `--watch=false` fails. Run plain `yarn test:update`.")),
+        fixed: () => msg("claude", "Claude", null, el("ul", { class: "rows" }, row("ok", "fixedcmd", rich("Ran plain `yarn test:update`: it passed")))),
+        recorded: () => el("div", { class: "hook" }, "session over: memory records it, and what it used"),
+        nextTime: () => el("div", { class: "divider" }, "the same task again, with memory after its learning round"),
+        next: () => msg("claude", "Claude", "worked for 7 turns",
+          el("ul", { class: "rows" },
+            row("dot", undefined, "Looked around first: 3 turns"),
+            row("ok", undefined, "Made every edit in one turn"),
+            row("ok", undefined, "Ran memory's one check command: everything passes")),
+          el("div", { class: "stats" }, "254k tokens · $0.12"))
+      }
+    }
+  }
+
+  // ---------- memory: four boxes ----------
+  const TILES = [
+    { id: "records", name: "Records", hint: "sessions kept" },
+    { id: "workflows", name: "Workflows", hint: "steps with blanks" },
+    { id: "mistakes", name: "Known mistakes", hint: "with their fixes" },
+    { id: "cues", name: "Cues", hint: "phrases that pick workflows" }
+  ]
+  function tiles(state, lit) {
+    return el("div", { class: "tiles" }, TILES.map((t) => {
+      const s = state[t.id]
+      return el("div", { class: `tile${lit.includes(t.id) ? " lit" : lit.length > 0 ? " dim" : ""}`, "data-key": `tile-${t.id}` },
+        el("div", { class: "t-name" }, el("span", {}, t.name), el("span", {}, t.hint)),
+        el("div", { class: `t-n${s ? "" : " none"}` }, s ? String(s.n) : "—"),
+        el("div", { class: "t-ex" }, s ? rich(s.ex) : "nothing yet"))
+    }))
+  }
+  const now = (title, free, ...body) => el("div", { class: "now" }, el("h3", {}, title, free ? el("span", { class: "free" }, "no AI call") : null), ...body)
+  const p = (t) => el("p", {}, rich(t))
+
+  // ---------- the cost chart: one series, every bar labelled, a table view ----------
+  const VERSIONS = [
+    { v: "Version 2", what: "picked by cues", usd: 0.32, tok: 538, turns: 11 },
+    { v: "Version 3", what: "+ one check command", usd: 0.26, tok: 372, turns: 9 },
+    { v: "Version 4", what: "+ a learning round", usd: 0.13, tok: 288, turns: 8 }
+  ]
+  const tip = $("#tip")
+  function costChart() {
+    const W = 380, top = 6, rowH = 34, left = 132, right = 46, H = top + rowH * VERSIONS.length + 20
+    const x = (u) => left + (u / 0.4) * (W - left - right)
+    const svg = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Cost per run of the same task, by memory version" })
+    for (const t of [0, 0.1, 0.2, 0.3, 0.4]) {
+      svg.append(sv("line", { class: t === 0 ? "base" : "grid", x1: x(t), x2: x(t), y1: top - 2, y2: H - 18 }))
+      svg.append(sv("text", { x: x(t), y: H - 4, "text-anchor": "middle" }, t === 0 ? "$0" : `$${t.toFixed(1)}`))
+    }
+    VERSIONS.forEach((d, i) => {
+      const y = top + i * rowH
+      const g = sv("g", { class: "mark" })
+      g.append(sv("text", { class: "lbl", x: 0, y: y + 11 }, d.v))
+      g.append(sv("text", { x: 0, y: y + 25 }, d.what))
+      const w = x(d.usd) - x(0)
+      g.append(sv("path", { class: "bar", d: `M${x(0)},${y + 4} h${w - 4} a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h${-(w - 4)} z` }))
+      g.append(sv("text", { class: "val", x: x(d.usd) + 6, y: y + 17 }, `$${d.usd.toFixed(2)}`))
+      const hit = sv("rect", { class: "hit", x: 0, y: y - 2, width: W, height: rowH, tabindex: 0, "aria-label": `${d.v}: $${d.usd.toFixed(2)}, ${d.tok}k tokens, ${d.turns} turns` })
+      const show = (e) => {
+        tip.replaceChildren(el("b", {}, `$${d.usd.toFixed(2)} a run`), el("div", {}, `${d.tok}k tokens · ${d.turns} turns`), el("div", {}, `${d.v}, ${d.what}`))
+        tip.style.display = "block"
+        const r = e.target.getBoundingClientRect()
+        tip.style.left = `${Math.min(window.innerWidth - tip.offsetWidth - 8, (e.clientX ?? r.left + r.width / 2) + 12)}px`
+        tip.style.top = `${Math.max(8, (e.clientY ?? r.top) - tip.offsetHeight - 10)}px`
+      }
+      hit.addEventListener("pointermove", show)
+      hit.addEventListener("focus", show)
+      hit.addEventListener("pointerleave", () => { tip.style.display = "none" })
+      hit.addEventListener("blur", () => { tip.style.display = "none" })
+      g.append(hit)
+      svg.append(g)
+    })
+    const chart = el("div", { class: "chart" }, svg)
+    const table = el("table", { class: "data", hidden: true },
+      el("thead", {}, el("tr", {}, ...["Memory", "Dollars", "Tokens", "Turns"].map((h) => el("th", {}, h)))),
+      el("tbody", {}, VERSIONS.map((d) => el("tr", {}, el("td", {}, `${d.v} (${d.what})`), el("td", {}, `$${d.usd.toFixed(2)}`), el("td", {}, `${d.tok}k`), el("td", {}, String(d.turns))))))
+    const btn = el("button", { class: "link", type: "button" }, "show as a table")
+    btn.addEventListener("click", () => {
+      table.hidden = !table.hidden
+      chart.hidden = !table.hidden
+      btn.textContent = table.hidden ? "show as a table" : "show as a chart"
+    })
+    return el("div", {}, el("p", { style: "margin:10px 0 4px" }, "This task's cost per run, median of three runs each:"), chart, table, btn)
+  }
+
+  // ---------- the seven steps ----------
+  const EMPTY = { records: null, workflows: null, mistakes: null, cues: null }
+  const LEARNED = {
+    records: { n: 6, ex: "“Minimap” ×3, a zen-mode shortcut ×3" },
+    workflows: { n: 8, ex: "e.g. add a field to the app state" },
+    mistakes: { n: 4, ex: "e.g. `--watch=false` given twice" },
+    cues: { n: 29, ex: "“toggle setting”, “right-click menu”…" }
+  }
+  const STEPS = [
+    {
+      title: "A session leaves a trace",
+      text: "Claude Code logs everything a session does: each file it reads, each edit, each command and its result. That log is the trace. This session had no memory yet: it took 18 turns and made 3 mistakes.",
+      on: ["session", "trace"], arcs: ["session-trace"],
+      chat: "A", show: ["prompt", "work"], hl: [],
+      mem: EMPTY, memTag: "empty", lit: [],
+      now: () => now("Nothing yet", false, p("Memory starts empty. It learns only from sessions that end with their change working."))
+    },
+    {
+      title: "Memory reads the trace",
+      text: "When a session ends with its change working, memory turns the trace into a record: where each edit went, and each mistake with what fixed it. Plain code does this, with no AI call. Six sessions of two tasks give six records.",
+      on: ["trace", "records"], arcs: ["trace-records"],
+      chat: "A", show: ["prompt", "work"], hl: ["edits", "mistakes"],
+      mem: { ...EMPTY, records: LEARNED.records }, memTag: "6 records", lit: ["records"],
+      fly: [["edits", "tile-records", "where the 11 files' edits went"], ["mistakes", "tile-records", "3 mistakes, with their fixes"]],
+      now: () => now("What a record keeps", true, el("ul", {},
+        el("li", {}, "where each edit went, as the code around it (“inside the right-click menu's list”), never the code itself"),
+        el("li", {}, "each mistake, with what fixed it and what it cost"),
+        el("li", {}, rich("not the task's own names (`minimapEnabled`, `Alt+M`): those never get into memory"))))
+    },
+    {
+      title: "Memory learns the steps",
+      text: "Between sessions, one AI call reads the records and writes small reusable workflows, with blanks where each task's own names go, and the mistakes worth a warning. A second call writes cues: phrases that say when each workflow is needed.",
+      on: ["records", "workflows"], arcs: ["records-workflows"],
+      chat: "between",
+      mem: LEARNED, memTag: "version 2", lit: ["workflows", "mistakes", "cues"],
+      now: () => now("One of the 8 workflows", false,
+        el("div", { class: "wf" }, el("b", {}, "Add a field to the app state"),
+          el("div", {}, rich("1. Add `{field}` to the AppState type")),
+          el("div", {}, rich("2. Give it its default value, `{default}`")),
+          el("div", {}, rich("3. Add it to the storage rules the task asks for"))),
+        el("p", { style: "margin-top:8px" }, rich("Blanks like `{field}` are filled in for each new task. The two AI calls ran once and cost $0.14 and $0.09; code checked every line against the records before keeping it. Version 3 then added one command that checks everything at the end.")))
+    },
+    {
+      title: "A new task: memory picks what fits",
+      text: "A new session asks for a “Presenter mode” setting. Before Claude sees the prompt, memory matches its cues against the task's words and picks 6 of its 8 workflows. This is plain text matching, with no AI call.",
+      on: ["workflows", "pick"], arcs: ["workflows-pick"],
+      chat: "B", show: ["prompt", "hook"], hl: [],
+      mem: LEARNED, memTag: "version 3", lit: ["workflows", "cues"],
+      now: () => now("Picked 6 of 8", true,
+        el("ul", { class: "picks" }, [
+          ["Add a field to the app state", "“appState field”"], ["Create a toggle action", "“toggle setting”"], ["Give it a keyboard shortcut", "“help dialog”"],
+          ["Add it to the right-click menu", "“right-click menu”, minus the view-mode list"], ["Add it to Preferences", "“from Preferences”"], ["Update the test snapshots, check everything", "“tests”"]
+        ].map(([n, why]) => el("li", {}, el("span", { class: "ic ok", "aria-hidden": "true" }, "✓"), el("span", {}, n, " · ", el("span", { class: "why" }, why))))),
+        el("p", { style: "margin-top:8px" }, "In the prompt: the matched words are highlighted. What the task rules out is struck out first, so “not in view mode” leaves the view-mode step out."))
+    },
+    {
+      title: "Memory hands it to Claude",
+      text: "Memory fills in the values the prompt states, finds each step's place in the code as it is today, and adds the result to the conversation before Claude's first turn. Claude reads it like the rest of the chat.",
+      on: ["pick", "handover", "session"], arcs: ["pick-handover", "handover-session"],
+      chat: "B", show: ["prompt", "handover"], hl: [],
+      mem: LEARNED, memTag: "version 3", lit: ["workflows"],
+      fly: [["tile-workflows", "handover", "6 workflows, filled in"]],
+      now: () => now("Made for this task", true,
+        el("ul", {},
+          el("li", {}, rich("blanks filled from the prompt: `{field}` = `presenterModeEnabled`, `{default}` = `false`, `{shortcut}` = `Alt+J`")),
+          el("li", {}, rich("18 places looked up in today's code, such as `appState.ts` lines 28–146")),
+          el("li", {}, "memory keeps no code itself, so what it shows is never out of date")))
+    },
+    {
+      title: "Claude works; memory watches",
+      text: "Claude made all 18 edits in one turn, at the places memory showed. Meanwhile memory checks every tool call against its known mistakes. In a bug-fix session the same day, Claude repeated one, and memory's warning came right after the error.",
+      on: ["session"], arcs: [],
+      chat: "B", show: ["prompt", "handover", "work", "elsewhere", "fail", "warn", "fixed"], hl: ["edits2", "warn"],
+      mem: { ...LEARNED, mistakes: { n: 4, ex: "1 just matched: `--watch=false`" } }, memTag: "version 3", lit: ["mistakes"],
+      fly: [["tile-mistakes", "warn", "known mistake: --watch=false"]],
+      now: () => now("Watching every tool call", true,
+        p("After each tool call, memory compares it with its known mistakes, as plain text. It speaks only when one repeats, once per session."),
+        p("“Presenter mode” session: 29 tool calls, no known mistake. Bug-fix session: one, caught right away."))
+    },
+    {
+      title: "Memory learns from how it went",
+      text: "Each finished session becomes a record too, with what memory showed and what Claude used. A learning round over 12 such sessions revised the workflows, kept only because it fits past sessions better. With it, the same task cost $0.12.",
+      on: ["session", "trace", "records", "workflows"], arcs: ["session-trace", "trace-records", "records-workflows"],
+      chat: "B", show: ["prompt", "handover", "work", "recorded", "nextTime", "next"], hl: [],
+      mem: { ...LEARNED, records: { n: 18, ex: "+ 12 sessions that used memory" }, workflows: { n: 8, ex: "revised: version 4" }, mistakes: { n: 5, ex: "one more learned" } }, memTag: "version 4", lit: ["records", "workflows"],
+      fly: [["recorded", "tile-records", "17 of 18 places used"]],
+      now: () => now("Kept only if it fits better", false,
+        el("div", { class: "gate" },
+          el("span", {}, "places shown that Claude didn't need"), el("b", {}, "29"), el("span", { class: "arrow" }, "→"), el("b", {}, "9"),
+          el("span", {}, "places Claude needed that it showed"), el("b", {}, "163"), el("span", { class: "arrow" }, "→"), el("b", {}, "162")),
+        el("p", {}, "Replayed over 18 past sessions, the revision fit better, so it became version 4."),
+        costChart())
+    }
+  ]
+
+  // ---------- rendering ----------
+  let current = 0
+  let gen = 0
+
+  function renderChat(step, prev, animate) {
+    const body = $("#chat-body")
+    const tag = $("#chat-tag")
+    if (step.chat === "between") {
+      $("#chat-sub").textContent = "between sessions"
+      tag.textContent = "no chat"
+      tag.className = "tag"
+      body.replaceChildren(el("div", { class: "between" }, el("div", { class: "big", "aria-hidden": "true" }, "⟳"), el("div", {}, el("b", {}, "No conversation now."), " Memory learns between sessions, from its records.")))
+      body.scrollTop = 0
+      return
+    }
+    const c = CHAT[step.chat]
+    $("#chat-sub").textContent = c.sub
+    tag.textContent = c.tag
+    tag.className = `tag${step.chat === "B" ? " mem" : ""}`
+    const before = prev !== undefined && prev.chat === step.chat ? new Set(prev.show) : new Set()
+    const wrap = el("div", { class: "chat" })
+    let k = 0
+    let firstNew
+    for (const id of step.show) {
+      const node = c.items[id]()
+      if (node.dataset.key === undefined) node.dataset.key = id
+      if (!before.has(id)) {
+        if (animate) {
+          node.classList.add("enter")
+          node.style.animationDelay = `${k++ * 140}ms`
+        }
+        firstNew ??= node
+      }
+      wrap.append(node)
+    }
+    for (const key of step.hl) wrap.querySelector(`[data-key="${key}"]`)?.classList.add("hl")
+    body.replaceChildren(wrap)
+    const target = step.hl.length > 0 ? wrap.querySelector(".hl") : firstNew
+    // Measured against the panel: an animated message would otherwise be what offsetTop counts from.
+    requestAnimationFrame(() => {
+      body.scrollTop = target ? Math.max(0, target.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 16) : 0
+    })
+  }
+
+  function renderMemory(step) {
+    $("#mem-tag").textContent = step.memTag
+    $("#mem-body").replaceChildren(tiles(step.mem, step.lit), step.now())
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  function visible(node) {
+    const r = node.getBoundingClientRect()
+    const box = node.closest(".p-body")?.getBoundingClientRect()
+    if (!box) return r
+    const top = Math.min(Math.max(r.top, box.top + 8), box.bottom - 24)
+    return { left: r.left, top, width: Math.min(r.width, box.width), height: 16 }
+  }
+  function pulse(node) {
+    node.classList.remove("pulse")
+    void node.offsetWidth
+    node.classList.add("pulse")
+  }
+  async function fly(step, g) {
+    for (const [from, to, label] of step.fly ?? []) {
+      await sleep(reduced() ? 0 : 700)
+      if (g !== gen) return
+      const a = document.querySelector(`[data-key="${from}"]`)
+      const b = document.querySelector(`[data-key="${to}"]`)
+      if (!a || !b) continue
+      if (reduced()) {
+        pulse(b)
+        continue
+      }
+      const ra = visible(a)
+      const rb = visible(b)
+      const chip = el("div", { class: "chip" }, label)
+      $(".viz-root").append(chip)
+      const x0 = ra.left + Math.min(ra.width, 260) / 2 - chip.offsetWidth / 2
+      const y0 = ra.top + ra.height / 2 - chip.offsetHeight / 2
+      chip.style.left = `${x0}px`
+      chip.style.top = `${y0}px`
+      const dx = rb.left + Math.min(rb.width, 260) / 2 - (x0 + chip.offsetWidth / 2)
+      const dy = rb.top + rb.height / 2 - (y0 + chip.offsetHeight / 2)
+      const anim = chip.animate([
+        { transform: "translate(0,0) scale(.9)", opacity: 0 },
+        { transform: "translate(0,0) scale(1)", opacity: 1, offset: 0.15 },
+        { transform: `translate(${dx}px,${dy}px) scale(1)`, opacity: 1, offset: 0.85 },
+        { transform: `translate(${dx}px,${dy}px) scale(.85)`, opacity: 0 }
+      ], { duration: 1200, easing: "cubic-bezier(.45,0,.2,1)" })
+      await anim.finished.catch(() => undefined)
+      chip.remove()
+      if (g === gen) pulse(b)
+    }
+  }
+
+  function go(i, animate = true) {
+    const prev = STEPS[current]
+    const forward = i > current
+    current = Math.max(0, Math.min(STEPS.length - 1, i))
+    const step = STEPS[current]
+    gen++
+    document.querySelectorAll(".chip").forEach((c) => c.remove())
+    tip.style.display = "none"
+    drawLoop(step.on, step.arcs)
+    $("#kicker").textContent = `Step ${current + 1} of ${STEPS.length}`
+    $("#title").textContent = step.title
+    $("#text").textContent = step.text
+    $("#back").disabled = current === 0
+    $("#next").disabled = current === STEPS.length - 1
+    $("#dots").replaceChildren(...STEPS.map((s, k) => el("button", { class: `dot${k === current ? " on" : ""}`, type: "button", "aria-label": `Step ${k + 1}: ${s.title}`, "aria-current": k === current ? "step" : null, onclick: () => go(k, k > current) })))
+    const anim = animate && forward && !reduced()
+    renderChat(step, prev === step ? undefined : prev, anim)
+    renderMemory(step)
+    if (history.replaceState) history.replaceState(null, "", `#step-${current + 1}`)
+    if (animate && forward) fly(step, gen)
+  }
+
+  $("#back").addEventListener("click", () => go(current - 1, false))
+  $("#next").addEventListener("click", () => go(current + 1))
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") go(current + 1)
+    else if (e.key === "ArrowLeft") go(current - 1, false)
+  })
+  $("#theme").addEventListener("click", () => {
+    const root = document.documentElement
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches
+    root.dataset.theme = dark ? "light" : "dark"
+  })
+
+  const fromHash = /^#step-(\d+)$/.exec(location.hash)
+  current = fromHash ? Math.max(0, Math.min(STEPS.length - 1, Number(fromHash[1]) - 1)) : 0
+  go(current, false)
+})()
+</script>
+</body>
+</html>

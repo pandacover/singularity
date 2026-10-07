@@ -4,15 +4,27 @@
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts-warnings --memory DIR --warnings GRAPH_DIR [--frozen]
+ *     node src/cli.ts eval run SUITE.toml --setup hooks|workflows --memory MEMORY_HOME
  *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts|graph --memory DIR [--task ID ...]
  *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
  *     node src/cli.ts graph show DIR [--graph ID] [--version N]
  *     node src/cli.ts traces SESSION [--json]
+ *     node src/cli.ts record import RUN_DIRS... | session ID | list | show ID | annotate [IDS...|--all]
+ *     node src/cli.ts search QUERY... [--exact]
+ *     node src/cli.ts memory build [--conditions] [--dry-run] | show [AT] | candidates | replay [AT]
+ *     node src/cli.ts handover TASK... [--cwd REPO] [--no-model]
+ *     node src/cli.ts hooks install|uninstall [--scope user|project|local] | print | status
+ *     node src/cli.ts workflows build [--task ID ...] [--fresh] | show [AT] | candidates
  */
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"
+import { memoryCommand } from "./commands/Memory.ts"
+import { recordCommand } from "./commands/Records.ts"
+import { searchCommand } from "./commands/Search.ts"
+import { workflowsCommand } from "./commands/Workflows.ts"
 import { GraphStore, JsonGraphStore } from "./graph/index.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
 import { DEFAULT_LEARNER_EFFORT, DEFAULT_LEARNER_MODEL } from "./eval/GraphLearner.ts"
@@ -51,6 +63,13 @@ const workspacesFlag = Flag.String("workspaces").pipe(
 )
 
 const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable"))
+
+/**
+ * Setups that prepare memory before a run, and learn after it, through the
+ * harness. The hooks setup does neither: its hooks hand memory over during the
+ * run (preview with `handover --home`), and memory is built with `memory build`.
+ */
+const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows" && s !== "workflows-draft" && s !== "workflows-cues" && s !== "workflows-split")
 
 const graphVersionFlag = Flag.Int("graph-version").pipe(
   Flag.optional,
@@ -91,7 +110,7 @@ const run = Command.make(
     setup: Flag.Literals("setup", SETUPS).pipe(Flag.withDefault("no-memory")),
     memory: Flag.String("memory").pipe(
       Flag.optional,
-      Flag.withDescription("memory store for setups that learn (e.g. saved-scripts)")
+      Flag.withDescription("memory store for setups that learn (e.g. saved-scripts); for hooks, a memory home")
     ),
     frozen: Flag.Boolean("frozen").pipe(
       Flag.withDefault(false),
@@ -108,13 +127,18 @@ const run = Command.make(
     out: Flag.String("out").pipe(Flag.optional, Flag.withDescription("output dir (default runs/<suite>/<time>-<setup>)")),
     workspaces: workspacesFlag,
     claude: claudeFlag,
+    priority: Flag.Literals("priority", ["below-normal", "normal"]).pipe(
+      Flag.withDefault("below-normal"),
+      Flag.withDescription("below-normal keeps the machine usable during runs; normal when nothing else needs it")
+    ),
     dryRun: Flag.Boolean("dry-run").pipe(
       Flag.withDefault(false),
       Flag.withDescription("resolve tasks and print the agent command without running")
     )
   },
   Effect.fn(function*(args) {
-    yield* lowerPriority
+    // Children inherit it: the agent, its tool calls and hooks, the checks.
+    if (args.priority === "below-normal") yield* lowerPriority
     const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
@@ -133,7 +157,9 @@ const run = Command.make(
         const sha = yield* resolveRef(ws, t.base)
         yield* Console.log(`task       ${t.id} @ ${sha.slice(0, 12)}  checks: ${t.checks.length}`)
       }
-      yield* Console.log("command    " + buildCommand(claude, suite.agent, "<session-id>").join(" "))
+      // The hooks and workflows setups write their settings into each run's directory.
+      const settings = /^(hooks|workflows)/.test(args.setup) ? ["--settings", "<run dir>/hooks.json"] : []
+      yield* Console.log("command    " + [...buildCommand(claude, suite.agent, "<session-id>"), ...settings].join(" "))
       return
     }
 
@@ -159,7 +185,7 @@ const learn = Command.make(
       Argument.variadic({ min: 1 }),
       Argument.withDescription("results.jsonl files or run output dirs")
     ),
-    setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
+    setup: Flag.Literals("setup", PREPARED_SETUPS),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to add to")),
     warnings: warningsFlag,
     tasks: tasksFlag,
@@ -197,7 +223,7 @@ const inject = Command.make(
   "inject",
   {
     suite: Argument.String("suite").pipe(Argument.withDescription("suite TOML file")),
-    setup: Flag.Literals("setup", SETUPS.filter((s) => s !== "no-memory")),
+    setup: Flag.Literals("setup", PREPARED_SETUPS),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to read")),
     graphVersion: graphVersionFlag,
     warnings: warningsFlag,
@@ -374,7 +400,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([evalCommand, graphCommand, traces]),
+  Command.withSubcommands([evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand]),
   Command.run({ version: "0.1.0" }),
   Effect.catchTags({
     SuiteError: reportError,
@@ -386,7 +412,10 @@ Command.make("singularity").pipe(
     StoreError: reportError,
     GraphNotFound: reportError,
     CandidateNotFound: reportError,
-    InvalidEdit: reportError
+    InvalidEdit: reportError,
+    Conflict: reportError,
+    HomeError: reportError,
+    RecordNotFound: reportError
   }),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain

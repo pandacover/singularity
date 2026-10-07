@@ -38,10 +38,26 @@ export interface AgentRun {
   readonly result: Readonly<Record<string, unknown>> | undefined
 }
 
-/** The `claude` executable on PATH, resolved to a full path like a shell would. */
+/**
+ * Where `SINGULARITY_CLAUDE` points the hooks' own model calls: a path, or a
+ * JSON array of a command and its first arguments. The eval harness sets it,
+ * so they run the same Claude Code as the agent.
+ */
+export const CLAUDE_ENV = "SINGULARITY_CLAUDE"
+
+const ClaudeCommand = Schema.fromJsonString(Schema.NonEmptyArray(Schema.String))
+
+/** `SINGULARITY_CLAUDE`, else the `claude` executable on PATH, resolved to a full path like a shell would. */
 export const defaultClaude = Effect.fn("defaultClaude")(function*() {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
+  const set = process.env[CLAUDE_ENV]?.trim()
+  if (set) {
+    if (!set.startsWith("[")) return [set]
+    return yield* Schema.decodeUnknownEffect(ClaudeCommand)(set).pipe(
+      Effect.mapError((e) => new AgentError({ message: `${CLAUDE_ENV} isn't a path or a JSON array of strings: ${e.message}` }))
+    )
+  }
   const exts = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""]
   for (const dir of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
     for (const ext of exts) {
@@ -90,6 +106,13 @@ export const agentEnv = (base: Readonly<Record<string, string | undefined>> = pr
   // Claude Code's own auto-memory would carry notes from one run to the next
   // and contaminate every setup, so it is always off.
   env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"
+  // A version change in the middle of a batch would change what is measured
+  // (each turn rereads Claude Code's own prompt), so runs never update it.
+  env.DISABLE_AUTOUPDATER = "1"
+  // Our own hooks, if installed for daily work, stay out of measurement runs
+  // and out of the model calls memory makes itself (a task-start hook inside
+  // the task-start model call would call itself). A suite's env can turn them on.
+  env.SINGULARITY_HOOKS = "off"
   return env
 }
 
