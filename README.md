@@ -13,7 +13,7 @@ and walks you through setting memory up in the coding agents it finds.
 macOS, Linux, WSL or Git Bash:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/pandacover/singularity/main/install.sh | sh
+curl -fsSL --connect-timeout 10 https://raw.githubusercontent.com/pandacover/singularity/main/install.sh | sh
 ```
 
 Windows PowerShell:
@@ -22,8 +22,13 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex
 ```
 
-You need Node.js 24 or later and git. Memory learns from Claude Code
-sessions, and with Claude Code's model calls, so have Claude Code too.
+You need git. Without Node.js 24 or later on your PATH, the installer
+fetches its own copy into `~/.singularity/node` (checked against nodejs.org's
+checksums) and changes nothing else. Memory learns from Claude Code sessions,
+and with Claude Code's model calls, so have Claude Code too. WSL keeps its own
+agents: for agents you run on Windows, run the PowerShell command on Windows.
+(`--connect-timeout` makes curl move on quickly from a GitHub address your
+network can't reach, instead of waiting minutes.)
 
 | Agent | What memory does there | What setup adds |
 |---|---|---|
