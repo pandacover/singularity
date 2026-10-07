@@ -20,7 +20,7 @@ import { shapeOf } from "./Evidence.ts"
 import { finishOf, hasFinish } from "./Finish.ts"
 import type { Located } from "./Locate.ts"
 import type { Pitfall, Place, WorkflowMemory } from "./Models.ts"
-import { continues, describeChain, indentOf, type Region } from "./Places.ts"
+import { continues, describeChain, indentOf, membersOf, type Region } from "./Places.ts"
 import type { Selected } from "./Select.ts"
 
 /** Claude Code cuts a hook's text at 10,000 characters. */
@@ -117,6 +117,21 @@ const entryRows = (lines: ReadonlyArray<string>, r: Region, max: number): Array<
 /** Entries are longer than the ends of blocks: at each budget step, this many times the excerpt's lines. */
 const ENTRY_FACTOR = 3
 
+/**
+ * An outline of a found block, for places runs read (a test helper's class):
+ * its first line, the first line of each member, at most `max` of them, and
+ * its closing line.
+ */
+const outlineRows = (lines: ReadonlyArray<string>, r: Region, max: number): Array<Row> => {
+  if (max <= 0) return []
+  const members = membersOf(lines, r).filter((i) => i !== r.from)
+  const kept: Array<Row> = members.length <= max ? members : [...members.slice(0, max - 1), "gap", members[members.length - 1]]
+  return [r.from, ...kept, ...(r.closeLine === null || r.closeLine === r.from ? [] : [r.closeLine])]
+}
+
+/** Outlines are a line per member: at each budget step, this many times the excerpt's lines. */
+const OUTLINE_FACTOR = 3
+
 interface Rendered {
   readonly header: string
   readonly excerpt: ReadonlyArray<string>
@@ -144,9 +159,16 @@ const renderPlace = (p: Place, at: Located, max: number): Rendered => {
   const r = at.region
   const where = p.chain.length > 0 ? `in ${describeChain(shapeOf(p), 3)}` : describeChain(shapeOf(p))
   const moved = at.moved ? ` (moved from ${code(p.file)})` : ""
-  const rows = entry ? entryRows(at.lines, r, max * ENTRY_FACTOR) : excerptRows(at.lines, r, max)
+  const outline = p.show === "outline"
+  const rows = outline
+    ? outlineRows(at.lines, r, max * OUTLINE_FACTOR)
+    : entry
+    ? entryRows(at.lines, r, max * ENTRY_FACTOR)
+    : excerptRows(at.lines, r, max)
   return {
-    header: `${code(`${at.file}:${r.from + 1}-${r.to + 1}`)} ${where}${moved}`,
+    header: outline
+      ? `${code(`${at.file}:${r.from + 1}-${r.to + 1}`)}${moved}, its members:`
+      : `${code(`${at.file}:${r.from + 1}-${r.to + 1}`)} ${where}${moved}`,
     excerpt: format(at.lines, rows),
     shown: { place: p.id, file: at.file, from: r.from + 1, to: r.to + 1, lines: shownLines(rows) }
   }

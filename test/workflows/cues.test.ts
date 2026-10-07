@@ -263,7 +263,8 @@ const seed = (task: string, prompt: string, values: ReadonlyArray<string>): RunE
   values: [...values],
   calls: [],
   cwd: undefined,
-  looking: null
+  looking: null,
+  reads: []
 })
 
 const plainMemory: WorkflowMemory = {

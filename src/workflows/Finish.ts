@@ -23,8 +23,14 @@ import { END, type Workflow, type WorkflowMemory } from "./Models.ts"
 /** Memory that keeps what its workflows' checks rewrite hands over the finish as one command. */
 export const hasFinish = (m: WorkflowMemory): boolean => m.workflows.some((w) => w.snapshots !== undefined)
 
-/** A workflow that only checks: no step at a place, edges only to the end, and commands to run. */
+/**
+ * A workflow that only checks: no step at a place, edges only to the end, and
+ * commands to run. Not a kind's workflow (Common.ts): its steps carry what
+ * tasks of the kind had to find out, so they are handed over; its checks
+ * still go into the one command.
+ */
 export const isFinishing = (m: WorkflowMemory, w: Workflow): boolean =>
+  w.kind === undefined &&
   w.checks.length > 0 &&
   w.steps.every((s) => s.place === null) &&
   m.edges.some((e) => e.from === w.id) &&

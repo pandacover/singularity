@@ -163,7 +163,7 @@ describe("what runs looked up before their first edit", () => {
 
   it("keeps the entries an answer names for places its steps use, and drops the rest", () => {
     const p = islandPlace()
-    const evidence = { places: [p], runs: [], skipped: [], families: new Map<string, string>() }
+    const evidence = { places: [p], readPlaces: [], runs: [], skipped: [], families: new Map<string, string>() }
     const answer: InductionAnswer = {
       workflows: [{
         id: "list-shortcut",
@@ -191,7 +191,7 @@ describe("what runs looked up before their first edit", () => {
   it("keeps a pitfall memory has when a revision names it without new detours", () => {
     const watch = { id: "watch-flag", subject: "repo", text: "Don't pass --watch twice.", trigger: { on: "command" as const, all: ["test:update", "--watch=false"], none: [], file: null }, evidence: ["old-run"], cost_tokens: 900 }
     const current: WorkflowMemory = { ...memoryWith([islandPlace()]), pitfalls: [watch] }
-    const evidence = { places: [islandPlace()], runs: [], skipped: [], families: new Map<string, string>() }
+    const evidence = { places: [islandPlace()], readPlaces: [], runs: [], skipped: [], families: new Map<string, string>() }
     const answer: InductionAnswer = {
       workflows: [],
       edges: [],
@@ -226,7 +226,8 @@ describe("what runs looked up before their first edit", () => {
         values: [],
         calls: [],
         cwd: undefined,
-        looking: null
+        looking: null,
+        reads: []
       })
       const r = yield* replay(m, [run("Add a keyboard shortcut"), run("Rename a file")], "cues")
       assert.deepStrictEqual([r.edited, r.shown_and_edited, r.shown_unused, r.workflows, r.costUsd], [2, 1, 0, 1, 0])

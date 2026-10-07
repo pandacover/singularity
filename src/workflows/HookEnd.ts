@@ -19,6 +19,7 @@ import { parseSession, traceUsage, usageTotal } from "../traces/index.ts"
 import { gatherEvidence } from "./Evidence.ts"
 import { feedbackOf } from "./Feedback.ts"
 import * as JsonWorkflowStore from "./JsonWorkflowStore.ts"
+import { isReadPlace } from "./Models.ts"
 import { readFired, readSession } from "./Session.ts"
 import { WorkflowStore } from "./WorkflowStore.ts"
 
@@ -100,6 +101,7 @@ export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function
         version: state.version,
         workflows: state.workflows.map((w) => ({ id: w.id, places: placesOf(w.id) })),
         shown: state.shown.map((s) => s.place),
+        read: (handedMemory?.places ?? []).filter(isReadPlace).map((p) => p.id),
         pitfalls: state.pitfalls,
         fired: fired.map((f) => ({ pitfall: f.pitfall, at: Date.parse(f.at) })),
         triggers: state.triggers

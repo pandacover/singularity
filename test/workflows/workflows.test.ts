@@ -47,6 +47,7 @@ const runEvidence = (record: string, over: Partial<RunEvidence> = {}): RunEviden
   calls: [],
   cwd: undefined,
   looking: null,
+  reads: [],
   ...over
 })
 
@@ -73,6 +74,7 @@ describe("checking an induced answer", () => {
   const evidence: Evidence = {
     places: [place("p-1"), place("p-own", { file: "actions/actionToggleZen.tsx", tasks: ["t1"] }), place("p-thin", { evidence: ["r1"] })],
     runs: [runEvidence("r1"), runEvidence("r2", { task: "t2" })],
+    readPlaces: [],
     skipped: [],
     families: new Map([["actions/actionToggleZen.tsx", "actionToggle"]])
   }

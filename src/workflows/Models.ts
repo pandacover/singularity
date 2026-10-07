@@ -40,20 +40,36 @@ export const Place = Schema.Struct({
   chain: Schema.Array(StoredBlock),
   group: Schema.NullOr(Schema.String),
   new_file: Schema.NullOr(NewFileSpot),
-  /** The records of the runs that edited here, and their tasks. */
+  /** The records of the runs that edited here (or, for a place runs read, read here), and their tasks. */
   evidence: Schema.Array(Schema.String),
   tasks: Schema.Array(Schema.String),
   /** How runs edited here. */
   edits: Schema.Struct({ add: Schema.Int, change: Schema.Int, create: Schema.Int }),
   /**
+   * A place runs read in code they didn't change (a test helper's class),
+   * rather than edited: how many runs read it. Absent for places runs edited.
+   */
+  reads: Schema.optionalKey(Schema.Int),
+  /**
    * How the hand-over shows it: absent, the end of its block (its last
    * lines); "entry", its last whole entry (a component, a tag with its
    * attributes; for new files, the shortest existing one), where runs had to
-   * read one before they could edit. Learned from results (Evolve.ts).
+   * read one before they could edit, learned from results (Evolve.ts);
+   * "outline", its first line and the first line of each member (a helper
+   * class's methods), for places runs read.
    */
-  show: Schema.optionalKey(Schema.Literal("entry"))
+  show: Schema.optionalKey(Schema.Literals(["entry", "outline"]))
 })
 export type Place = typeof Place.Type
+
+/** A place runs read rather than edited (a test helper's class): never expected to be edited. */
+export const isReadPlace = (p: Place): boolean => p.reads !== undefined
+
+/** A place shown as a whole entry, or as the end of its block; a place runs read is always shown as an outline. */
+export const withShow = (p: Place, entry: boolean): Place => {
+  const { show: _show, ...rest } = p
+  return isReadPlace(p) ? { ...rest, show: "outline" } : entry ? { ...rest, show: "entry" } : rest
+}
 
 export const Blank = Schema.Struct({ name: Schema.String, meaning: Schema.String })
 export type Blank = typeof Blank.Type
@@ -111,6 +127,12 @@ export const Workflow = Schema.Struct({
   id: Schema.String,
   subject: Schema.String,
   name: Schema.String,
+  /**
+   * The kind of task it serves ("fixing a bug"), for a workflow learned from
+   * what runs of different tasks of that kind did alike (Common.ts); absent
+   * for workflows learned from the tasks one by one.
+   */
+  kind: Schema.optionalKey(Schema.String),
   /** When a task needs it. */
   use_when: Schema.String,
   /** The same in exact phrases, for picking without a model; absent in memory built before cues. */
