@@ -59,10 +59,14 @@ export const versionOf = (command: string, args: ReadonlyArray<string> = ["--ver
   )
 
 /**
- * How other agents' hooks start node: a bare `node` when the one on PATH is
- * new enough (every shell runs that), else the full path this process runs.
+ * How other agents' hooks start node. On Windows, a bare `node` when the one
+ * on PATH is new enough (an agent may run hooks in PowerShell, where a quoted
+ * program path isn't a command), else the full path this process runs.
+ * Elsewhere hooks run in sh, so always the full path: the node setup runs
+ * with, which may be singularity's own and is never too old.
  */
 export const nodeForHooks = Effect.fn("nodeForHooks")(function*() {
+  if (process.platform !== "win32") return process.execPath
   const version = yield* versionOf("node", ["-p", "process.versions.node"])
   const major = Number(version?.split(".")[0])
   return Number.isFinite(major) && major >= MIN_NODE_MAJOR ? "node" : process.execPath

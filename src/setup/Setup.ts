@@ -55,6 +55,9 @@ export const INTRO = [
   "excalidraw, changes like ones it had seen took about half the tokens."
 ]
 
+/** The Windows installer, for WSL users whose agents run on Windows. */
+export const WINDOWS_INSTALL = "irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex"
+
 const REACH: Record<Reach, string> = {
   "learns": "hands over memory at task start, learns from sessions",
   "hands-over": "hands over memory at task start",
@@ -164,6 +167,12 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       if (placed.length > 0) yield* item(`${s.green("✓")} ${"skill".padEnd(width2)}${placed.join(", ")}`)
       for (const d of blocked) yield* item(`${s.yellow("·")} ${"skill".padEnd(width2)}${tilde(d, o.home)} has a skill of yours named singularity; left it alone`)
     }
+  }
+  // WSL has agents of its own; the ones that run on Windows are set up from Windows.
+  if (o.env.WSL_DISTRO_NAME !== undefined) {
+    yield* say()
+    yield* item(s.dim("This is WSL. For the agents you run on Windows, run this in PowerShell:"))
+    yield* item(s.cyan(WINDOWS_INSTALL))
   }
 
   // 3. The command.
