@@ -8,6 +8,14 @@
  *     node src/workflows/hook.ts post-tool-use        (PostToolUse and PostToolUseFailure)
  *     node src/workflows/hook.ts session-end          (SessionEnd)
  *
+ * `--parts=2` after a task-start event says the hand-over comes in two parts,
+ * from two hooks (`SINGULARITY_HANDOVER_PARTS` says the same for eval runs).
+ * The same script serves Codex, Gemini CLI and Droid, whose hooks speak
+ * Claude Code's format; only Claude Code's sessions are recorded at their end.
+ * When a recorded session makes it time to learn, and the user turned
+ * learning on its own on, a learning round starts in the background
+ * (src/setup/AutoLearn.ts).
+ *
  * The event's JSON comes on stdin; what the model should see goes to stdout as
  * `hookSpecificOutput.additionalContext`. Each event loads only its own
  * modules: the tool-call hook runs after every call and never touches git or
@@ -52,6 +60,7 @@ const logError = (event: string, error: unknown) => {
 }
 
 const event = process.argv[2] ?? ""
+const parts = process.argv.find((a) => a.startsWith("--parts="))?.slice("--parts=".length) ?? process.env.SINGULARITY_HANDOVER_PARTS
 if (process.env.SINGULARITY_HOOKS !== "off") {
   try {
     const stdin = await readStdin()
@@ -59,11 +68,12 @@ if (process.env.SINGULARITY_HOOKS !== "off") {
     if (event === "post-tool-use") {
       if (hasSession(stdin)) out = await (await import("./HookTool.ts")).postToolUse(stdin)
     } else if (event === "user-prompt-submit") {
-      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin)
+      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 1, parts)
     } else if (event === "user-prompt-submit-2") {
-      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2)
+      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2, parts)
     } else if (event === "session-end") {
-      await (await import("./HookEnd.ts")).sessionEnd(stdin)
+      const outcome = await (await import("./HookEnd.ts")).sessionEnd(stdin)
+      if (outcome?.reason === "recorded" && outcome.subject !== undefined) await (await import("../setup/AutoLearn.ts")).afterRecord(outcome.subject)
     } else {
       logError(event, new Error(`unknown hook event ${JSON.stringify(event)}`))
     }

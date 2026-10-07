@@ -42,16 +42,19 @@ export const handoverParts = (setting: string | undefined, mode: "model" | "word
 /**
  * `part` 1 hands over the first part and keeps the session's state; part 2,
  * from a second hook running alongside, computes the same hand-over without
- * keeping anything and hands over the rest, if there is any.
+ * keeping anything and hands over the rest, if there is any. `partsSetting`
+ * is how many parts there are (the hook's `--parts=`, else
+ * `SINGULARITY_HANDOVER_PARTS`). The output names the event the agent sent
+ * (Gemini CLI's is BeforeAgent).
  */
-export const userPromptSubmit = (stdin: string, part: 1 | 2 = 1): Promise<string | undefined> =>
+export const userPromptSubmit = (stdin: string, part: 1 | 2 = 1, partsSetting = process.env.SINGULARITY_HANDOVER_PARTS): Promise<string | undefined> =>
   Effect.runPromise(
     Effect.gen(function*() {
       const input = decodeHookInput(stdin)
       if (input === undefined || input.prompt === undefined || input.prompt.trim() === "") return undefined
       const home = yield* loadHome()
       const mode = pickMode(process.env.SINGULARITY_SELECTOR)
-      const parts = handoverParts(process.env.SINGULARITY_HANDOVER_PARTS, mode)
+      const parts = handoverParts(partsSetting, mode)
       if (part > parts) return undefined
       const session = yield* readSession(home.tenantDir, input.session_id)
       // A follow-up prompt gets nothing; part 2 may find the session part 1 just started for this very prompt.
@@ -82,6 +85,6 @@ export const userPromptSubmit = (stdin: string, part: 1 | 2 = 1): Promise<string
       ).pipe(Effect.provide(stores))
       const text = result.text === undefined ? undefined : result.parts[part - 1]
       if (text === undefined) return undefined
-      return JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } })
+      return JSON.stringify({ hookSpecificOutput: { hookEventName: input.hook_event_name ?? "UserPromptSubmit", additionalContext: text } })
     }).pipe(Effect.provide(NodeServices.layer))
   )

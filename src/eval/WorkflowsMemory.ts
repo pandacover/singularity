@@ -226,6 +226,7 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
       args: ["--settings", settings],
       env: {
         SINGULARITY_HOOKS: "on",
+        SINGULARITY_AUTOLEARN: "off",
         [HOME_ENV]: runHome,
         [CLAUDE_ENV]: JSON.stringify(options.claude),
         SINGULARITY_SELECTOR: options.cues === true ? "cues" : "on",
