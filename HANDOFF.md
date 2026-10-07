@@ -1,7 +1,99 @@
 # Handoff: Procedural Memory Graph for a Coding Agent
 
-Last updated 2026-10-07, in the tenth session. Start here, then see
+Last updated 2026-10-07, in the eleventh session. Start here, then see
 README.md for commands and CLAUDE.md for how the code is written.
+
+## Status: memory installs in any coding agent with one command (2026-10-07, eleventh session)
+
+The user said the current phase is fine and asked for it to be easy for
+anybody to install in whatever coding agent they use (instructions, skills,
+tools, the CLI, whatever local memory needs), with one command (in steps if
+needed), an onboarding that is interesting and informative but not
+cluttered, and a merge to main. The tenth session's work was committed first,
+as it was (`36b9b50`).
+
+**Built** (on `onboarding`; `npm test`: 248 passed, typecheck clean):
+
+- **One command**: `install.sh` (`curl ... | sh`) and `install.ps1` (`irm ... |
+  iex`) check for Node 24+ and git, clone the code into `~/.singularity/app`
+  (fetched again when run again), `npm ci --omit=dev`, and run `singularity
+  setup` (its questions through `/dev/tty`). Their own output is one line.
+- **`singularity setup`** (`src/setup/Setup.ts`), four steps: the machine
+  (node, git, Claude Code); the coding agents found (a directory or a command
+  on PATH), what memory does in each, one question; the `singularity` command
+  (launchers in `~/.singularity/bin`, on PATH through the registry on
+  Windows, a marked line in the shell's startup file elsewhere); learning (on
+  its own or not, within $1 a day; in a repo with earlier Claude Code
+  sessions, it records them and offers a first memory with its price).
+  Running it again updates everything; `--yes` takes the defaults and never
+  learns right away.
+- **What each agent gets** (`src/setup/Agents.ts`, from each agent's docs as
+  of today): Claude Code gets v1's hooks as `workflows-split` was measured
+  (hand-over in two parts, warnings, the session's end). Codex
+  (`~/.codex/hooks.json`, `additionalContextLimit` 4000; Codex runs new hooks
+  only once the user trusts them with `/hooks`, and setup says so), Gemini
+  CLI (`~/.gemini/settings.json`, BeforeAgent and AfterTool, milliseconds) and
+  Droid (`~/.factory/hooks.json`, or its settings.json when the user keeps
+  hooks there) get the hand-over and the warnings from the same script, which
+  now names the agent's own event and reads their tool names as Claude
+  Code's. Their sessions aren't recorded: their transcripts aren't Claude
+  Code's. Cursor (its prompt hook can't add text) and OpenCode get the skill.
+  The skill goes in `~/.claude/skills`, `~/.factory/skills` and the shared
+  `~/.agents/skills`.
+- **No always-loaded instructions** (lines in CLAUDE.md or AGENTS.md): they
+  would cost tokens on every turn of every session, while the hooks hand
+  memory over only when it applies. The skill tells an agent what memory is
+  and how to use the command, and says memory arrives on its own: an agent
+  that looked it up for every task would pay a turn each time.
+- **Learning in daily use, repo by repo** (`src/workflows/Learn.ts`, `singularity
+  learn`): a first memory from two sessions or more (induction and cues, one
+  version), then a round every 3 new sessions (refinement, cues and the
+  replay gate, as `workflows evolve`). **Found on the way**: induction gives
+  every workflow the first run's subject, so before this a second repo's
+  build would have replaced the first repo's memory. Now a repo is learned
+  alone and merged back, and ids two repos share get the second repo's id
+  appended.
+- **Learning on its own** (`src/setup/AutoLearn.ts`): after the session-end
+  hook records a session, a detached `singularity learn --auto` when it is
+  time, under the day's limit, one at a time (a lock), logged to
+  `~/.singularity/learn.log`. Eval runs set `SINGULARITY_AUTOLEARN=off`.
+- **Earlier sessions** (`src/workflows/Backfill.ts`, `learn --past`): a repo's
+  Claude Code transcripts (by project directory name, confirmed by their
+  `cwd`), each with its own commits (from its first event to ten minutes
+  after its last), recorded as the session-end hook records a session.
+- `singularity status` (agents, repos, learning, hook errors), `recall` (what
+  a task here would be handed, no model call), `uninstall [--purge]` (hooks
+  and skill out of every agent, files setup made removed, memory kept unless
+  `--purge`).
+- The eval's hook setups now refuse memory hooks installed from any location;
+  they recognized only this checkout's path, and installed hooks now point at
+  `~/.singularity/app`.
+
+**Checked**, all for free:
+
+- Sandboxed (a temporary home, the real agents on PATH): both installers end
+  to end (about 10 s, cloning this repo's branch), the update path, both
+  launchers, `status`, `recall`, `learn --dry-run`, `uninstall`.
+- The installed hook commands on a copy of the measured excalidraw memory
+  (`v1-finish`): Claude Code's form through bash (both parts, 7.8k and 6.5k
+  characters, 1.3 s), other agents' bare `node` form through PowerShell and
+  cmd, and Gemini's event name.
+- Tests: setup end to end in a temporary home (every agent's file, the user's
+  own hooks kept, nothing doubled on a second run, uninstall), Droid's
+  settings.json case, a skill of the user's own left alone; earlier sessions
+  recorded with their own commits; two repos learned with the fake model,
+  each keeping its own workflows, a task picked by cues afterwards; the hook
+  run as Gemini runs it.
+
+**Not checked**: a live session in Codex, Gemini CLI or Droid (their hook
+formats are from their docs; the script was fed their documented JSON). In
+Claude Code the daily install differs from the measured runs only in where
+the settings live and the `--parts=2` argument. No paid run this session.
+
+**Not done, for later**: memory pushed into Cursor (its postToolUse hook could
+carry the hand-over after the first tool call); recording other agents'
+sessions (a parser for each transcript format); an MCP server (the hosted
+version's door).
 
 ## Status: bug-fix memory built and checked for free; its measurement is pre-registered, waiting for a go (2026-10-07, tenth session)
 

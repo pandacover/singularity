@@ -1,6 +1,11 @@
 /**
  * Command line:
  *
+ *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
+ *     singularity status | recall TASK... | learn [--past] [--all] | uninstall [--purge]
+ *
+ * and for building and measuring memory:
+ *
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts-warnings --memory DIR --warnings GRAPH_DIR [--frozen]
@@ -24,6 +29,7 @@ import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"
 import { memoryCommand } from "./commands/Memory.ts"
 import { recordCommand } from "./commands/Records.ts"
 import { searchCommand } from "./commands/Search.ts"
+import { setupCommands } from "./commands/Setup.ts"
 import { workflowsCommand } from "./commands/Workflows.ts"
 import { GraphStore, JsonGraphStore } from "./graph/index.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
@@ -35,6 +41,7 @@ import type { SetupContext } from "./eval/Memory.ts"
 import { makeSetup } from "./eval/Memory.ts"
 import { lowerPriority } from "./eval/Proc.ts"
 import { pyFixed } from "./eval/PyFormat.ts"
+import { VERSION } from "./setup/Status.ts"
 import type { RunRecord } from "./eval/Report.ts"
 import { compare, field, loadRecords, ReportError, summarize } from "./eval/Report.ts"
 import { defaultWorkspaces, runSuite } from "./eval/Runner.ts"
@@ -400,8 +407,8 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand]),
-  Command.run({ version: "0.1.0" }),
+  Command.withSubcommands([...setupCommands, evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand]),
+  Command.run({ version: VERSION }),
   Effect.catchTags({
     SuiteError: reportError,
     WorkspaceError: reportError,

@@ -21,7 +21,8 @@
  * (`memory build`).
  */
 import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
-import { HOOK_SCRIPT, hasOurHooks, hooksSettings } from "../handover/Install.ts"
+import { HOOK_SCRIPT, hooksSettings } from "../handover/Install.ts"
+import { eventsOf, memoryHookEvents } from "../setup/HookFiles.ts"
 import { HOME_ENV, loadHome } from "../local/Home.ts"
 import * as JsonMemoryStore from "../memory/JsonMemoryStore.ts"
 import { MemoryStore } from "../memory/MemoryStore.ts"
@@ -129,9 +130,10 @@ const refuseInstalledHooks = Effect.fnUntraced(function*() {
   const file = path.join(yield* claudeHome, "settings.json")
   if (!(yield* fs.exists(file))) return
   const settings = Schema.decodeUnknownOption(Settings)(yield* fs.readFileString(file))
-  if (Option.isSome(settings) && hasOurHooks(settings.value, HOOK_SCRIPT)) {
+  // From any checkout or install, v1's included: they would hand memory over next to the run's own.
+  if (Option.isSome(settings) && memoryHookEvents(eventsOf(settings.value, "wrapped")).length > 0) {
     return yield* new MemoryError({
-      message: `the memory hooks are installed in ${file}, so they would run twice; take them out for the run (hooks uninstall)`
+      message: `memory hooks are installed in ${file}, so they would run twice; take them out for the run (singularity uninstall, or hooks uninstall)`
     })
   }
 })
@@ -194,6 +196,7 @@ export const makeHooksMemory = (options: HooksMemoryOptions): MemorySetup => {
       args: ["--settings", settings],
       env: {
         SINGULARITY_HOOKS: "on",
+        SINGULARITY_AUTOLEARN: "off",
         [HOME_ENV]: runHome,
         [CLAUDE_ENV]: JSON.stringify(options.claude),
         SINGULARITY_SELECTOR: "on",
