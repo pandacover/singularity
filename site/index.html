@@ -1,0 +1,1311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>singularity — memory for coding agents</title>
+<meta name="description" content="Coding agents forget your codebase between sessions. singularity learns from your past Claude Code sessions and hands the next one where to edit, how to check, and which mistakes to avoid.">
+<meta name="theme-color" content="#f2eee5">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%22-50%20-50%20100%20100%22%3E%3Ccircle%20r%3D%2250%22%20fill%3D%22%231a1815%22%2F%3E%3Cg%20transform%3D%22rotate(27)%22%3E%3Cpath%20d%3D%22M-3%200%20L0%20-50%20L3%200Z%22%20fill%3D%22%23f2eee5%22%2F%3E%3Cpath%20d%3D%22M-3%200%20L0%2050%20L3%200Z%22%20fill%3D%22%23f2eee5%22%20opacity%3D%220.55%22%2F%3E%3Cellipse%20rx%3D%2241%22%20ry%3D%227%22%20fill%3D%22%23f2eee5%22%20opacity%3D%220.4%22%2F%3E%3Cellipse%20rx%3D%2222%22%20ry%3D%224.2%22%20fill%3D%22%23f2eee5%22%2F%3E%3Cellipse%20cy%3D%22-1.2%22%20rx%3D%225%22%20ry%3D%224.4%22%20fill%3D%22%231a1815%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // decide before first paint whether the intro plays, so the page never flashes underneath it
+  try {
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches && !sessionStorage.getItem("sg-intro")) document.documentElement.classList.add("intro");
+  } catch {}
+</script>
+<style>
+  :root {
+    --paper: #f2eee5;
+    --paper-hi: #f8f5ee;
+    --tile: #e2dccf;
+    --ink: #1a1815;
+    --ink-2: #4b463e;
+    --mid: #8f877a;
+    --muted: #8a8376;
+    --rule: #d5cebf;
+    --red: #d33c1d;
+    --serif: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  html.intro { overflow: hidden; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 19px/1.55 var(--serif); font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    font-feature-settings: "kern", "liga", "onum";
+  }
+  /* a faint paper grain */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 300; opacity: 0.55; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  ::selection { background: rgba(211, 60, 29, 0.18); }
+  a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; text-decoration-color: var(--muted); }
+  a:hover { text-decoration-color: var(--red); }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  :focus-visible { outline: 1.5px solid var(--red); outline-offset: 3px; }
+  code { font-family: var(--mono); font-size: 0.8em; letter-spacing: -0.01em; font-variant-ligatures: none; }
+  p { margin: 0; text-wrap: pretty; }
+  h1, h2, h3 { font-weight: 400; margin: 0; text-wrap: balance; }
+
+  .page { max-width: 1180px; margin: 0 auto; padding: 0 40px; }
+  .label { font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  /* ---------- intro ---------- */
+  #intro { display: none; }
+  html.intro #intro { display: block; position: fixed; inset: 0; z-index: 200; background: var(--paper); overflow: hidden; }
+  html.intro .wordmark .logo, html.intro .wordmark .wm-name { visibility: hidden; }
+  .i-stage, .i-scene, .i-dark { position: absolute; inset: 0; }
+  .i-dark { background: #0c0b0a; opacity: 0; }
+  .i-cv { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .i-text { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 1100px); text-align: center; font: 380 clamp(30px, 4.6vw, 64px)/1.15 var(--serif); letter-spacing: -0.02em; color: var(--ink); }
+  .i-text span { display: inline-block; opacity: 0; }
+  .i-text .i-a { color: var(--ink); }
+  .i-text .i-b { color: var(--muted); }
+  .i-trace { position: absolute; font: 12px/1 var(--mono); padding: 7px 10px; background: var(--paper-hi); border: 1px solid var(--rule); color: var(--ink-2); white-space: nowrap; opacity: 0; box-shadow: 0 6px 18px -12px rgba(26, 24, 21, 0.35); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  .i-trace b { font-weight: 500; color: var(--ink); }
+  .i-trace .d { color: #7fa37f; margin-right: 6px; }
+  .i-trace.err .d { color: var(--red); }
+  .i-trace.err { color: var(--red); border-color: rgba(211, 60, 29, 0.35); }
+  .i-word { display: none; position: fixed; z-index: 201; left: calc(50% + 18px); top: calc(50% + 235px); transform: translateX(-50%); font: 500 17px/1 var(--mono); letter-spacing: 0.34em; color: #d8d6d0; mix-blend-mode: difference; opacity: 0; white-space: nowrap; pointer-events: none; }
+  html.intro .i-word { display: block; }
+  .i-skip { position: absolute; right: 28px; bottom: 24px; font: 12px var(--mono); color: var(--muted); border-bottom: 1px solid currentColor; padding-bottom: 2px; }
+  .i-skip:hover { color: var(--red); }
+
+  /* ---------- masthead ---------- */
+  .mast { display: flex; justify-content: space-between; align-items: center; padding: 26px 0 16px; border-bottom: 1px solid var(--ink); font: 400 13px var(--mono); }
+  .mast .wordmark { font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  .mast .wordmark .logo { width: 22px; height: 22px; display: block; }
+  .mast nav { display: flex; gap: 26px; }
+  .mast nav a { text-decoration: none; color: var(--ink-2); }
+  .mast nav a:hover { color: var(--red); }
+  @media (max-width: 700px) { .mast nav a:not(:last-child) { display: none; } }
+
+  /* ---------- opening ---------- */
+  .open { padding: 76px 0 72px; }
+  .open h1 { font: 380 clamp(44px, 6.6vw, 88px)/0.98 var(--serif); letter-spacing: -0.026em; max-width: 13.5em; font-variation-settings: "opsz" 72; }
+  .open h1 span { color: var(--muted); }
+  .open .after { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; margin-top: 48px; align-items: end; }
+  .open .lede { font-size: 22px; line-height: 1.45; color: var(--ink-2); max-width: 22em; }
+  @media (max-width: 900px) { .open .after { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
+  .install .tabs { display: flex; gap: 18px; margin-bottom: 10px; }
+  .install .tabs button { font: 12.5px var(--mono); color: var(--muted); padding-bottom: 3px; border-bottom: 1px solid transparent; }
+  .install .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .install .line { display: flex; align-items: center; gap: 14px; background: var(--paper-hi); border: 1px solid var(--rule); padding: 11px 11px 11px 16px; }
+  .install pre { margin: 0; flex: 1; font: 13.5px/1.4 var(--mono); overflow-x: auto; white-space: pre; scrollbar-width: none; }
+  .install pre::-webkit-scrollbar { display: none; }
+  .install pre .p { color: var(--muted); user-select: none; }
+  .copy { font: 12px var(--mono); padding: 5px 10px; border: 1px solid var(--ink); flex: none; min-width: 66px; }
+  .copy:hover { background: var(--ink); color: var(--paper); }
+  .copy[data-done] { border-color: var(--red); color: var(--red); background: none; }
+  .install .req { font: 12px/1.6 var(--mono); color: var(--muted); margin-top: 8px; }
+
+  /* ---------- figures ---------- */
+  figure { margin: 0; }
+  .fig-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px 24px; flex-wrap: wrap; border-top: 2px solid var(--ink); padding-top: 10px; margin-bottom: 26px; }
+  .fig-head h3 { font: 400 22px/1.3 var(--serif); }
+  .fig-head h3 .label { margin-right: 12px; color: var(--ink); vertical-align: 2px; }
+  figcaption { font-size: 15.5px; line-height: 1.5; color: var(--muted); margin-top: 18px; max-width: 46em; }
+  .textbtn { font: 12.5px var(--mono); color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .textbtn:hover { color: var(--red); text-decoration-color: var(--red); }
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tip { position: fixed; z-index: 90; pointer-events: none; background: var(--ink); color: var(--paper); font: 12px/1.5 var(--mono); padding: 8px 10px; max-width: 360px; opacity: 0; transition: opacity 0.1s; }
+  .tip.on { opacity: 1; }
+  .tip .d { color: #b8b09f; }
+  .tip .e { color: #f0907b; }
+
+  /* figure 1: each run is a column of its turns, side by side */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 12px var(--mono); color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .lg { width: 14px; height: 7px; background: var(--tile); display: inline-block; }
+  .lg.w { background: var(--ink); } .lg.x { background: var(--mid); } .lg.o { background: none; box-shadow: inset 0 0 0 1px var(--mid); }
+  .lg.h { height: 3px; background: var(--red); }
+  .f1 { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px; align-items: end; }
+  @media (max-width: 860px) { .f1 { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
+  .pull .big { font: 300 64px/1 var(--serif); letter-spacing: -0.02em; font-variation-settings: "opsz" 72; white-space: nowrap; }
+  .pull .big .to { color: var(--muted); font-size: 0.6em; vertical-align: 0.2em; margin: 0 0.12em; }
+  .pull .big .m { color: var(--red); }
+  .pull p { font-size: 16.5px; line-height: 1.4; color: var(--ink-2); margin-top: 10px; max-width: 13em; }
+  .towers { --cw: 30px; --cg: 8px; --gg: 72px; }
+  .towers .trow { display: flex; gap: var(--gg); }
+  .towers .grp { display: flex; gap: var(--cg); width: calc(var(--cw) * 4 + var(--cg) * 3); flex: none; }
+  .plot { position: relative; align-items: flex-end; width: max-content; }
+  .plot .grp { align-items: flex-end; }
+  .col { width: var(--cw); display: flex; flex-direction: column-reverse; gap: 2px; }
+  .c { height: 9px; width: 100%; position: relative; background: var(--tile); transition: opacity 0.2s; }
+  .c.w { background: var(--ink); }
+  .c.x { background: var(--mid); }
+  .c.o { background: none; box-shadow: inset 0 0 0 1px var(--mid); }
+  .c.f::before, .c.f::after { content: ""; position: absolute; left: 50%; top: 50%; width: 8px; height: 1.4px; background: var(--ink); }
+  .c.f::before { transform: translate(-50%, -50%) rotate(40deg); }
+  .c.f::after { transform: translate(-50%, -50%) rotate(-40deg); }
+  .c.w.f::before, .c.w.f::after, .c.x.f::before, .c.x.f::after { background: var(--paper); }
+  .c:hover { outline: 1.5px solid var(--red); outline-offset: 1px; z-index: 1; }
+  .hand { height: 3px; background: var(--red); margin-top: 3px; }
+  .nohand { height: 3px; margin-top: 3px; }
+  .towers.hide .c { opacity: 0; }
+  .done-line { position: absolute; left: -8px; right: -8px; border-top: 1px dashed var(--red); pointer-events: none; }
+  .done-line span { position: absolute; right: 8px; bottom: 4px; font: 11px var(--mono); color: var(--red); white-space: nowrap; }
+  .nums .grp > span { width: var(--cw); text-align: center; font: 11px/1 var(--mono); color: var(--ink-2); padding-top: 8px; }
+  .nums .grp.mem > span { color: var(--red); }
+  .names { margin-top: 12px; }
+  .names .grp { flex-direction: column; gap: 2px; }
+  .names b { font: 500 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .names .mem b { color: var(--red); }
+  .names small { font: 12px var(--mono); color: var(--muted); }
+  @media (max-width: 520px) { .towers { --cw: 22px; --cg: 6px; --gg: 34px; } .done-line span { font-size: 10px; } }
+
+  /* ---------- sections ---------- */
+  section { padding: 120px 0 0; }
+  .sh { border-top: 1px solid var(--ink); padding-top: 16px; margin-bottom: 44px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px 40px; flex-wrap: wrap; }
+  .sh h2 { font: 400 clamp(32px, 3.6vw, 46px)/1.08 var(--serif); letter-spacing: -0.016em; }
+  .sh p { font-size: 17px; color: var(--ink-2); max-width: 30em; }
+
+  /* figure 2: a Claude Code session, with memory's note tucked in */
+  .fig-mistake { margin-top: 104px; }
+  .win { max-width: 860px; margin: 0 auto; background: #1d1b18; color: #e9e4d8; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 40px 80px -40px rgba(26, 24, 21, 0.55), 0 12px 24px -16px rgba(26, 24, 21, 0.35); font: 14px/1.7 var(--mono); }
+  .win .tb { display: grid; grid-template-columns: 60px 1fr 60px; align-items: center; padding: 11px 14px; background: #262320; border-bottom: 1px solid #34302a; }
+  .win .tb .dots { display: flex; gap: 7px; }
+  .win .tb .dots i { width: 11px; height: 11px; border-radius: 50%; background: #3d3832; }
+  .win .tb .ttl { text-align: center; font-size: 12px; color: #9a9385; }
+  .win .bd { padding: 22px 26px 26px; min-height: 300px; }
+  .win .bd > div { white-space: pre-wrap; word-break: break-word; }
+  .tm-ask { color: #9a9385; padding: 2px 0 14px; margin-bottom: 16px; border-bottom: 1px dashed #3a3530; }
+  .tm-ask b { color: #e9e4d8; font-weight: 400; }
+  .tm-call { color: #fbf8f1; margin-top: 14px; }
+  .tm-call:first-of-type { margin-top: 0; }
+  .tm-call .d { display: inline-block; width: 1.4em; color: #8f897c; }
+  .tm-call.err .d { color: #f0907b; }
+  .tm-call.ok .d { color: #9fd3a3; }
+  .tm-call .fn { color: #e9c58f; }
+  .tm-res { color: #8f897c; padding-left: 1.4em; }
+  .tm-res .r { color: #f0907b; }
+  .tm-res .g { color: #9fd3a3; }
+  .tm-cur { display: inline-block; width: 8px; height: 1.1em; background: #e9e4d8; vertical-align: -0.18em; margin-left: 1px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .slip { margin: 14px 0 6px 1.4em; background: var(--paper); color: var(--ink); padding: 12px 16px 13px; border-left: 3px solid var(--red); font: italic 400 18px/1.4 var(--serif); transform: rotate(-0.5deg); box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.6); max-width: 560px; }
+  .slip .who { display: flex; align-items: center; gap: 8px; font: 500 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); font-style: normal; margin-bottom: 5px; }
+  .slip .who i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  .slip .who span { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
+  .slip code { font-style: normal; font-size: 0.75em; white-space: nowrap; }
+  .anim { opacity: 0; transform: translateY(4px); transition: opacity 0.35s, transform 0.35s; }
+  .anim.on { opacity: 1; transform: none; }
+  .slip.anim { transform: translateX(-10px) rotate(-2deg); transition: opacity 0.5s, transform 0.6s cubic-bezier(.34, 1.56, .64, 1); }
+  .slip.anim.on { transform: rotate(-0.5deg); }
+  .replay { font: 12.5px var(--mono); color: var(--ink-2); }
+  .replay:hover { color: var(--red); }
+
+  /* how it works: the four steps share rows (subgrid), so everything lines up across columns */
+  .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: auto repeat(3, auto) 1fr; column-gap: 28px; }
+  .phase { font: 500 11px var(--mono); color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; padding-bottom: 8px; margin-bottom: 26px; border-bottom: 1px solid var(--rule); position: relative; }
+  .phase::before, .phase::after { content: ""; position: absolute; bottom: -4px; width: 1px; height: 7px; background: var(--muted); }
+  .phase::before { left: 0; } .phase::after { right: 0; }
+  .p1 { grid-column: 1 / 3; grid-row: 1; } .p2 { grid-column: 3 / 5; grid-row: 1; }
+  .step { display: grid; grid-template-rows: subgrid; grid-row: 2 / 6; }
+  .s1 { grid-column: 1; } .s2 { grid-column: 2; } .s3 { grid-column: 3; } .s4 { grid-column: 4; }
+  .step .n { font: 300 56px/0.9 var(--serif); color: var(--red); font-variation-settings: "opsz" 72; margin-bottom: 14px; }
+  .step h3 { font: 500 20px/1.25 var(--serif); margin-bottom: 6px; }
+  .step > p { font-size: 16.5px; line-height: 1.45; color: var(--ink-2); margin-bottom: 18px; }
+  .vis { background: var(--paper-hi); border: 1px solid var(--rule); padding: 14px 16px; font-size: 15.5px; line-height: 1.5; }
+  .vis .vh { font-weight: 500; margin-bottom: 4px; }
+  .vis .vt { font: 12px/1.6 var(--mono); color: var(--muted); }
+  .vis ol { margin: 6px 0 8px; padding-left: 18px; }
+  .vis ol li { margin-bottom: 4px; }
+  .vis ol li::marker { font: 12px var(--mono); color: var(--muted); }
+  .vis code { font-size: 12px; }
+  .vis .vr { display: grid; grid-template-columns: 16px 1fr; gap: 6px; align-items: baseline; }
+  .vis .bad { color: var(--red); font-family: var(--mono); font-size: 13px; }
+  .vis .good { color: #2f7d4a; font-family: var(--mono); font-size: 13px; }
+  .vis .say { margin: 8px 0 8px 22px; padding-left: 10px; border-left: 2px solid var(--red); font-style: italic; }
+  .pill { font: 500 11.5px/1 var(--mono); background: var(--tile); color: var(--ink); padding: 2px 6px 3px; border-radius: 3px; white-space: nowrap; }
+  .pill.f { background: none; color: var(--red); box-shadow: inset 0 0 0 1px rgba(211, 60, 29, 0.45); }
+  @media (max-width: 1000px) {
+    .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto repeat(3, auto) 1fr auto repeat(3, auto) 1fr; }
+    .p1 { grid-column: 1 / 3; grid-row: 1; } .p2 { grid-column: 1 / 3; grid-row: 6; margin-top: 48px; }
+    .s1, .s2 { grid-row: 2 / 6; } .s3, .s4 { grid-row: 7 / 11; }
+    .s1, .s3 { grid-column: 1; } .s2, .s4 { grid-column: 2; }
+  }
+  @media (max-width: 600px) {
+    .steps { display: flex; flex-direction: column; }
+    .step { display: flex; flex-direction: column; margin-bottom: 44px; }
+    .p1 { order: 0; } .s1 { order: 1; } .s2 { order: 2; } .p2 { order: 3; margin-top: 8px; } .s3 { order: 4; } .s4 { order: 5; }
+  }
+
+  /* figure 3: a prompt box, and what memory attaches to it */
+  .cp { max-width: 880px; margin: 0 auto; }
+  .starters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; font: 12px var(--mono); color: var(--muted); }
+  .starters span { margin-right: 4px; }
+  .starters button { font: 12px var(--mono); padding: 5px 11px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-2); background: var(--paper-hi); }
+  .starters button:hover { border-color: var(--ink); color: var(--ink); }
+  .starters button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .box { background: var(--paper-hi); border: 1.5px solid var(--ink); border-radius: 14px; box-shadow: 0 24px 50px -36px rgba(26, 24, 21, 0.5); }
+  .box:focus-within { box-shadow: 0 0 0 4px rgba(211, 60, 29, 0.1), 0 24px 50px -36px rgba(26, 24, 21, 0.5); }
+  .box .top { display: grid; grid-template-columns: 34px minmax(0, 1fr); padding: 8px 8px 0 4px; }
+  .box .gt { font: 500 18px/1 var(--mono); color: var(--red); padding: 22px 0 0 14px; }
+  .editor { position: relative; }
+  .editor .hl, .editor textarea { font: 18px/1.6 var(--serif); padding: 16px 16px 12px 8px; margin: 0; border: 0; white-space: pre-wrap; overflow-wrap: break-word; letter-spacing: normal; }
+  .editor .hl { position: absolute; inset: 0; color: transparent; pointer-events: none; overflow: hidden; }
+  .editor .hl mark { color: transparent; background: none; text-decoration: underline; text-decoration-color: var(--red); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .editor .hl del { color: transparent; text-decoration: line-through; text-decoration-color: rgba(26, 24, 21, 0.45); text-decoration-thickness: 1px; }
+  .editor textarea { position: relative; display: block; width: 100%; min-height: 96px; resize: none; overflow: hidden; background: transparent; color: var(--ink); caret-color: var(--red); outline: none; }
+  .editor textarea::placeholder { color: var(--muted); }
+  .box .foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 18px 12px; border-top: 1px solid var(--rule); font: 12px var(--mono); color: var(--muted); }
+  .box .foot u { text-decoration-color: var(--red); text-decoration-thickness: 2px; text-underline-offset: 3px; color: var(--ink-2); }
+  .box .foot s { text-decoration-color: var(--muted); }
+  .hookline { display: flex; align-items: center; gap: 10px; margin: 22px 0 14px 18px; font: 12.5px var(--mono); color: var(--ink-2); }
+  .hookline i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; }
+  .hookline .k { color: var(--muted); }
+  .attach { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .card { text-align: left; background: var(--paper-hi); border: 1px solid var(--rule); border-radius: 10px; padding: 13px 15px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--ink); box-shadow: 0 10px 24px -18px rgba(26, 24, 21, 0.45); }
+  .card.open { grid-column: 1 / -1; border-color: var(--ink); }
+  .card.new { animation: pop 0.35s cubic-bezier(.34, 1.56, .64, 1) both; }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.97); } }
+  .card .ch { display: flex; justify-content: space-between; align-items: center; font: 500 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .card .ch b { color: var(--red); font-weight: 500; }
+  .card .nm { font-size: 17px; line-height: 1.3; color: var(--ink); }
+  .card .fills { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .card ol { margin: 4px 0 0; padding-left: 20px; font-size: 15.5px; line-height: 1.6; color: var(--ink-2); }
+  .card ol li::marker { font: 12px var(--mono); color: var(--muted); }
+  .card ol .skip { color: var(--muted); text-decoration: line-through; }
+  .attach .empty { grid-column: 1 / -1; padding: 18px; border: 1px dashed var(--rule); border-radius: 10px; color: var(--muted); font-size: 16.5px; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+
+  /* figure 4: results */
+  #res { width: 100%; min-width: 860px; height: auto; display: block; }
+  #res .rowlab { font: 400 16px var(--serif); fill: var(--ink); }
+  #res .rowsub { font: 11px var(--mono); fill: var(--muted); }
+  #res .grp { font: 500 10.5px var(--mono); letter-spacing: 0.08em; fill: var(--ink); }
+  #res .ph { font: 500 11px var(--mono); fill: var(--ink); letter-spacing: 0.08em; }
+  #res .ax { font: 10px var(--mono); fill: var(--muted); }
+  #res .grid { stroke: var(--rule); }
+  #res .base { stroke: var(--ink); }
+  #res .stem { stroke: var(--red); stroke-width: 2; }
+  #res .dot { fill: var(--red); stroke: var(--paper); stroke-width: 2; }
+  #res .ref { fill: var(--paper); stroke: var(--ink); stroke-width: 1.2; }
+  #res .v { font: 500 11.5px var(--mono); fill: var(--ink); }
+  #res .sep { stroke: var(--ink); }
+  #res .hit { fill: transparent; }
+  #res .rowband { fill: transparent; }
+  #res .hitrow:hover .rowband { fill: rgba(26, 24, 21, 0.035); }
+  #f4table { overflow-x: auto; }
+  table.res { width: 100%; min-width: 680px; border-collapse: collapse; margin-top: 14px; font: 12.5px/1.5 var(--mono); }
+  table.res th, table.res td { padding: 7px 8px; border-bottom: 1px solid var(--rule); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.res th { font-weight: 500; color: var(--muted); }
+  table.res td:first-child, table.res th:first-child { text-align: left; }
+  table.res td:first-child { font: 15px var(--serif); }
+
+  /* rules: an isometric stack, from your machine up to your agent */
+  #stack { width: 100%; height: auto; display: block; overflow: visible; }
+  #stack .lay { transition: transform 0.8s cubic-bezier(.34, 1.56, .64, 1), opacity 0.4s; transform-box: view-box; }
+  #stack.hide .lay { opacity: 0; transform: translateY(-46px); }
+  #stack .face { fill: rgba(248, 245, 238, 0.38); stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 4 4; transition: stroke 0.2s, fill 0.2s; }
+  #stack .lay.hot .face { stroke: var(--red); stroke-dasharray: none; fill: rgba(248, 245, 238, 0.75); }
+  #stack .lay .motif { transition: transform 0.3s; }
+  #stack .lay.hot .motif { transform: translateY(-4px); }
+  #stack .grid { stroke: var(--ink); stroke-width: 0.6; opacity: 0.08; }
+  #stack .lbl { transition: opacity 0.5s; }
+  #stack.hide .lbl { opacity: 0; }
+  #stack .lead { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1.5 3.5; fill: none; }
+  #stack .pillbg { fill: var(--paper-hi); stroke: var(--rule); }
+  #stack .lbl.hot .pillbg { stroke: var(--red); }
+  #stack .lbl.hot .lead { stroke: var(--red); }
+  #stack .pt { font: 500 11px var(--mono); letter-spacing: 0.08em; fill: var(--ink); }
+  #stack .pd { fill: var(--red); }
+  #stack .note { font: 400 15px var(--serif); fill: var(--muted); }
+  .stack-list { display: none; list-style: none; margin: 24px 0 0; padding: 0; }
+  .stack-list li { padding: 12px 0; border-top: 1px solid var(--rule); font-size: 17px; }
+  .stack-list b { display: block; font: 500 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); margin-bottom: 2px; }
+  @media (max-width: 760px) { #stack .lbl { display: none; } .stack-list { display: block; } }
+
+  /* install */
+  .setup { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; margin-top: 48px; }
+  @media (max-width: 900px) { .setup { grid-template-columns: minmax(0, 1fr); } }
+  .setup .label { display: block; margin-bottom: 12px; }
+  table.agents { width: 100%; border-collapse: collapse; font-size: 16.5px; }
+  table.agents th { font: 500 10.5px/1.4 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: center; padding: 0 6px 8px; border-bottom: 1px solid var(--ink); }
+  table.agents td { padding: 9px 6px; border-bottom: 1px solid var(--rule); text-align: center; vertical-align: top; }
+  table.agents th:first-child, table.agents td:first-child { text-align: left; padding-left: 0; }
+  table.agents td small { display: block; font: 11px/1.5 var(--mono); color: var(--muted); margin-top: 2px; }
+  .dot-y, .dot-n { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-top: 7px; }
+  .dot-y { background: var(--ink); }
+  .dot-n { border: 1px solid var(--muted); }
+  dl.cmds { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 32px; }
+  dl.cmds dt { font: 13px/26px var(--mono); padding: 8px 0; border-top: 1px solid var(--rule); }
+  dl.cmds dd { margin: 0; padding: 8px 0; border-top: 1px solid var(--rule); color: var(--ink-2); font-size: 16.5px; line-height: 26px; }
+  @media (max-width: 640px) { dl.cmds { grid-template-columns: minmax(0, 1fr); } dl.cmds dd { border-top: 0; padding-top: 0; } }
+
+  footer { margin-top: 128px; border-top: 1px solid var(--ink); padding: 18px 0 64px; font: 12px/1.75 var(--mono); color: var(--muted); display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  footer button { font: 12px var(--mono); color: var(--muted); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  footer button:hover { color: var(--red); }
+
+  @media (max-width: 900px) {
+    .page { padding: 0 22px; }
+    .open { padding-top: 48px; }
+    section { padding-top: 96px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <symbol id="bh" viewBox="-50 -50 100 100">
+    <circle r="50" fill="#1a1815"/><g transform="rotate(27)"><path d="M-3 0 L0 -50 L3 0Z" fill="#f2eee5"/><path d="M-3 0 L0 50 L3 0Z" fill="#f2eee5" opacity="0.55"/><ellipse rx="41" ry="7" fill="#f2eee5" opacity="0.4"/><ellipse rx="22" ry="4.2" fill="#f2eee5"/><ellipse cy="-1.2" rx="5" ry="4.4" fill="#1a1815"/></g>
+  </symbol>
+</svg>
+
+<div id="intro" aria-hidden="true">
+  <div class="i-stage">
+    <div class="i-scene"><div class="i-dark"></div><canvas class="i-cv"></canvas></div>
+    <div class="i-text"><span class="i-a">What if</span><span class="i-b"></span></div>
+  </div>
+  <button class="i-skip" type="button">Skip intro</button>
+</div>
+<!-- outside the intro, so it inverts against the page as well: light on the dark, ink on paper -->
+<div class="i-word" aria-hidden="true">singularity</div>
+
+<div class="page">
+
+  <header class="mast">
+    <a class="wordmark" href="#"><svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><use href="#bh"/></svg><span class="wm-name">singularity</span></a>
+    <nav aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#try">Try it</a>
+      <a href="#results">Results</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/pandacover/singularity">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="open">
+    <h1>Coding agents forget your codebase between sessions. <span>singularity remembers the way around it.</span></h1>
+    <div class="after">
+      <p class="lede">It learns from your past Claude Code sessions, then hands the next one where to edit, how to check, and which mistakes to avoid.</p>
+      <div class="install" data-install>
+        <div class="tabs" role="tablist" aria-label="Your system">
+          <button role="tab" aria-selected="true" data-os="sh">macOS, Linux</button>
+          <button role="tab" aria-selected="false" data-os="ps">Windows</button>
+        </div>
+        <div class="line">
+          <pre><span class="p">$ </span><span data-cmd>curl -fsSL https://raw.githubusercontent.com/pandacover/singularity/main/install.sh | sh</span></pre>
+          <button class="copy" type="button">Copy</button>
+        </div>
+        <div class="req">Needs Node.js 24 and git.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== figure 1 ===================== -->
+  <figure aria-labelledby="f1t">
+    <div class="fig-head">
+      <h3 id="f1t"><span class="label">Figure 1</span>Where the turns went</h3>
+      <div class="legend" aria-hidden="true">
+        <span><i class="lg"></i>reading, searching</span>
+        <span><i class="lg w"></i>editing</span>
+        <span><i class="lg x"></i>running checks</span>
+        <span><i class="lg o"></i>final reply</span>
+        <span>× failed</span>
+        <span><i class="lg h"></i>memory’s hand-over</span>
+      </div>
+    </div>
+    <div class="f1">
+      <div class="pull">
+        <div class="big" id="pull"></div>
+        <p>turns spent just reading and searching, without memory and with it</p>
+      </div>
+      <div class="towers hide" id="towers"></div>
+    </div>
+    <figcaption>Eight real runs of the same task: four changes to <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> in one prompt. All passed. Each block is one turn, the first at the bottom; hover one to see what the agent did.</figcaption>
+  </figure>
+
+  <!-- ===================== figure 2 ===================== -->
+  <figure class="fig-mistake" aria-labelledby="f2t">
+    <div class="fig-head"><h3 id="f2t"><span class="label">Figure 2</span>A mistake, caught as it repeats</h3><button class="replay" type="button" id="replay">↻ Replay</button></div>
+    <div class="win" id="win">
+      <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="ttl">claude — excalidraw</div><div></div></div>
+      <div class="bd" id="term" aria-live="polite"></div>
+    </div>
+    <figcaption style="margin-left:auto;margin-right:auto;max-width:860px">From a bug-fix session on excalidraw. Earlier runs had made this mistake four times; this time the fix arrived with the error.</figcaption>
+  </figure>
+
+  <!-- ===================== how it works ===================== -->
+  <section id="how">
+    <header class="sh"><h2>How it works</h2></header>
+    <div class="steps">
+      <div class="phase p1">After a session</div>
+      <div class="phase p2">When the next one starts</div>
+      <div class="step s1">
+        <div class="n">1</div>
+        <h3>It keeps a record</h3>
+        <p>What changed, where, and what went wrong.</p>
+        <div class="vis">
+          <div class="vh">A “Minimap” setting</div>
+          <div class="vt">18 turns · 11 files edited</div>
+          <div class="vr" style="margin-top:8px"><span class="bad">✗</span><span><code>yarn test:update --watch=false</code></span></div>
+          <div class="vr"><span class="good">✓</span><span><code>yarn test:update</code></span></div>
+        </div>
+      </div>
+      <div class="step s2">
+        <div class="n">2</div>
+        <h3>It learns workflows</h3>
+        <p>Steps with blanks, and the phrases that call for them.</p>
+        <div class="vis">
+          <div class="vh">Add a field to the app state</div>
+          <ol>
+            <li>Add <span class="pill">field</span> to AppState</li>
+            <li>Default it to <span class="pill">default</span></li>
+            <li>Store it as the task says</li>
+          </ol>
+          <div class="vt">when a task says “new setting”</div>
+        </div>
+      </div>
+      <div class="step s3">
+        <div class="n">3</div>
+        <h3>It hands them over</h3>
+        <p>Picked by plain text, filled from your words, pointed at today’s code.</p>
+        <div class="vis">
+          <div class="vh">Add a field to the app state</div>
+          <ol>
+            <li>Add <span class="pill f">presenterModeEnabled</span> to AppState</li>
+            <li>Default it to <span class="pill f">false</span></li>
+            <li>Store it as the task says</li>
+          </ol>
+          <div class="vt">→ appState.ts, line 28</div>
+        </div>
+      </div>
+      <div class="step s4">
+        <div class="n">4</div>
+        <h3>It catches repeats</h3>
+        <p>A known mistake’s fix arrives the moment it happens again.</p>
+        <div class="vis">
+          <div class="vr"><span class="bad">✗</span><span><code>yarn test:update --watch=false</code></span></div>
+          <div class="say">Run it plain; the script already passes --watch.</div>
+          <div class="vr"><span class="good">✓</span><span><code>yarn test:update</code></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== try it ===================== -->
+  <section id="try">
+    <header class="sh"><h2>Try it</h2><p>Type a task the way you would to your agent. Memory attaches what it knows.</p></header>
+    <div class="cp" aria-label="Figure 3: type a task, see what memory attaches">
+      <div class="starters" id="examples"><span>Try</span></div>
+      <div class="box">
+        <div class="top"><span class="gt" aria-hidden="true">&gt;</span><div class="editor"><div class="hl" id="hl" aria-hidden="true"></div><textarea id="task" spellcheck="false" aria-label="Task" placeholder="Describe a change to excalidraw…"></textarea></div></div>
+        <div class="foot"><span><u>underlined</u> called for a workflow · <s>struck</s> is negated, so ignored</span><span id="speed"></span></div>
+      </div>
+      <div class="hookline"><i aria-hidden="true"></i><span id="hookline">singularity is reading…</span></div>
+      <div class="attach" id="picks"></div>
+    </div>
+  </section>
+
+  <!-- ===================== results ===================== -->
+  <section id="results">
+    <header class="sh"><h2>Results</h2><p>Pre-registered, one Claude Code version, hidden tests. All 40 runs passed.</p></header>
+    <figure aria-labelledby="f4t">
+      <div class="fig-head"><h3 id="f4t"><span class="label">Figure 4</span>Cost with memory, as a share of the cost without it</h3></div>
+      <div class="scroll"><svg id="res" viewBox="0 0 1100 420" role="img" aria-labelledby="f4t"></svg></div>
+      <figcaption>Medians of 3–4 runs per side. Left of 100% is cheaper. <button class="textbtn" type="button" id="f4tableBtn">Show the numbers</button></figcaption>
+      <div id="f4table" hidden></div>
+    </figure>
+  </section>
+
+  <!-- ===================== rules ===================== -->
+  <section id="rules">
+    <header class="sh"><h2>Rules it keeps</h2><p>Layer by layer, from your machine up to your agent.</p></header>
+    <svg id="stack" class="hide" viewBox="0 0 1100 540" role="img" aria-label="singularity as a stack of five layers, each with the rule it keeps"></svg>
+    <ol class="stack-list" id="stackList"></ol>
+  </section>
+
+  <!-- ===================== install ===================== -->
+  <section id="install">
+    <header class="sh"><h2>Install</h2><p>One command, then a short setup that asks before it changes anything.</p></header>
+    <div class="install" data-install style="max-width: 760px">
+      <div class="tabs" role="tablist" aria-label="Your system">
+        <button role="tab" aria-selected="true" data-os="sh">macOS, Linux</button>
+        <button role="tab" aria-selected="false" data-os="ps">Windows</button>
+      </div>
+      <div class="line">
+        <pre><span class="p">$ </span><span data-cmd>curl -fsSL https://raw.githubusercontent.com/pandacover/singularity/main/install.sh | sh</span></pre>
+        <button class="copy" type="button">Copy</button>
+      </div>
+    </div>
+    <div class="setup">
+      <div>
+        <span class="label">Works with</span>
+        <table class="agents">
+          <thead><tr><th>Agent</th><th>Hands over</th><th>Warns</th><th>Learns</th></tr></thead>
+          <tbody>
+            <tr><td>Claude Code</td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-y" role="img" aria-label="yes"></span></td></tr>
+            <tr><td>Codex</td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-n" role="img" aria-label="no"></span></td></tr>
+            <tr><td>Gemini CLI</td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-n" role="img" aria-label="no"></span></td></tr>
+            <tr><td>Droid</td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-y" role="img" aria-label="yes"></span></td><td><span class="dot-n" role="img" aria-label="no"></span></td></tr>
+            <tr><td>Cursor, OpenCode<small>through a skill, when asked</small></td><td><span class="dot-n" role="img" aria-label="no"></span></td><td><span class="dot-n" role="img" aria-label="no"></span></td><td><span class="dot-n" role="img" aria-label="no"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <span class="label">Then, if you’re curious</span>
+        <dl class="cmds">
+          <dt>singularity status</dt><dd>What memory knows, per repo.</dd>
+          <dt>singularity recall "…"</dt><dd>What a task would be handed.</dd>
+          <dt>singularity learn</dt><dd>Learn now.</dd>
+          <dt>singularity uninstall</dt><dd>Take it out again.</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>singularity · <button type="button" id="replayIntro">replay the intro</button></span>
+    <span>Every number here comes from real runs · <a href="https://github.com/pandacover/singularity">GitHub</a></span>
+  </footer>
+</div>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmtK = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : `${Math.round(n / 1e3)}k`;
+const med = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const tip = $("#tip");
+function showTip(e, html) {
+  tip.innerHTML = html; tip.classList.add("on");
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, e.clientX + 14))}px`;
+  tip.style.top = `${e.clientY + 16 + h > innerHeight ? e.clientY - h - 12 : e.clientY + 16}px`;
+}
+const hideTip = () => tip.classList.remove("on");
+// runs fn once the element is on screen (and the intro, if any, is over)
+const onceVisible = (el, fn, threshold = 0.35) => new IntersectionObserver(([e], o) => {
+  if (!e.isIntersecting) return;
+  if (document.documentElement.classList.contains("intro")) { addEventListener("introdone", () => { o.unobserve(el); o.observe(el); }, { once: true }); return; }
+  o.disconnect(); fn();
+}, { threshold }).observe(el);
+
+/* ===================== install ===================== */
+const INSTALL = {
+  sh: "curl -fsSL https://raw.githubusercontent.com/pandacover/singularity/main/install.sh | sh",
+  ps: "irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex"
+};
+function setOS(os) {
+  $$("[data-install]").forEach((box) => {
+    $$("[data-os]", box).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.os === os)));
+    $("[data-cmd]", box).textContent = INSTALL[os];
+  });
+}
+if (/Windows/.test(navigator.userAgent)) setOS("ps");
+$$("[data-install]").forEach((box) => {
+  $$("[data-os]", box).forEach((b) => b.addEventListener("click", () => setOS(b.dataset.os)));
+  const btn = $(".copy", box);
+  btn.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("[data-cmd]", box).textContent); } catch { return; }
+    btn.textContent = "Copied"; btn.dataset.done = "";
+    setTimeout(() => { btn.textContent = "Copy"; delete btn.dataset.done; }, 1600);
+  });
+});
+
+/* ===================== figure 1: where the turns went ===================== */
+// The eight runs of the long-task measurement (runs/excalidraw/long), turn by turn:
+// [kind: r reading or searching, w editing, x running checks, o final reply; failed; what it did; the error].
+const RUNS = [{"setup":"none","turns":32,"tokens":2193520,"usd":0.935,"cells":[["r",0,"Searched the repo"],["r",0,"Searched the repo; read actionToggleObjectsSnapMode.tsx, actionToggleStats.tsx"],["r",0,"Read actionToggleMidpointSnapping.tsx, shortcuts.ts, App.tsx and 1 more"],["r",1,"Searched the repo; read HelpDialog.tsx","Search failed — ripgrep rejected the pattern, glob, or file type without searching: rg: error parsing glob '{p"],["r",0,"Searched packages/excalidraw; read keys.ts, appState.ts"],["r",0,"Searched packages/excalidraw, types.ts"],["r",0,"Searched packages/excalidraw; read actionToggleZenMode.tsx"],["r",0,"Searched actions/, en.json, App.tsx"],["r",0,"Read types.ts, index.ts, en.json"],["w",0,"Edited types.ts, index.ts, en.json and 4 more"],["w",1,"Edited actionToggleRulers.tsx, actionTogglePresenterMode.tsx, shortcuts.ts and 2 more","Found 2 matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_al"],["r",0,"Read App.tsx"],["w",0,"Edited App.tsx, DefaultItems.tsx"],["r",0,"Searched excalidraw.test.tsx"],["r",0,"Searched ui.ts; read excalidraw.test.tsx"],["r",0,"Read ui.ts"],["w",0,"Edited excalidraw.test.tsx"],["x",1,"Ran tests or typecheck","yarn run v1.22.22 $ yarn test:app --update --watch=false --watch=false $ vitest --update --watch=false --watch"],["x",1,"Ran tests or typecheck","✓ packages/element/src/__tests__/flowchart.test.ts (1 test) 21ms ✓ excalidraw-app/tests/LanguageList.test.tsx "],["r",0,"Searched the repo, actionLink.tsx"],["r",0,"Searched packages/excalidraw, App.tsx"],["r",0,"Searched manager.tsx"],["x",1,"Ran tests or typecheck","❯ packages/excalidraw/tests/excalidraw.test.tsx (32 tests | 1 failed | 31 skipped) 333ms × <Excalidraw/> > sta"],["x",1,"Ran tests or typecheck","❯ packages/excalidraw/tests/excalidraw.test.tsx (32 tests | 1 failed | 31 skipped) 344ms × <Excalidraw/> > sta"],["w",0,"Edited tmpdbg.test.tsx"],["r",0,"Read App.tsx"],["w",0,"Edited tmpdbg.test.tsx, excalidraw.test.tsx, export.test.tsx.snap"],["x",1,"Ran tests or typecheck","❯ packages/excalidraw/tests/excalidraw.test.tsx (32 tests | 1 failed | 31 skipped) 344ms → expected false to b"],["r",0,"Searched App.tsx; read shortcuts.test.tsx"],["w",0,"Edited excalidraw.test.tsx"],["x",0,"Ran tests or typecheck"],["o",0,"Wrote its final reply"]]},{"setup":"none","turns":21,"tokens":1190370,"usd":0.592,"cells":[["r",0,"Searched the repo, packages/excalidraw"],["r",0,"Searched the repo; read actionToggleMidpointSnapping.tsx"],["r",0,"Searched packages/excalidraw; read actionToggleStats.tsx, shortcuts.ts"],["r",0,"Searched packages/excalidraw, the repo"],["r",0,"Read actionToggleObjectsSnapMode.tsx, App.tsx, DefaultItems.tsx and 2 more"],["r",0,"Searched packages/excalidraw, keys.ts, the repo; read types.ts"],["r",0,"Searched en.json, types.ts; read types.ts, DefaultItems.tsx, actionToggleZenMode.tsx"],["r",0,"Searched ContextMenu.tsx, the repo"],["w",0,"Edited keys.ts, actionToggleStats.tsx, actionToggleMidpointSnapping.tsx and 6 more"],["w",1,"Edited appState.ts, types.ts, App.tsx and 2 more","Found 2 matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_al"],["w",1,"Read excalidraw.test.tsx; edited App.tsx","String to replace not found in file. String: actionToggleMidpointSnapping, } from"],["w",0,"Searched App.tsx, ui.ts; edited excalidraw.test.tsx"],["w",0,"Edited App.tsx"],["x",0,"Ran tests or typecheck"],["x",1,"Ran tests or typecheck","yarn run v1.22.22 $ yarn test:app --update --watch=false --watch=false $ vitest --update --watch=false --watch"],["x",1,"Ran tests or typecheck","✓ packages/excalidraw/tests/App.test.tsx (1 test) 230ms ✓ packages/math/tests/line.test.ts (3 tests) 3ms ✓ exc"],["r",0,"Read ui.ts"],["r",0,"Searched tests/; read shortcuts.test.tsx"],["w",0,"Edited excalidraw.test.tsx; ran tests or typecheck"],["x",0,"Ran tests or typecheck"],["o",0,"Wrote its final reply"]]},{"setup":"none","turns":27,"tokens":1609777,"usd":0.714,"cells":[["r",0,"Searched the repo"],["r",0,"Searched packages/excalidraw; read actionToggleMidpointSnapping.tsx, actionToggleStats.tsx"],["r",0,"Searched the repo"],["r",0,"Searched the repo; read DefaultItems.tsx, App.tsx"],["r",0,"Read shortcuts.ts, HelpDialog.tsx, types.ts and 2 more"],["r",0,"Searched keys.ts; read appState.ts, types.ts"],["r",0,"Searched packages/excalidraw; read keys.ts"],["w",0,"Edited keys.ts, actionToggleStats.tsx, actionToggleMidpointSnapping.tsx and 3 more"],["w",1,"Searched HelpDialog.tsx; edited types.ts, shortcuts.ts, appState.ts and 3 more","Found 2 matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_al"],["w",1,"Read App.tsx, DefaultItems.tsx; edited App.tsx","String to replace not found in file. String: actionToggleStats, actionToggleMidpointSnapping,"],["w",0,"Searched the repo; edited App.tsx, DefaultItems.tsx"],["r",0,"Searched excalidraw.test.tsx, ui.ts"],["r",0,"Read excalidraw.test.tsx, ui.ts"],["r",0,"Read excalidraw.test.tsx"],["w",0,"Edited excalidraw.test.tsx"],["x",0,"Ran tests or typecheck"],["x",0,"Ran tests or typecheck"],["r",0,"Searched tests/"],["w",0,"Edited excalidraw.test.tsx"],["r",0,"Searched packages/excalidraw"],["r",0,"Read manager.tsx, App.tsx"],["r",0,"Read App.tsx"],["w",0,"Edited excalidraw.test.tsx"],["r",0,"Searched App.tsx"],["r",0,"Read App.tsx"],["w",0,"Edited excalidraw.test.tsx"],["o",0,"Wrote its final reply"]]},{"setup":"none","turns":30,"tokens":2241056,"usd":0.903,"cells":[["r",0,"Searched the repo"],["r",0,"Searched the repo; read actionToggleStats.tsx"],["r",0,"Searched the repo"],["r",0,"Searched packages/excalidraw, the repo"],["r",0,"Read actionToggleMidpointSnapping.tsx, actionToggleObjectsSnapMode.tsx, shortcuts.ts and 1 more"],["r",0,"Searched packages/excalidraw; read DefaultItems.tsx, App.tsx, HelpDialog.tsx"],["r",0,"Searched the repo"],["r",0,"Read types.ts, appState.ts, en.json and 1 more"],["r",0,"Searched keys.ts, actions/, the repo"],["r",0,"Read keys.ts, actionToggleViewMode.tsx"],["w",0,"Read index.ts; edited keys.ts, actionToggleStats.tsx, actionToggleMidpointSnapping.tsx and 3 more"],["w",0,"Searched App.tsx; edited index.ts, shortcuts.ts, appState.ts and 4 more"],["w",1,"Searched the repo; edited App.tsx, DefaultItems.tsx","Found 2 matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_al"],["w",1,"Read App.tsx; edited App.tsx","No changes to make: old_string and new_string are exactly the same."],["w",0,"Searched excalidraw.test.tsx; edited App.tsx"],["r",0,"Read excalidraw.test.tsx"],["w",0,"Edited excalidraw.test.tsx; ran tests or typecheck"],["x",0,"Ran tests or typecheck"],["x",0,"Ran tests or typecheck"],["r",0,"Searched ui.ts"],["r",0,"Searched packages/excalidraw, manager.tsx"],["x",0,"Ran tests or typecheck"],["r",0,"Searched App.tsx"],["r",0,"Searched App.tsx"],["w",0,"Edited tmpdbg.test.tsx"],["r",0,"Read interactivity.test.tsx"],["x",0,"Ran tests or typecheck"],["x",0,"Ran tests or typecheck"],["r",0,"Read contextmenu.test.tsx.snap"],["o",0,"Wrote its final reply"]]},{"setup":"mem","turns":9,"tokens":432612,"usd":0.375,"cells":[["r",0,"Read actionToggleMidpointSnapping.tsx, actionToggleStats.tsx"],["r",0,"Read shortcuts.ts, HelpDialog.tsx, appState.ts and 2 more"],["r",0,"Read shortcuts.ts, App.tsx, contextmenu.test.tsx and 2 more"],["w",0,"Edited actionToggleStats.tsx, actionToggleMidpointSnapping.tsx, types.ts and 7 more"],["w",1,"Edited actionToggleStats.tsx, actionToggleMidpointSnapping.tsx, types.ts and 7 more","/usr/bin/bash: -c: line 109: unexpected EOF while looking for matching `''"],["w",0,"Read ui.ts; edited actionToggleStats.tsx, actionToggleMidpointSnapping.tsx, types.ts and 8 more"],["x",0,"Ran tests or typecheck"],["x",0,"Ran tests or typecheck"],["o",0,"Wrote its final reply"]]},{"setup":"mem","turns":7,"tokens":292980,"usd":0.176,"cells":[["r",0,"Read actionToggleMidpointSnapping.tsx, actionToggleStats.tsx"],["r",0,"Read shortcuts.ts, HelpDialog.tsx, DefaultItems.tsx"],["r",0,"Read shortcuts.ts, HelpDialog.tsx, App.tsx and 2 more"],["w",0,"Edited actionToggleStats.tsx, shortcuts.ts, HelpDialog.tsx and 7 more"],["r",0,"Read contextmenu.test.tsx, ui.ts, excalidraw.test.tsx"],["x",0,"Ran tests or typecheck"],["o",0,"Wrote its final reply"]]},{"setup":"mem","turns":11,"tokens":497970,"usd":0.334,"cells":[["r",0,"Read actionToggleMidpointSnapping.tsx, actionToggleStats.tsx, actionToggleGridMode.tsx"],["r",0,"Read shortcuts.ts, HelpDialog.tsx"],["r",0,"Read appState.ts, types.ts, App.tsx and 3 more"],["r",0,"Read types.ts, DefaultItems.tsx, App.tsx and 4 more"],["w",0,"Edited actionToggleStats.tsx, actionToggleMidpointSnapping.tsx, types.ts and 7 more"],["w",0,"Edited actionToggleStats.tsx, actionToggleMidpointSnapping.tsx, types.ts and 7 more"],["w",0,"Edited excalidraw.test.tsx, ui.ts, DefaultItems.tsx and 1 more"],["x",0,"Ran tests or typecheck"],["r",0,"Read contextmenu.test.tsx, contextmenu.test.tsx.snap"],["x",0,"Ran tests or typecheck"],["o",0,"Wrote its final reply"]]},{"setup":"mem","turns":10,"tokens":413015,"usd":0.264,"cells":[["r",0,"Read actionToggleMidpointSnapping.tsx, actionToggleStats.tsx, en.json"],["r",0,"Read shortcuts.ts, HelpDialog.tsx, App.tsx and 2 more"],["r",0,"Read shortcuts.ts, actionToggleObjectsSnapMode.tsx, types.ts and 1 more"],["r",0,"Read ContextMenu.tsx, App.tsx"],["w",0,"Edited actionToggleStats.tsx, actionToggleMidpointSnapping.tsx, index.ts and 7 more"],["w",0,"Edited DefaultItems.tsx, excalidraw.test.tsx, ui.ts"],["r",0,"Read ui.ts"],["w",0,"Edited excalidraw.test.tsx"],["r",0,"Searched the repo"],["o",0,"Wrote its final reply"]]}];
+(() => {
+  const host = $("#towers");
+  const none = RUNS.filter((r) => r.setup === "none").sort((a, b) => a.turns - b.turns);
+  const mem = RUNS.filter((r) => r.setup === "mem").sort((a, b) => a.turns - b.turns);
+  const looking = (rs) => med(rs.map((r) => r.cells.filter((c) => c[0] === "r").length));
+  $("#pull").innerHTML = `${looking(none)}<span class="to">→</span><span class="m">${looking(mem)}</span>`;
+  const KIND = { r: "", w: " w", x: " x", o: " o" };
+  const col = (r, isMem) => `<div class="col">${isMem ? `<span class="hand" title="memory’s hand-over"></span>` : `<span class="nohand"></span>`}${r.cells.map((c, i) => `<span class="c${KIND[c[0]]}${c[1] ? " f" : ""}" data-r="${RUNS.indexOf(r)}" data-t="${i}" style="transition-delay:${i * 40}ms"></span>`).join("")}</div>`;
+  const memDone = Math.max(...mem.map((r) => r.turns));
+  const sum = (rs) => `median ${med(rs.map((r) => r.turns))} turns · ${fmtK(med(rs.map((r) => r.tokens)))} tokens`;
+  host.innerHTML =
+    `<div class="trow plot"><div class="grp">${none.map((r) => col(r, false)).join("")}</div><div class="grp">${mem.map((r) => col(r, true)).join("")}</div>` +
+    `<div class="done-line" id="doneLine"><span>turn ${memDone}: all memory runs done</span></div></div>` +
+    `<div class="trow nums"><div class="grp">${none.map((r) => `<span>${r.turns}</span>`).join("")}</div><div class="grp mem">${mem.map((r) => `<span>${r.turns}</span>`).join("")}</div></div>` +
+    `<div class="trow names"><div class="grp"><b>Without memory</b><small>${sum(none)}</small></div><div class="grp mem"><b>With singularity</b><small>${sum(mem)}</small></div></div>`;
+  const placeLine = () => {
+    const tallest = Math.max(...$$(".plot .grp:nth-child(2) .col", host).map((c) => c.offsetHeight));
+    $("#doneLine").style.bottom = `${tallest + 1}px`;
+  };
+  placeLine(); addEventListener("resize", placeLine);
+  host.addEventListener("pointermove", (e) => {
+    const c = e.target.closest(".c");
+    if (!c) { hideTip(); return; }
+    const r = RUNS[+c.dataset.r], t = +c.dataset.t, cell = r.cells[t];
+    showTip(e, `<div class="d">${r.setup === "mem" ? "with memory" : "without memory"} · turn ${t + 1} of ${r.turns}</div>${esc(cell[2])}${cell[3] ? `<div class="e">failed: ${esc(cell[3])}</div>` : ""}`);
+  });
+  host.addEventListener("pointerleave", hideTip);
+  if (reduced) host.classList.remove("hide");
+  else onceVisible(host, () => host.classList.remove("hide"));
+})();
+
+/* ===================== figure 2: a mistake, caught ===================== */
+(() => {
+  // The moment from the bug-fix session, drawn as Claude Code shows tool calls. The error is the one
+  // Figure 1's runs got; the note is memory's pitfall, shortened; its count is the pitfall's "runs".
+  const term = $("#term");
+  let run = 0;
+  const add = (cls, html) => { const d = document.createElement("div"); d.className = `${cls} anim`; d.innerHTML = html; term.appendChild(d); requestAnimationFrame(() => requestAnimationFrame(() => d.classList.add("on"))); return d; };
+  const call = (cls) => add(`tm-call ${cls}`, `<span class="d">●</span><span class="fn">Bash</span>(<span class="cmd"></span>)`);
+  async function type(el, text, id) {
+    const out = $(".cmd", el), txt = document.createTextNode(""), cur = document.createElement("span");
+    cur.className = "tm-cur"; out.append(txt, cur);
+    for (let i = 1; i <= text.length; i++) { if (id !== run) return; txt.data = text.slice(0, i); await sleep(36); }
+    await sleep(220); cur.remove();
+  }
+  const SLIP = `<div class="who"><i></i>singularity<span>· seen in 4 earlier runs</span></div>The script already passes --watch, so this fails. Run plain <code>yarn test:update</code>.`;
+  async function play() {
+    const id = ++run;
+    term.innerHTML = "";
+    if (reduced) {
+      const a = call("err"); $(".cmd", a).textContent = "yarn test:update --watch=false";
+      add("tm-res", `└ <span class="r">Error: Expected a single value for option "-w, --watch"</span>`);
+      add("slip", SLIP);
+      const b = call("ok"); $(".cmd", b).textContent = "yarn test:update";
+      add("tm-res", `└ <span class="g">✓ passed</span>`);
+      return;
+    }
+    await sleep(300);
+    const a = call("");
+    await type(a, "yarn test:update --watch=false", id); if (id !== run) return;
+    await sleep(500); a.classList.add("err");
+    add("tm-res", `└ <span class="r">Error: Expected a single value for option "-w, --watch"</span>`);
+    await sleep(900); if (id !== run) return;
+    add("slip", SLIP);
+    await sleep(2200); if (id !== run) return;
+    const b = call("");
+    await type(b, "yarn test:update", id); if (id !== run) return;
+    await sleep(700); b.classList.add("ok");
+    add("tm-res", `└ <span class="g">✓ passed</span>`);
+  }
+  $("#replay").addEventListener("click", play);
+  onceVisible($("#win"), play, 0.5);
+})();
+
+/* ===================== figure 3: the cue matcher ===================== */
+// The memory the measured runs used (v1-cues, version 2), trimmed to what picking reads.
+const MEMORY = {"workflows":[{"id":"add-app-state-field","name":"Add a persisted field to the app state","cues":{"any":["appstate field","new setting","toggle setting","state field"],"none":[],"steps":[],"fills":[{"placeholder":"{field}","from":"code","n":1,"phrase":null},{"placeholder":"{default}","from":"after","n":1,"phrase":"default"}]},"steps":[{"when":null,"text":"Add `{field}: {type};` to the AppState interface."},{"when":null,"text":"Add `{field}: {default},` to the default app state returned by getDefaultAppState."},{"when":null,"text":"Add `{field}: { browser: <bool>, export: <bool>, server: <bool> }` to the storage config, following the storage rules the task states (e.g. browser true, export false, server false)."},{"when":null,"text":"Regenerate snapshots (see update-test-snapshots) since a new app-state field changes many snapshots."}]},{"id":"create-toggle-action","name":"Create a toggle action for a boolean app-state field","cues":{"any":["toggle setting","toggle it","a toggle","new toggle"],"none":[],"steps":[],"fills":[{"placeholder":"{field}","from":"code","n":1,"phrase":null}]},"steps":[{"when":null,"text":"Create the new action file modelled on an existing toggle action (e.g. the grid-mode or objects-snap-mode toggle): `register({ name: \"{actionName}\", label: \"labels.{label}\", viewMode: true if it must work in view mode, trackEvent with predicate on !appState.{field}, perform returning appState with {field} flipped and CaptureUpdateAction.EVENTUALLY, checked: (appState) => appState.{field} })`."},{"when":null,"text":"Add `| \"{actionName}\"` to the ActionName union."},{"when":null,"text":"Export the action: `export { {action} } from \"./{action file}\";`."},{"when":null,"text":"Add the English label under labels: `\"{label}\": \"<text>\"`."}]},{"id":"give-action-keyboard-shortcut","name":"Give an action a keyboard shortcut and list it in the help dialog","cues":{"any":["help dialog","with alt+","new keyboard shortcut","new shortcut"],"none":["shortcut from"],"steps":[],"fills":[{"placeholder":"{shortcut}","from":"key","n":1,"phrase":null}]},"steps":[{"when":"only if the key code is not already defined","text":"Add `{code}: \"<EventCode>\",` to CODES if it isn't there already."},{"when":null,"text":"Add `| \"{actionName}\"` to the ShortcutName union."},{"when":null,"text":"Add `{actionName}: [getShortcutKey(\"{shortcut}\")],` to the shortcut map."},{"when":null,"text":"In the action's own file add `keyTest: (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.{code}` (match the modifiers of the shortcut)."},{"when":null,"text":"Add `<Shortcut label={t(\"labels.{label}\")} shortcuts={[getShortcutKey(\"{shortcut}\")]} />` to the shortcuts island in the help dialog."}]},{"id":"change-keyboard-shortcut","name":"Change an existing action's keyboard shortcut","cues":{"any":["shortcut from","change the keyboard shortcut","change the shortcut"],"none":[],"steps":[],"fills":[{"placeholder":"{newShortcut}","from":"key","n":2,"phrase":null}]},"steps":[{"when":"only if the key code is not already defined","text":"Add `{newCode}: \"<EventCode>\",` to CODES if it isn't defined yet."},{"when":null,"text":"In the action's own file, change the keyTest to compare event.code with CODES.{newCode} (keep the modifier checks)."},{"when":null,"text":"Change the shortcut map entry for {actionName} to getShortcutKey(\"{newShortcut}\")."},{"when":null,"text":"Change the matching Shortcut in the help dialog to getShortcutKey(\"{newShortcut}\")."},{"when":null,"text":"Search the repo (tests, locales, docs) for the old shortcut text/code and update any remaining mentions."},{"when":null,"text":"Run typecheck and tests; regenerate snapshots if they changed."}]},{"id":"add-shortcut-keyboard-test","name":"Add a test that the shortcut toggles the action","cues":{"any":["add a test","add tests","new test","test for the shortcut","test that the shortcut"],"none":[],"steps":[],"fills":[]},"steps":[{"when":null,"text":"In the Excalidraw component test file, import CODES from the common package and Keyboard from the UI test helpers."},{"when":null,"text":"Add an `it` that renders `<Excalidraw handleKeyboardGlobally />`, asserts h.state.{stateField} is false, presses the new shortcut with Keyboard, and asserts it flipped; also assert the old shortcut does nothing when relevant."}]},{"id":"add-action-to-canvas-context-menu","name":"Add an action to the canvas right-click menu","cues":{"any":["right-click menu","context menu","right-click"],"none":[],"steps":[{"step":3,"any":["view mode"],"none":[]}],"fills":[]},"steps":[{"when":null,"text":"Import {action} in the actions import list."},{"when":null,"text":"Add {action} to the canvas menu item list in getContextMenuItems."},{"when":"only if the task wants it in view mode too","text":"Add {action} to the view-mode canvas menu list."},{"when":null,"text":"Add \"{actionName}\" to expectedShortcutNames in the canvas context menu test, in the same position as in the menu."},{"when":null,"text":"Regenerate snapshots (see update-test-snapshots)."}]},{"id":"add-preference-toggle-to-main-menu","name":"Add a toggle to Preferences in the main menu","cues":{"any":["from preferences","in preferences","preferences in the main menu","preferences menu"],"none":[],"steps":[],"fills":[]},"steps":[{"when":null,"text":"Import {action} in the actions import list of the default items file."},{"when":null,"text":"Add an exported `{Item}` component modelled on the other PreferencesToggle…Item components (useI18n, useExcalidrawActionManager, useUIAppState; a checked DropdownMenuItem calling actionManager.executeAction({action}))."},{"when":null,"text":"Render <{Item} /> in the Preferences submenu default children."},{"when":null,"text":"Expose it: `Preferences.Toggle{Thing} = {Item};`."}]},{"id":"update-test-snapshots","name":"Regenerate test snapshots and verify","cues":{"any":["tests","typecheck","snapshot"],"none":[],"steps":[],"fills":[]},"steps":[{"when":null,"text":"Run `yarn test:update` with no extra --watch flag (the script already passes one)."},{"when":null,"text":"Run `yarn test:typecheck`."},{"when":null,"text":"Review changed snapshot files with git status to confirm only expected snapshots changed."}]}],"edges":[{"from":"start","to":"add-app-state-field"},{"from":"start","to":"change-keyboard-shortcut"},{"from":"add-app-state-field","to":"create-toggle-action"},{"from":"create-toggle-action","to":"give-action-keyboard-shortcut"},{"from":"create-toggle-action","to":"add-action-to-canvas-context-menu"},{"from":"give-action-keyboard-shortcut","to":"add-action-to-canvas-context-menu"},{"from":"add-action-to-canvas-context-menu","to":"add-preference-toggle-to-main-menu"},{"from":"give-action-keyboard-shortcut","to":"add-preference-toggle-to-main-menu"},{"from":"create-toggle-action","to":"add-preference-toggle-to-main-menu"},{"from":"add-preference-toggle-to-main-menu","to":"update-test-snapshots"},{"from":"add-action-to-canvas-context-menu","to":"update-test-snapshots"},{"from":"give-action-keyboard-shortcut","to":"update-test-snapshots"},{"from":"change-keyboard-shortcut","to":"add-shortcut-keyboard-test"},{"from":"change-keyboard-shortcut","to":"update-test-snapshots"},{"from":"add-shortcut-keyboard-test","to":"update-test-snapshots"},{"from":"update-test-snapshots","to":"end"}]};
+// A line-for-line port of cueChoice and the fills in src/workflows/Cues.ts, and of graphOrder in src/workflows/Models.ts.
+const START = "start";
+function graphOrder(m) {
+  const byId = new Map(m.workflows.map((w) => [w.id, w]));
+  const next = new Map();
+  for (const e of m.edges) next.set(e.from, [...(next.get(e.from) ?? []), e.to]);
+  const indegree = new Map(m.workflows.map((w) => [w.id, 0]));
+  for (const e of m.edges) if (indegree.has(e.to) && e.from !== START) indegree.set(e.to, (indegree.get(e.to) ?? 0) + 1);
+  const order = [], seen = new Set();
+  const queue = [...(next.get(START) ?? []).filter((id) => byId.has(id))];
+  for (const w of m.workflows) if ((indegree.get(w.id) ?? 0) === 0 && !queue.includes(w.id)) queue.push(w.id);
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (seen.has(id) || !byId.has(id)) continue;
+    seen.add(id); order.push(id);
+    for (const to of next.get(id) ?? []) {
+      if (!byId.has(to)) continue;
+      indegree.set(to, (indegree.get(to) ?? 1) - 1);
+      if ((indegree.get(to) ?? 0) <= 0) queue.push(to);
+    }
+  }
+  for (const w of m.workflows) if (!seen.has(w.id)) order.push(w.id);
+  return order.map((id) => byId.get(id));
+}
+const NEGATED = /(?:\b(?:not|never|no|without)\b|n't\b)[^.,;:()\n]*/gi;
+const positiveText = (task) => task.replace(NEGATED, " ");
+const said = (text, phrases) => { const t = text.toLowerCase(); return phrases.find((p) => p.trim() !== "" && t.includes(p.trim().toLowerCase())); };
+const cueMatch = (text, any, none) => { const hit = said(text, any); return hit === undefined || said(text, none) !== undefined ? undefined : hit; };
+function cueChoice(memory, task) {
+  const text = positiveText(task);
+  return graphOrder(memory).flatMap((w) => {
+    const c = w.cues;
+    if (c === undefined) return [];
+    const hit = cueMatch(text, c.any, c.none);
+    if (hit === undefined) return [];
+    const skip = c.steps.filter((s) => s.step >= 1 && s.step <= w.steps.length && cueMatch(text, s.any, s.none) === undefined).map((s) => s.step);
+    if (skip.length >= w.steps.length) return [];
+    return [{ workflow: w, skip, hit }];
+  });
+}
+const KEY = /\b(?:(?:Alt|Ctrl|Cmd|Shift|Meta|CtrlOrCmd)\+)+[A-Za-z0-9/']/g;
+const unique = (xs) => [...new Set(xs.map((x) => x.trim()).filter((x) => x !== ""))];
+const statedValues = (task) => ({
+  code: unique([...task.matchAll(/`([^`\n]+)`/g)].map((m) => m[1])),
+  quoted: unique([...task.matchAll(/"([^"\n]+)"|“([^”\n]+)”/g)].map((m) => m[1] ?? m[2])),
+  key: unique([...task.matchAll(KEY)].map((m) => m[0]))
+});
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function fillValue(task, f) {
+  const v = statedValues(task);
+  if (f.from === "after") {
+    const phrase = f.phrase?.trim();
+    if (!phrase) return undefined;
+    const m = new RegExp(`${escapeRe(phrase)}\\s*[:=(]?\\s*["'\`]?([A-Za-z0-9_$.+-]+)`, "i").exec(task);
+    const value = m?.[1]?.replace(/[.+-]+$/, "");
+    return value === "" ? undefined : value;
+  }
+  if (!Number.isInteger(f.n) || f.n < 1) return undefined;
+  if (f.from === "key-letter") {
+    const k = v.key[f.n - 1]; const letter = k?.slice(k.lastIndexOf("+") + 1);
+    return letter !== undefined && /^[A-Za-z0-9]$/.test(letter) ? letter.toUpperCase() : undefined;
+  }
+  return v[f.from]?.[f.n - 1];
+}
+function fillsFor(task, w) {
+  const out = new Map();
+  for (const f of w.cues?.fills ?? []) { const value = fillValue(task, f); if (value !== undefined && !out.has(f.placeholder)) out.set(f.placeholder, value); }
+  return out;
+}
+
+(() => {
+  const EXAMPLES = [
+    ["Presenter mode", "Add a \"Presenter mode\" toggle setting. Store it in a new appState field `presenterModeEnabled` (default false). Users should be able to toggle it with Alt+J, from the canvas right-click menu (but not in view mode), and from Preferences in the main menu, and the help dialog should list the shortcut. Make sure the tests pass."],
+    ["Page breaks", "Add a \"Show page breaks\" setting in a new appState field `pageBreaksEnabled` (default false). Users should be able to toggle it from Preferences in the main menu. Don't add a keyboard shortcut or a right-click menu entry for it. Make sure the tests pass."],
+    ["Zen mode shortcut", "Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything that shows or tests the shortcut."],
+    ["Something unrelated", "Fix the typo in the README's installation section."]
+  ];
+  const ta = $("#task"), hl = $("#hl"), ex = $("#examples");
+  ex.insertAdjacentHTML("beforeend", EXAMPLES.map(([n], i) => `<button type="button" data-i="${i}" aria-pressed="false">${esc(n)}</button>`).join(""));
+  let open = -1, demo = 0, lastKey = "", shown = new Set();
+  const press = (i) => $$("button", ex).forEach((x, j) => x.setAttribute("aria-pressed", String(j === i)));
+  ex.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    demo++; press(+b.dataset.i); ta.value = EXAMPLES[+b.dataset.i][1]; open = -1; update();
+  });
+  ta.addEventListener("input", () => { demo++; press(-1); update(); });
+  ta.addEventListener("focus", () => { demo++; });
+
+  function marked(text, phrases) {
+    const tags = new Uint8Array(text.length);
+    for (const m of text.matchAll(NEGATED)) for (let i = m.index; i < m.index + m[0].length; i++) tags[i] = 1;
+    const low = text.toLowerCase();
+    for (const p of phrases) {
+      const q = p.trim().toLowerCase(); if (!q) continue;
+      for (let i = low.indexOf(q); i !== -1; i = low.indexOf(q, i + 1)) {
+        let neg = false; for (let k = i; k < i + q.length; k++) if (tags[k] === 1) neg = true;
+        if (!neg) for (let k = i; k < i + q.length; k++) tags[k] = 2;
+      }
+    }
+    let out = "", cur = -1, buf = "";
+    const flush = () => { if (!buf) return; const e = esc(buf); out += cur === 1 ? `<del>${e}</del>` : cur === 2 ? `<mark>${e}</mark>` : e; buf = ""; };
+    for (let i = 0; i < text.length; i++) { if (tags[i] !== cur) { flush(); cur = tags[i]; } buf += text[i]; }
+    flush();
+    return out + "\n";
+  }
+  const pill = (v, filled) => `<span class="pill${filled ? " f" : ""}">${esc(v)}</span>`;
+  const stepHtml = (text, fills) => esc(text).replace(/`([^`]+)`/g, "$1")
+    .replace(/\{([A-Za-z ]+)\}/g, (m, name) => fills.has(m) ? pill(fills.get(m), true) : pill(name, false));
+  const fit = () => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight}px`; };
+
+  function update() {
+    const task = ta.value;
+    const t0 = performance.now();
+    let picks = [];
+    for (let i = 0; i < 20; i++) picks = cueChoice(MEMORY, task);
+    const ms = (performance.now() - t0) / 20;
+    $("#speed").textContent = `matched in ${ms < 0.1 ? ms.toFixed(3) : ms.toFixed(2)} ms · no model call`;
+    const pos = positiveText(task);
+    const hits = picks.map((c) => c.hit);
+    for (const c of picks) for (const s of c.workflow.cues.steps) { const h = cueMatch(pos, s.any, s.none); if (h) hits.push(h); }
+    hl.innerHTML = marked(task, hits);
+    fit();
+    $("#hookline").innerHTML = task.trim() === "" ? "singularity is waiting for a task" : picks.length ? `singularity attached <b>${picks.length}</b> of ${MEMORY.workflows.length} workflows <span class="k">· click one to see its steps</span>` : "singularity found nothing it knows, so it adds nothing";
+    // rebuild the cards only when they change, so new ones pop in as they're picked
+    const key = JSON.stringify([picks.map((c) => [c.workflow.id, c.skip, [...fillsFor(task, c.workflow)]]), open, task.trim() === ""]);
+    if (key === lastKey) return;
+    lastKey = key;
+    $("#picks").innerHTML = picks.length === 0
+      ? `<div class="empty">${task.trim() === "" ? "Attachments appear here as you type." : "Nothing attached. Your agent starts as it would without memory."}</div>`
+      : picks.map((c, i) => {
+        const w = c.workflow, fills = fillsFor(task, w);
+        const f = [...fills].map(([, v]) => pill(v, true)).join("");
+        const steps = w.steps.map((s, j) => `<li${c.skip.includes(j + 1) ? ` class="skip"` : ""}>${stepHtml(s.text, fills)}</li>`).join("");
+        return `<button type="button" class="card${i === open ? " open" : ""}${shown.has(w.id) ? "" : " new"}" data-i="${i}" aria-expanded="${i === open}" style="animation-delay:${i * 40}ms"><span class="ch"><span><b>${i + 1}</b> workflow</span><span>${w.steps.length} steps ${i === open ? "−" : "+"}</span></span><span class="nm">${esc(w.name)}</span>${f ? `<span class="fills">${f}</span>` : ""}${i === open ? `<ol>${steps}</ol>` : ""}</button>`;
+      }).join("");
+    shown = new Set(picks.map((c) => c.workflow.id));
+  }
+  $("#picks").addEventListener("click", (e) => { const b = e.target.closest(".card"); if (!b) return; open = open === +b.dataset.i ? -1 : +b.dataset.i; update(); });
+  addEventListener("resize", fit);
+  document.fonts?.ready.then(fit);
+
+  // The first time it is seen, the first example types itself, so the cards can be seen arriving.
+  async function typeDemo() {
+    const id = ++demo, text = EXAMPLES[0][1];
+    press(0);
+    for (let i = 1; i <= text.length; i += 2) { if (id !== demo) return; ta.value = text.slice(0, i); update(); await sleep(16); }
+    if (id !== demo) return;
+    ta.value = text; update();
+  }
+  ta.value = ""; update();
+  if (reduced) { press(0); ta.value = EXAMPLES[0][1]; update(); }
+  else onceVisible($(".cp"), typeDemo, 0.4);
+})();
+
+/* ===================== figure 4: results ===================== */
+(() => {
+  // Medians from the pre-registered measurements of memory v1.
+  const ROWS = [
+    { grp: "KINDS OF CHANGE MEMORY HAD LEARNED" },
+    { name: "Long task, four changes", sub: "excalidraw · all four known", n: 4, none: [1902e3, 0.81, 28.5], mem: [423e3, 0.30, 9.5], pct: [-78, -63, -67] },
+    { name: "Long task, two of four known", sub: "excalidraw · plus two unseen bugs", n: 4, none: [1287e3, 0.64, 21.5], mem: [788e3, 0.40, 15], pct: [-39, -38, -30] },
+    { grp: "TASKS IT HADN’T LEARNED" },
+    { name: "Add a ULID validator", sub: "validator.js · small task", n: 3, none: [185e3, 0.11, 6], mem: [203e3, 0.10, 7], pct: [9, -7, 17] },
+    { name: "Postal codes for Pakistan", sub: "validator.js · small task", n: 3, none: [220e3, 0.09, 8], mem: [222e3, 0.09, 8], pct: [1, -2, 0] },
+    { name: "Bug: save-as in the text editor", sub: "excalidraw · nothing matched", n: 3, none: [396e3, 0.21, 12], mem: [398e3, 0.17, 12], pct: [0, -15, 0] },
+    { name: "Bug: dropdown outside click", sub: "excalidraw · a workflow that didn’t fit", n: 3, none: [374e3, 0.17, 12], mem: [302e3, 0.18, 9], pct: [-19, 5, -25] }
+  ];
+  const METRICS = ["TOKENS", "DOLLARS", "TURNS"];
+  const fmt = [(v) => fmtK(v), (v) => `$${v.toFixed(2)}`, (v) => `${v}`];
+  const svg = $("#res");
+  const P0 = 300, PW = 220, PG = 40, MAX = 125;
+  const x0 = (m) => P0 + m * (PW + PG);
+  const px = (m, pct) => x0(m) + ((100 + pct) / MAX) * PW;
+  let head = "", rows = "", y = 36;
+  METRICS.forEach((m, i) => {
+    head += `<text class="ph" x="${x0(i)}" y="12">${m}</text>`;
+    for (const g of [0, 50, 100]) head += `<text class="ax" x="${x0(i) + (g / MAX) * PW}" y="30" text-anchor="${g === 0 ? "start" : "middle"}">${g}%</text>`;
+  });
+  const top = y;
+  ROWS.forEach((r, ri) => {
+    if (r.grp) { y += 28; rows += `<text class="grp" x="0" y="${y}">${esc(r.grp)}</text><line class="sep" x1="0" x2="1100" y1="${y + 9}" y2="${y + 9}"/>`; y += 10; return; }
+    const cy = y + 28;
+    rows += `<g class="hitrow"><rect class="rowband" x="0" y="${y + 6}" width="1100" height="44"/>`;
+    rows += `<text class="rowlab" x="0" y="${cy - 1}">${esc(r.name)}</text><text class="rowsub" x="0" y="${cy + 15}">${esc(r.sub)}</text>`;
+    METRICS.forEach((m, i) => {
+      const base = px(i, 0), at = px(i, r.pct[i]);
+      rows += `<line class="stem" x1="${base}" x2="${at}" y1="${cy}" y2="${cy}"/><circle class="ref" cx="${base}" cy="${cy}" r="3"/><circle class="dot" cx="${at}" cy="${cy}" r="5"/>`;
+      const s = r.pct[i] === 0 ? "±0%" : `${r.pct[i] > 0 ? "+" : "−"}${Math.abs(r.pct[i])}%`;
+      const left = r.pct[i] < 0;
+      rows += `<text class="v" x="${left ? at - 10 : Math.max(at, base) + 10}" y="${cy + 4}" text-anchor="${left ? "end" : "start"}">${s}</text>`;
+      rows += `<rect class="hit" x="${x0(i) - 6}" y="${y + 6}" width="${PW + 12}" height="44" data-r="${ri}" data-m="${i}"/>`;
+    });
+    rows += `</g>`;
+    y += 50;
+  });
+  let grid = "";
+  METRICS.forEach((m, i) => {
+    for (const g of [0, 50]) grid += `<line class="grid" x1="${x0(i) + (g / MAX) * PW}" x2="${x0(i) + (g / MAX) * PW}" y1="${top}" y2="${y + 6}"/>`;
+    grid += `<line class="base" x1="${px(i, 0)}" x2="${px(i, 0)}" y1="${top}" y2="${y + 6}"/>`;
+  });
+  svg.setAttribute("viewBox", `0 0 1100 ${y + 12}`);
+  svg.innerHTML = head + grid + rows;
+  svg.addEventListener("pointermove", (e) => {
+    const t = e.target.closest(".hit");
+    if (!t) { hideTip(); return; }
+    const r = ROWS[+t.dataset.r], i = +t.dataset.m;
+    showTip(e, `${esc(r.name)}, ${METRICS[i].toLowerCase()}<div class="d">without memory ${fmt[i](r.none[i])}, with ${fmt[i](r.mem[i])}</div><div class="d">median of ${r.n} runs each</div>`);
+  });
+  svg.addEventListener("pointerleave", hideTip);
+  $("#f4tableBtn").addEventListener("click", () => {
+    const host = $("#f4table"); host.hidden = !host.hidden;
+    $("#f4tableBtn").textContent = host.hidden ? "Show the numbers" : "Hide the numbers";
+    if (!host.hidden && !host.firstChild) host.innerHTML = `<table class="res"><thead><tr><th>Task</th><th>Runs</th>${METRICS.map((m) => `<th>${m[0] + m.slice(1).toLowerCase()} without</th><th>with</th>`).join("")}</tr></thead><tbody>${ROWS.filter((r) => !r.grp).map((r) => `<tr><td>${esc(r.name)}</td><td>${r.n} + ${r.n}</td>${METRICS.map((m, i) => `<td>${fmt[i](r.none[i])}</td><td>${fmt[i](r.mem[i])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  });
+})();
+
+/* ===================== rules: the stack ===================== */
+(() => {
+  // top to bottom
+  const LAYERS = [
+    { name: "Your agent", note: ["Gets steps, places and warnings.", "Still writes every line itself."], side: "r" },
+    { name: "Hooks", note: ["Never break a session.", "Errors go to a log; ~0.1–0.4 s a call."], side: "l" },
+    { name: "Memory", note: ["Keeps where to look,", "never the code itself."], side: "r" },
+    { name: "Your sessions", note: ["Learning is opt-in,", "at most $1 a day."], side: "l" },
+    { name: "Your machine", note: ["Picking runs here,", "with no model call."], side: "r", base: true }
+  ];
+  const svg = $("#stack"), NS = "http://www.w3.org/2000/svg";
+  const CX = 550, W = 200, H = 108, GAP = 64, TOP = 120, T = 26;
+  const cyOf = (i) => TOP + i * GAP;
+  const P = (cy, u, v) => [CX + (u - v) * W, cy - H + (u + v) * H];
+  const quad = (cy, u0, v0, u1, v1) => { const a = P(cy, u0, v0), b = P(cy, u1, v0), c = P(cy, u1, v1), d = P(cy, u0, v1); return "M" + a + " L" + b + " L" + c + " L" + d + " Z"; };
+  const MOTIF = {
+    "Your agent": (cy) => '<path d="' + quad(cy, 0.36, 0.36, 0.64, 0.64) + '" fill="#1a1815"/>' +
+      '<path d="' + quad(cy, 0.43, 0.43, 0.57, 0.57) + '" fill="none" stroke="#f2eee5" stroke-width="1"/>' +
+      '<ellipse cx="' + CX + '" cy="' + cy + '" rx="5" ry="3" fill="#d33c1d"/>',
+    "Hooks": (cy) => { const a = P(cy, 0.5, 0.28), b = P(cy, 0.5, 0.72), c = P(cy, 0.28, 0.5), d = P(cy, 0.72, 0.5);
+      return '<path d="M' + a + " L" + b + " M" + c + " L" + d + '" stroke="#d33c1d" stroke-width="1.2" stroke-dasharray="3 3"/>' +
+        [a, b, c, d].map((p) => '<ellipse cx="' + p[0] + '" cy="' + p[1] + '" rx="6" ry="3.5" fill="#f8f5ee" stroke="#d33c1d" stroke-width="1.4"/>').join(""); },
+    "Memory": (cy) => { let g = ""; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { const u = 0.3 + i * 0.1, v = 0.3 + j * 0.1; g += '<path d="' + quad(cy, u, v, u + 0.075, v + 0.075) + '" fill="' + (i === 2 && j === 1 ? "#d33c1d" : (i + j) % 3 === 0 ? "#1a1815" : "#cfc7b6") + '"/>'; } return g; },
+    "Your sessions": (cy) => [0.32, 0.44, 0.56].map((v, k) => '<path d="' + quad(cy, 0.26, v, 0.74 - k * 0.1, v + 0.06) + '" fill="' + (k === 0 ? "#8f877a" : "#cfc7b6") + '"/>').join("")
+  };
+  const rhomb = (cy) => `M${CX},${cy - H} L${CX + W},${cy} L${CX},${cy + H} L${CX - W},${cy} Z`;
+  // faint lines across a face, parallel to its edges
+  const gridLines = (cy, n) => {
+    let d = "";
+    for (let k = 1; k < n; k++) {
+      const f = k / n;
+      d += `M${CX - W + W * f},${cy - H * f} L${CX + W * f},${cy + H - H * f} `;
+      d += `M${CX + W - W * f},${cy - H * f} L${CX - W * f},${cy + H - H * f} `;
+    }
+    return d;
+  };
+  let defs = `<defs>
+    <linearGradient id="gL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d84a2b"/><stop offset="1" stop-color="#a92c13"/></linearGradient>
+    <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b8341a"/><stop offset="1" stop-color="#7e200e"/></linearGradient>
+    <radialGradient id="gGlow"><stop offset="0" stop-color="#d33c1d" stop-opacity="0.35"/><stop offset="1" stop-color="#d33c1d" stop-opacity="0"/></radialGradient>
+  </defs>`;
+  let lays = "", lbls = "";
+  // draw bottom up, so higher layers sit over lower ones
+  for (let i = LAYERS.length - 1; i >= 0; i--) {
+    const L = LAYERS[i], cy = cyOf(i);
+    let g = `<g class="lay" data-i="${i}" style="transition-delay:${(LAYERS.length - 1 - i) * 140}ms">`;
+    if (L.base) {
+      g += `<path fill="url(#gL)" d="M${CX - W},${cy} L${CX},${cy + H} L${CX},${cy + H + T} L${CX - W},${cy + T} Z"/>`;
+      g += `<path fill="url(#gR)" d="M${CX + W},${cy} L${CX},${cy + H} L${CX},${cy + H + T} L${CX + W},${cy + T} Z"/>`;
+      g += `<path d="${rhomb(cy)}" fill="#f8f5ee" stroke="#d33c1d" stroke-width="1.2"/>`;
+      g += `<path class="grid" d="${gridLines(cy, 8)}" style="opacity:.1"/>`;
+      g += `<ellipse cx="${CX}" cy="${cy}" rx="${W * 0.55}" ry="${H * 0.55}" fill="url(#gGlow)"/>`;
+      g += `<ellipse cx="${CX}" cy="${cy}" rx="46" ry="25" fill="none" stroke="#d33c1d" stroke-width="1" stroke-dasharray="3 4"/>`;
+      g += `<ellipse cx="${CX}" cy="${cy}" rx="11" ry="6" fill="#d33c1d"/>`;
+    } else {
+      g += `<path class="face" d="${rhomb(cy)}"/>`;
+      g += `<path class="grid" d="${gridLines(cy, 4)}"/>`;
+      if (MOTIF[L.name]) g += `<g class="motif">${MOTIF[L.name](cy)}</g>`;
+    }
+    g += `</g>`;
+    lays += g;
+  }
+  LAYERS.forEach((L, i) => {
+    const cy = cyOf(i), right = L.side === "r";
+    const vx = right ? CX + W : CX - W;
+    const text = L.name.toUpperCase(), pw = text.length * 7.6 + 40;
+    const px = right ? 820 : 280 - pw;
+    const lx1 = right ? vx + 8 : vx - 8, lx2 = right ? px - 6 : px + pw + 6;
+    let g = `<g class="lbl" data-i="${i}" style="transition-delay:${900 + (LAYERS.length - 1 - i) * 140}ms">`;
+    g += `<path class="lead" d="M${lx1},${cy} L${lx2},${cy}"/><circle cx="${vx}" cy="${cy}" r="2.5" fill="${L.base ? "#d33c1d" : "#4b463e"}"/>`;
+    g += `<rect class="pillbg" x="${px}" y="${cy - 14}" width="${pw}" height="28" rx="14"/>`;
+    g += `<circle class="pd" cx="${px + 16}" cy="${cy}" r="3.5"/>`;
+    g += `<text class="pt" x="${px + 28}" y="${cy + 4}">${esc(text)}</text>`;
+    L.note.forEach((ln, k) => { g += `<text class="note" x="${right ? px + 4 : px + pw - 4}" y="${cy + 38 + k * 19}" text-anchor="${right ? "start" : "end"}">${esc(ln)}</text>`; });
+    g += `</g>`;
+    lbls += g;
+  });
+  svg.innerHTML = defs + lays + lbls;
+  $("#stackList").innerHTML = LAYERS.map((L) => `<li><b>${esc(L.name)}</b>${esc(L.note.join(" "))}</li>`).join("");
+  // hover a layer or its label to light both
+  const hot = (i, on) => $$(`[data-i="${i}"]`, svg).forEach((el) => el.classList.toggle("hot", on));
+  svg.addEventListener("pointerover", (e) => { const g = e.target.closest("[data-i]"); if (g) hot(g.dataset.i, true); });
+  svg.addEventListener("pointerout", (e) => { const g = e.target.closest("[data-i]"); if (g) hot(g.dataset.i, false); });
+  if (reduced) svg.classList.remove("hide");
+  else onceVisible(svg, () => svg.classList.remove("hide"), 0.3);
+})();
+
+/* ===================== intro ===================== */
+(() => {
+  const root = document.documentElement, intro = $("#intro"), stage = $(".i-stage"), scene = $(".i-scene"), dark = $(".i-dark");
+  const text = $(".i-text"), a = $(".i-a"), b = $(".i-b"), word = $(".i-word"), cv = $(".i-cv"), g = cv.getContext("2d");
+  let skipped = false, raf = 0, dpr = 1, W = 0, H = 0;
+  const anim = (el, frames, opts) => el.animate(frames, { fill: "forwards", ...opts }).finished.catch(() => {});
+  // real moments from Figure 1's runs: what a turn did, and the errors
+  const traces = (() => {
+    const TOOL = { read: "Read", searched: "Grep", edited: "Edit" };
+    const calls = new Set(), errs = new Set();
+    for (const r of RUNS) for (const c of r.cells) {
+      const em = c[3] && /(Found 2 matches of the string|String to replace not found|No changes to make|Expected a single value|Search failed)[^.:]*/.exec(c[3]);
+      if (em) errs.add(em[0].replace(/\s+/g, " ").slice(0, 40));
+      for (const part of c[2].split("; ")) {
+        const m = /^(read|searched|edited) (.*)$/i.exec(part);
+        if (m) for (const f of m[2].replace(/ and \d+ more$/, "").split(", ")) calls.add(TOOL[m[1].toLowerCase()] + "|" + f);
+        else if (/ran tests/i.test(part)) calls.add("Bash|yarn test");
+      }
+    }
+    const shuffle = (xs) => xs.map((x) => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
+    return [...shuffle([...calls]).slice(0, 40).map((c) => ({ c })), ...shuffle([...errs]).slice(0, 7).map((e) => ({ e }))];
+  })();
+
+  const ease = { out: (x) => 1 - (1 - x) ** 3, inOut: (x) => (x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2), back: (x) => 1 + 1.9 * (x - 1) ** 3 + 0.9 * (x - 1) ** 2, soft: (x) => 1 - (1 - x) ** 2 };
+  const smooth = (x, lo, hi) => { const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo))); return t * t * (3 - 2 * t); };
+  const lerp = (p, q, t) => p + (q - p) * t;
+  // the scene: light pulled into a core, crushed, then a quasar: a tilted disk with jets out of its poles.
+  // Lengths of the quasar are in the logo's units (its disc is 100 across); u is pixels per unit.
+  const COLS = ["255,244,230", "236,222,200", "236,96,52"];
+  const S = {};
+  const clearScene = () => Object.assign(S, { movers: [], parts: [], jets: [], rings: [], tweens: {}, R: 80, base: 0, boost: 0, flash: 0, shake: 0,
+    spread: 0, tilt: 0, rot: 0, shadow: 0, jet: 0, jetLen: 150, u: 4.2, cx: 0, cy: 0, iris: 0, irisOpen: 0, dk: 0, last: 0 });
+  const tween = (key, to, dur, e = ease.inOut, delay = 0) => { S.tweens[key] = { to, dur, e, t0: performance.now() + delay, from: null }; };
+  const size = () => {
+    dpr = devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+  };
+  // a point on the disk, r pixels out at angle an, seen with the disk's tilt and turn
+  const project = (r, an) => {
+    const X = r * Math.cos(an), Y = r * Math.sin(an) * Math.cos(S.tilt), c = Math.cos(S.rot), sn = Math.sin(S.rot);
+    return [S.cx + X * c - Y * sn, S.cy + X * sn + Y * c];
+  };
+  const pull = (p, q, R) => { const e = q ** 2.2; return [p.r0 * (1 - e) + p.rn * R * e, p.a0 + 5.4 * q ** 1.7]; };
+  // streaks are drawn in buckets of colour and brightness, a few strokes a frame
+  const buckets = () => Array.from({ length: COLS.length * 4 }, () => new Path2D());
+  const put = (P, c, alpha, at, n) => {
+    if (alpha <= 0.03) return;
+    const path = P[c * 4 + Math.min(3, Math.floor(alpha * 4))];
+    let [x, y] = at(0); path.moveTo(x, y);
+    for (let j = 1; j < n; j++) { [x, y] = at(j); path.lineTo(x, y); }
+  };
+  const flush = (P, alpha, lw) => P.forEach((path, i) => { g.strokeStyle = "rgba(" + COLS[i >> 2] + "," + (((i & 3) + 0.7) / 4) * alpha + ")"; g.lineWidth = lw; g.stroke(path); });
+  const ink = (k) => "rgb(" + Math.round(lerp(12, 26, k)) + "," + Math.round(lerp(11, 24, k)) + "," + Math.round(lerp(10, 21, k)) + ")";
+  const jetGlow = (side, k) => {
+    const len = S.jetLen * S.u * Math.sin(S.tilt);
+    if (S.jet < 0.01 || len < 1) return;
+    g.save(); g.translate(S.cx, S.cy); g.rotate(S.rot);
+    // nested wedges, wide and faint to narrow and bright, so the beam has a soft edge
+    for (const [w, al] of [[3.2, 0.1], [2, 0.16], [1.1, 0.24], [0.45, 0.5]]) {
+      const gr = g.createLinearGradient(0, 0, 0, -side * len);
+      gr.addColorStop(0, "rgba(255,246,236," + k * al * S.jet + ")"); gr.addColorStop(0.35, "rgba(255,246,236," + k * al * S.jet * 0.5 + ")"); gr.addColorStop(1, "rgba(255,246,236,0)");
+      g.fillStyle = gr; g.beginPath(); g.moveTo(-w * S.u, 0); g.lineTo(0, -side * len); g.lineTo(w * S.u, 0); g.closePath(); g.fill();
+    }
+    g.restore();
+  };
+
+  // the jets' strands, streaming out of the poles
+  function jetStreams() {
+    if (S.jet <= 0.01) return;
+    for (let i = 0; i < 7; i++) S.jets.push({ s: Math.random() * 2, v: 50 + Math.random() * 60, side: i % 2 ? 1 : -1, ph: Math.random() * 7 });
+    const P = buckets(), len = S.jetLen, c = Math.cos(S.rot), sn = Math.sin(S.rot), st = Math.sin(S.tilt), u = S.u;
+    S.jets = S.jets.filter((p) => {
+      p.s += (p.v * S.dt) / 1000;
+      if (p.s > len) return false;
+      put(P, 0, S.jet * (1 - p.s / len) * (p.side > 0 ? 0.8 : 0.5), (j) => {
+        const sj = Math.max(0, p.s - j * 1.6), lat = (0.3 + sj * 0.025) * Math.sin(p.ph + sj * 0.2), ax = -p.side * (sj + 3) * st;
+        return [S.cx + (lat * c - ax * sn) * u, S.cy + (lat * sn + ax * c) * u];
+      }, 5);
+      return true;
+    });
+    flush(P, 0.55, Math.max(0.3, Math.min(0.9, u / 4.2)));
+  }
+  function frame(now) {
+    const dt = S.last ? Math.min(50, now - S.last) : 16; S.last = now; S.dt = dt;
+    for (const [k, tw] of Object.entries(S.tweens)) {
+      if (now < tw.t0) continue;
+      if (tw.from === null) tw.from = S[k];
+      const x = Math.min(1, (now - tw.t0) / tw.dur);
+      S[k] = tw.from + (tw.to - tw.from) * tw.e(x);
+      if (x === 1) delete S.tweens[k];
+    }
+    S.boost *= Math.exp(-dt / 380); S.flash *= Math.exp(-dt / 220); S.shake *= Math.exp(-dt / 170);
+    stage.style.transform = S.shake > 0.3 ? "translate(" + (Math.random() - 0.5) * S.shake + "px, " + (Math.random() - 0.5) * S.shake + "px)" : "";
+    if (S.irisOpen || S.iris) { S.iris = Math.max(50 * S.u, S.irisOpen); scene.style.clipPath = "circle(" + S.iris + "px at " + S.cx + "px " + S.cy + "px)"; }
+    if (S.dk) dark.style.background = ink(S.dk);
+    const R = S.R * (1 + 0.03 * Math.sin(now / 150)), u = S.u, lw = Math.max(0.3, Math.min(1, u / 4.2));
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    g.globalCompositeOperation = "lighter"; g.lineCap = "round";
+
+    // the traces themselves, moving off along the paths their light will take
+    for (const m of S.movers) {
+      const q = (now - m.start) / m.dur;
+      if (q <= 0 || m.done) continue;
+      if (q >= 0.5) { m.el.style.opacity = 0; m.done = true; continue; }
+      const [r, an] = pull(m, q, R), [px, py] = project(r, an);
+      m.el.style.transform = m.base + "translate(" + (px - S.cx - m.x) + "px, " + (py - S.cy - m.y) + "px) rotate(" + (an - m.a0) * 34 + "deg) scale(" + (1 - 0.7 * q) + ")";
+      m.el.style.opacity = 1 - smooth(q, 0.03, 0.36);
+    }
+    jetGlow(-1, 0.55);
+    jetGlow(1, 1);
+    jetStreams();
+    // the light: pulled in, whirling in the core, then spread into the disk
+    if (S.parts.length) {
+      const P = buckets();
+      let home = 0;
+      for (const p of S.parts) {
+        const q = (now - p.start) / p.dur;
+        if (q <= 0) continue;
+        if (q < 1) {
+          p.a = p.a0 + 5.4 * q ** 1.7;
+          put(P, p.c, smooth(q, 0.02, 0.3), (j) => { const [r, an] = pull(p, Math.max(0, q - j * 0.016), R); return project(r, an); }, 9);
+          continue;
+        }
+        home++;
+        const r = lerp(p.rn * R, p.rd * u, S.spread);
+        const spin = Math.min(9, lerp(p.w * Math.sqrt(80 / Math.max(R, 5)), p.w * 1.5 * (30 / p.rd) ** 1.5, S.spread));
+        p.a += dt * 0.001 * spin;
+        put(P, S.spread > 0.4 ? (p.rd < 22 ? 0 : 1) : p.c, p.rd < 22 ? 1 : lerp(1, 0.32 * (1 - 0.75 * smooth(p.rd, 31, 42)), S.spread), (j) => project(r, p.a - j * spin * 0.014), 9);
+      }
+      S.base = 0.6 * (home / S.parts.length);
+      flush(P, 0.75, 1.2 * lw);
+    }
+    // the disk's body: hot inside, dimmer out to its edge
+    if (S.spread > 0.01) {
+      g.save(); g.translate(S.cx, S.cy); g.rotate(S.rot); g.scale(1, Math.max(0.01, Math.cos(S.tilt)));
+      const rr = 41 * u, gr = g.createRadialGradient(0, 0, 0, 0, 0, rr), k = S.spread * lerp(0.3, 1, smooth(S.tilt, 0.2, 1.3));
+      gr.addColorStop(0, "rgba(255,246,236," + k + ")"); gr.addColorStop(0.5, "rgba(255,240,222," + 0.8 * k + ")");
+      gr.addColorStop(0.56, "rgba(236,222,200," + 0.34 * k + ")"); gr.addColorStop(0.9, "rgba(236,222,200," + 0.24 * k + ")"); gr.addColorStop(1, "rgba(236,222,200,0)");
+      g.fillStyle = gr; g.beginPath(); g.arc(0, 0, rr, 0, 7); g.fill(); g.restore();
+    }
+    const lum = (S.base + S.boost) * (1 - 0.85 * S.spread);
+    if (lum > 0.01) {
+      const rr = R * 1.9 + 40, gr = g.createRadialGradient(S.cx, S.cy, 0, S.cx, S.cy, rr);
+      gr.addColorStop(0, "rgba(255,246,234," + Math.min(1, lum) + ")"); gr.addColorStop(0.18, "rgba(255,172,112," + Math.min(1, lum * 0.5) + ")");
+      gr.addColorStop(0.5, "rgba(211,60,29," + lum * 0.14 + ")"); gr.addColorStop(1, "rgba(211,60,29,0)");
+      g.fillStyle = gr; g.fillRect(S.cx - rr, S.cy - rr, rr * 2, rr * 2);
+    }
+    // the black hole, sitting on the disk
+    if (S.shadow > 0.01) {
+      g.globalCompositeOperation = "source-over";
+      g.save(); g.translate(S.cx, S.cy); g.rotate(S.rot);
+      g.fillStyle = ink(S.dk); g.beginPath(); g.ellipse(0, -1.2 * u, 5 * u * S.shadow, 4.4 * u * S.shadow, 0, 0, 7); g.fill();
+      g.restore();
+      g.globalCompositeOperation = "lighter";
+    }
+    S.rings = S.rings.filter((r) => {
+      const k = (now - r.t0) / r.dur; if (k >= 1) return false;
+      g.strokeStyle = "rgba(255,196,156," + (1 - k) * r.alpha + ")"; g.lineWidth = 2.4 * (1 - k) + 0.3;
+      g.beginPath(); g.arc(S.cx, S.cy, r.r + ease.out(k) * r.to, 0, 7); g.stroke();
+      return true;
+    });
+    if (S.flash > 0.01) { g.fillStyle = "rgba(255,240,226," + S.flash + ")"; g.fillRect(0, 0, W, H); }
+  }
+  const loop = (now) => { frame(now); raf = requestAnimationFrame(loop); };
+
+  // back to the first frame: no animations, no leftover styles, no traces, an empty scene
+  const reset = () => {
+    cancelAnimationFrame(raf);
+    [intro, dark, stage, a, b, text, word].forEach((el) => el.getAnimations().forEach((x) => x.cancel()));
+    for (const el of [text, stage, word, scene, dark, intro]) el.removeAttribute("style");
+    $$(".i-trace", intro).forEach((t) => t.remove());
+    clearScene();
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
+  };
+  clearScene();
+  async function finish() {
+    if (!root.classList.contains("intro")) return;
+    try { sessionStorage.setItem("sg-intro", "1"); } catch {}
+    anim(word, [{ opacity: getComputedStyle(word).opacity }, { opacity: 0 }], { duration: 400, easing: "ease" });
+    await anim(intro, [{ opacity: 1 }, { opacity: 0 }], { duration: 650, easing: "ease" });
+    root.classList.remove("intro");
+    reset();
+    // let the figures that were waiting on the intro start
+    dispatchEvent(new Event("introdone"));
+  }
+  const skip = () => { if (skipped) return; skipped = true; finish(); };
+
+  async function play() {
+    skipped = false;
+    root.classList.add("intro");
+    reset();
+    b.innerHTML = "your agents could remember everything?".split(" ").map((w) => "<span>&nbsp;" + esc(w) + "</span>").join("");
+    const words = [...b.children];
+    b.style.opacity = 1;
+    await sleep(500); if (skipped) return;
+    await anim(a, [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 700, easing: "cubic-bezier(.2,.8,.2,1)" });
+    await sleep(1100); if (skipped) return;  // the dramatic gap
+    for (const w of words) { if (skipped) return; anim(w, [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 500, easing: "cubic-bezier(.2,.8,.2,1)" }); await sleep(120); }
+    await sleep(1500); if (skipped) return;  // the silence
+    // traces pop up everywhere, avoiding the sentence
+    const vw = innerWidth, vh = innerHeight, box = text.getBoundingClientRect(), els = [];
+    const cols = Math.max(2, Math.floor(vw / 250)), rows = Math.max(4, Math.floor(vh / 52));
+    const cells = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x = c * (vw / cols) + Math.random() * Math.max(0, vw / cols - 210), y = r * (vh / rows) + 8 + Math.random() * Math.max(0, vh / rows - 40);
+      if (x + 230 > box.left - 16 && x < box.right + 16 && y + 34 > box.top - 18 && y < box.bottom + 18) continue;
+      cells.push([Math.max(8, x), Math.max(8, y)]);
+    }
+    cells.sort(() => Math.random() - 0.5);
+    traces.slice(0, cells.length).forEach((t, k) => {
+      const el = document.createElement("div");
+      el.className = "i-trace" + (t.e ? " err" : "");
+      if (t.e) el.innerHTML = '<span class="d">✗</span>' + esc(t.e);
+      else { const [tool, arg] = t.c.split("|"); el.innerHTML = '<span class="d">●</span><b>' + tool + "</b>(" + esc(arg) + ")"; }
+      el.style.left = cells[k][0] + "px"; el.style.top = cells[k][1] + "px";
+      stage.appendChild(el); els.push(el);
+    });
+    els.sort(() => Math.random() - 0.5);
+    for (const el of els) { if (skipped) return; anim(el, [{ opacity: 0, transform: "scale(.6)" }, { opacity: 1, transform: "scale(1.06)", offset: 0.7 }, { opacity: 1, transform: "scale(1)" }], { duration: 380, easing: "ease-out" }); await sleep(30); }
+    await sleep(500); if (skipped) return;
+
+    // the lights go down as everything starts to turn; each trace sheds its light along the path it takes
+    size();
+    Object.assign(S, { cx: W / 2, cy: H / 2, u: Math.min(4.6, Math.min(W, H) / 175) });
+    anim(dark, [{ opacity: 0 }, { opacity: 1 }], { duration: 2000, easing: "ease-in-out" });
+    anim(a, [{ color: "#1a1815" }, { color: "#efe9dd" }], { duration: 2000, easing: "ease-in-out" });
+    raf = requestAnimationFrame(loop);
+    const t0 = performance.now() + 300, maxR = Math.hypot(S.cx, S.cy);
+    let end = 0;
+    for (const el of [...els, text]) {
+      const isText = el === text, r = el.getBoundingClientRect();
+      el.getAnimations().forEach((x) => x.cancel()); el.style.opacity = 1;
+      const x = r.left + r.width / 2 - S.cx, y = r.top + r.height / 2 - S.cy, r0 = Math.hypot(x, y);
+      const start = t0 + (isText ? 1100 : Math.random() * 1100), dur = 1800 + (r0 / maxR) * 1100;
+      S.movers.push({ el, x, y, r0, a0: Math.atan2(y, x), rn: 0.5, start, dur, base: isText ? "translate(-50%, -50%) " : "" });
+      const n = isText ? 160 : el.classList.contains("err") ? 30 : 24;
+      for (let i = 0; i < n; i++) {
+        const px = r.left + Math.random() * r.width - S.cx, py = r.top + Math.random() * r.height - S.cy, rn = 0.06 + 0.94 * Math.sqrt(Math.random());
+        const p = { r0: Math.hypot(px, py), a0: Math.atan2(py, px), a: 0, start: start + Math.random() * 160, dur: dur * (0.94 + Math.random() * 0.12), rn, rd: 6 + 34 * rn ** 1.15 + Math.random() * 3, w: 2 + Math.random() * 1.4,
+          c: el.classList.contains("err") ? 2 : Math.random() < 0.5 ? 0 : Math.random() < 0.6 ? 1 : 2 };
+        S.parts.push(p); end = Math.max(end, p.start + p.dur);
+      }
+    }
+    await sleep(end - performance.now() + 400); if (skipped) return;
+
+    // three beats, each crushing the core smaller
+    for (const [k, to] of [44, 21, 8].entries()) {
+      await sleep(k ? 760 : 200); if (skipped) return;
+      tween("R", S.R * 1.14, 280, ease.soft);  // it draws breath
+      await sleep(280); if (skipped) return;
+      tween("R", to, 360, ease.back);
+      await sleep(150);
+      S.boost += 0.8 + k * 0.35; S.shake = 7 + k * 5;
+      S.rings.push({ t0: performance.now(), r: to, to: 240 + k * 140, dur: 1200, alpha: 0.45 + k * 0.1 });
+      await sleep(210);
+    }
+    await sleep(700); if (skipped) return;
+
+    // it ignites: the core flattens into a disk as it tips over, and jets fire out of its poles
+    S.boost += 1.4; S.flash = 0.3; S.shake = 12;
+    S.rings.push({ t0: performance.now(), r: 8, to: Math.max(W, H) * 0.6, dur: 1500, alpha: 0.6 });
+    const u0 = S.u;
+    S.u = u0 * 1.12;
+    tween("u", u0, 5200, ease.out);
+    tween("spread", 1, 2400, ease.out);
+    tween("tilt", 1.4, 2600, ease.inOut);
+    tween("rot", (27 * Math.PI) / 180, 2600, ease.inOut);
+    tween("shadow", 1, 1600, ease.out, 300);
+    tween("jet", 1, 900, ease.out, 900);
+    await sleep(2300); if (skipped) return;
+    await anim(word, [{ opacity: 0, letterSpacing: "0.7em" }, { opacity: 1, letterSpacing: "0.34em" }], { duration: 1800, easing: "cubic-bezier(.2,.7,.2,1)" });
+    await sleep(700); if (skipped) return;
+
+    // the dark closes in around it like an iris, and carries it into the masthead as the logo
+    const lg = $(".wordmark .logo").getBoundingClientRect(), nm = $(".wordmark .wm-name").getBoundingClientRect();
+    intro.style.background = "transparent";
+    S.irisOpen = Math.hypot(W, H) / 2 + 20;
+    tween("irisOpen", 0, 1200, (x) => x * x);
+    tween("dk", 1, 1600, ease.inOut);
+    tween("u", lg.width / 100, 1300, ease.inOut, 650);
+    tween("cx", lg.left + lg.width / 2, 1300, ease.inOut, 650);
+    tween("cy", lg.top + lg.height / 2, 1300, ease.inOut, 650);
+    tween("jetLen", 60, 1300, ease.inOut, 650);
+    // and the title goes to the wordmark beside it
+    const wr = word.getBoundingClientRect(), fs = parseFloat(getComputedStyle(word).fontSize);
+    Object.assign(word.style, { left: wr.left + "px", top: wr.top + "px", transform: "none", letterSpacing: 0.34 * fs + "px" });
+    word.getAnimations().forEach((x) => x.cancel()); word.style.opacity = 1;
+    await sleep(650); if (skipped) return;
+    await anim(word, [
+      { left: wr.left + "px", top: wr.top + "px", fontSize: fs + "px", letterSpacing: 0.34 * fs + "px" },
+      { left: nm.left + "px", top: nm.top + (nm.height - 13) / 2 + "px", fontSize: "13px", letterSpacing: "0px" }
+    ], { duration: 1300, easing: "cubic-bezier(.65,0,.35,1)" });
+    if (skipped) return;
+    try { sessionStorage.setItem("sg-intro", "1"); } catch {}
+    root.classList.remove("intro");
+    reset();
+    dispatchEvent(new Event("introdone"));
+  }
+  $(".i-skip").addEventListener("click", skip);
+  addEventListener("keydown", (e) => { if (root.classList.contains("intro") && (e.key === "Escape" || e.key === " " || e.key === "Enter")) skip(); });
+  addEventListener("wheel", () => { if (root.classList.contains("intro")) skip(); }, { passive: true });
+  addEventListener("resize", () => { if (root.classList.contains("intro") && S.last) size(); });
+  $("#replayIntro").addEventListener("click", () => { if (reduced) return; scrollTo(0, 0); play(); });
+  if (root.classList.contains("intro")) play();
+})();
+</script>
+</body>
+</html>
