@@ -4,22 +4,22 @@
   "private": true,
   "description": "Procedural memory graphs for coding agents",
   "type": "module",
+  "packageManager": "npm@11.12.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@effect/platform-node": "4.0.0",
-    "effect": "4.0.0",
-    "smol-toml": "1.9.0"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "cli": "node apps/cli/src/cli.ts"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0",
-    "@types/node": "26.6.3",
-    "typescript": "7.0.2",
-    "vitest": "5.0.3"
+    "turbo": "2.11.7"
   }
 }

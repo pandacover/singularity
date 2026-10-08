@@ -87,7 +87,7 @@
   Done 'dependencies'
   Write-Host ''
 
-  & $node (Join-Path $app 'src\cli.ts') setup @args
+  & $node (Join-Path $app 'apps\cli\src\cli.ts') setup @args
 
   # The command works in this window too, not only in new ones.
   $bin = Join-Path $root 'bin'
