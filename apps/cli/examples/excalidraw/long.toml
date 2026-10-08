@@ -1,0 +1,129 @@
+# A long task: four changes asked in one prompt, done in one session, two of
+# them alike (PREREGISTRATION-v1-long.md). They are four tasks of suite.toml,
+# whose hidden tests and reference solutions this reuses:
+#
+#   1. toggle-rulers     a new toggle setting end to end (Alt+U)
+#   2. midpoint-snap-n   a shortcut for an existing setting (Alt+N)
+#   3. toggle-presenter  another new toggle setting, with other rules (Alt+J)
+#   4. stats-shortcut-k  a changed shortcut (Alt+/ to Alt+K) and a test of it
+#
+# 1 and 3 are the similar pair; 2 and 4 are other kinds. Their keys don't
+# collide (suite.toml's twins would: snap to Alt+U, view mode to Alt+J).
+# Memory learned from none of them (only from altkey-zen-m and toggle-minimap).
+#
+# Its own file only for the agent's limits: a run does about four tasks' work,
+# so it gets an hour and $6 instead of 30 minutes and $3. Everything else is
+# suite.toml's, and the same name keeps the same workspace (and node_modules).
+#
+# The checks: the four hidden tests (renamed so they sit side by side), the
+# stats task's check that excalidraw.test.tsx gained its test, the union of
+# the four tasks' test files, then tsc. The four reference solutions merged
+# (reference/long-four-changes.patch, snapshots regenerated) pass them all;
+# at the base commit 16 of the 19 hidden tests fail.
+name = "excalidraw"
+repo = "../../../../../experiment/excalidraw"
+base = "84e3f5a4"
+setup = ["yarn install --frozen-lockfile --prefer-offline"]
+keep = ["node_modules"]
+command_timeout_s = 600
+env = { VITEST_MIN_FORKS = "1", VITEST_MAX_FORKS = "4", VITEST_MIN_THREADS = "1", VITEST_MAX_THREADS = "4" }
+
+[agent]
+model = "sonnet"
+effort = "medium"
+max_budget_usd = 6.0
+timeout_s = 3600
+
+[[tasks]]
+id = "long-four-changes"
+family = "long"
+prompt = """
+Make these four changes:
+
+1. Add a "Rulers" toggle setting. Nothing draws rulers yet; this is just the
+setting. Store it in a new appState field `rulersEnabled` (default false),
+saved to the browser's local storage and included in exported files, but not
+sent to the collaboration server. Users should be able to toggle it with
+Alt+U, from the canvas right-click menu (also in view mode), and from
+Preferences in the main menu, and the help dialog should list the shortcut.
+
+2. Add a keyboard shortcut for the existing "Snap to midpoints" setting: Alt+N
+should toggle it. The help dialog should list the shortcut.
+
+3. Add a "Presenter mode" toggle setting. Nothing uses it yet; this is just the
+setting. Store it in a new appState field `presenterModeEnabled` (default
+false) that isn't saved anywhere: not local storage, exported files, or the
+collaboration server. Users should be able to toggle it with Alt+J, from the
+canvas right-click menu (but not in view mode, where it shouldn't be offered),
+and from Preferences in the main menu, and the help dialog should list the
+shortcut.
+
+4. Change the keyboard shortcut for the "Canvas & Shape properties" (stats)
+panel from Alt+/ to Alt+K. Update everything that shows the shortcut, and add
+a test to packages/excalidraw/tests/excalidraw.test.tsx that checks Alt+K
+toggles the panel and Alt+/ no longer does.
+
+Make sure the tests and the typecheck pass.
+"""
+checks = [
+  "node hidden-check-agent-test.mjs",
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check-rulers.test.tsx packages/excalidraw/tests/hidden-check-midpoint.test.tsx packages/excalidraw/tests/hidden-check-presenter.test.tsx packages/excalidraw/tests/hidden-check-stats.test.tsx packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/viewMode.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/long-four-changes"
+
+# The same with two changes of kinds memory never saw (PREREGISTRATION-v1-long-mixed.md):
+#
+#   1. toggle-rulers       as above (a kind memory knows)
+#   2. save-as-in-text     suite.toml's bug fix (upstream afed9e6e)
+#   3. toggle-presenter    as above; 1 and 3 are the similar pair
+#   4. youtube-live-embed  a bug fix: upstream 974f054b, a YouTube live link
+#                          embedded as a video called "live"
+#
+# At d29d8648, the save-as task's base: both bugs are there (fixed in the two
+# commits after it), and the files the toggles change are the same as at
+# 84e3f5a4. The checks: the toggles' hidden tests, each fix's own test file
+# at its fix (copied over the agent's), the toggles' test files, then tsc.
+# Checked before any run: the toggles' reference solutions merged plus the
+# two upstream fixes (reference/long-mixed-changes.patch) pass them all; at
+# the base commit 13 tests in the four hidden files fail.
+[[tasks]]
+id = "long-mixed-changes"
+family = "long"
+base = "d29d8648"
+prompt = """
+Make these four changes:
+
+1. Add a "Rulers" toggle setting. Nothing draws rulers yet; this is just the
+setting. Store it in a new appState field `rulersEnabled` (default false),
+saved to the browser's local storage and included in exported files, but not
+sent to the collaboration server. Users should be able to toggle it with
+Alt+U, from the canvas right-click menu (also in view mode), and from
+Preferences in the main menu, and the help dialog should list the shortcut.
+
+2. Bug: while editing a text element, Ctrl+S (Cmd+S on a Mac) commits the
+text and saves the drawing, but Ctrl+Shift+S (Cmd+Shift+S, save as) does
+nothing: the text editor stays open and nothing is saved. Make the save-as
+shortcut work while editing text the way the save shortcut does: commit the
+text, then save. Add a regression test.
+
+3. Add a "Presenter mode" toggle setting. Nothing uses it yet; this is just the
+setting. Store it in a new appState field `presenterModeEnabled` (default
+false) that isn't saved anywhere: not local storage, exported files, or the
+collaboration server. Users should be able to toggle it with Alt+J, from the
+canvas right-click menu (but not in view mode, where it shouldn't be offered),
+and from Preferences in the main menu, and the help dialog should list the
+shortcut.
+
+4. Bug: embedding a YouTube live link (https://www.youtube.com/live/ followed
+by the video's id) gives a broken player, while watch and shorts links to
+the same video embed fine. Embed live links as that video too, keeping the
+start time the link gives, as watch links do. Add a regression test.
+
+Make sure the tests and the typecheck pass.
+"""
+checks = [
+  'yarn vitest run --minWorkers=1 --maxWorkers=4 packages/excalidraw/tests/hidden-check-rulers.test.tsx packages/excalidraw/tests/hidden-check-presenter.test.tsx packages/excalidraw/wysiwyg/textWysiwyg.test.tsx packages/element/tests/embeddable.test.ts packages/excalidraw/tests/contextmenu.test.tsx packages/excalidraw/tests/history.test.tsx packages/excalidraw/tests/regressionTests.test.tsx packages/excalidraw/tests/export.test.tsx packages/utils/tests/export.test.ts packages/excalidraw/tests/excalidraw.test.tsx packages/excalidraw/tests/shortcuts.test.tsx',
+  "yarn tsc",
+]
+check_files = "hidden/long-mixed-changes"

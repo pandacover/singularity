@@ -7,14 +7,26 @@ memory v1 on its own.
 
 ## Stack
 
-- TypeScript 7 and Effect 4.0, run directly by Node 24 (no build step):
-  `node src/cli.ts ...`.
-- Tests: `npm test` (vitest 5 with `@effect/vitest`). Typecheck: `npm run typecheck`.
-- Versions are pinned exactly in `package.json`. Don't bump them casually:
-  agents' knowledge of Effect lags its releases, and pinning keeps the APIs
-  that the code and the docs below describe in sync.
+- A Turborepo monorepo with npm workspaces. `apps/cli` is the command line,
+  hooks, memory and eval harness (`@singularity/cli`); `apps/landing` is the
+  landing page (`@singularity/landing`, Vite and React, every dependency a
+  dev one so the installer's `npm ci --omit=dev` never fetches them).
+  `packages/*` is for shared code, when there is some.
+- The CLI: TypeScript 7 and Effect 4.0, run directly by Node 24 (no build
+  step): `node apps/cli/src/cli.ts ...` from the repo root, or
+  `npm run cli -- ...`. Commands, eval scripts and docs run from the repo
+  root, where `runs/` stays.
+- From the root, through turbo: `npm test` (vitest 5 with `@effect/vitest`),
+  `npm run typecheck`, `npm run build` and `npm run dev` (the landing page).
+  One workspace: `npx turbo run test --filter=@singularity/cli`.
+- Versions are pinned exactly in each workspace's `package.json`. Don't bump
+  them casually: agents' knowledge of Effect lags its releases, and pinning
+  keeps the APIs that the code and the docs below describe in sync.
+- Paths in `HANDOFF.md` and `HANDOFF-v1.md` from before the monorepo
+  (2026-10-08) are relative to `apps/cli`, except `runs/`.
 
-Layout: `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
+Layout of `apps/cli` (paths from here to the end are relative to it, except
+`node_modules/`, `runs/` and the install scripts, at the root): `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
 procedural graph store of the first graph setup), `src/eval/` (the eval
 harness and memory setups), `src/cli.ts` (the command line). The local memory
 from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),

@@ -113,7 +113,7 @@ printf '\n'
 
 # Setup asks a few questions; curl's pipe is stdin, so they go through the terminal.
 if [ -t 1 ] && (: </dev/tty) 2>/dev/null; then
-  exec "$NODE" "$APP/src/cli.ts" setup "$@" </dev/tty
+  exec "$NODE" "$APP/apps/cli/src/cli.ts" setup "$@" </dev/tty
 else
-  exec "$NODE" "$APP/src/cli.ts" setup --yes "$@"
+  exec "$NODE" "$APP/apps/cli/src/cli.ts" setup --yes "$@"
 fi

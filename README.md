@@ -59,22 +59,33 @@ singularity setup               # again, to update or change your answers
 singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
 ```
 
-From a clone instead: `npm install`, then `node src/cli.ts setup`.
+From a clone instead: `npm install`, then `node apps/cli/src/cli.ts setup`.
 
 ## Develop
 
-TypeScript 7 and Effect 4, run directly by Node 24 (no build step):
+A Turborepo monorepo with npm workspaces:
+
+| Workspace | What it is |
+|---|---|
+| `apps/cli` | the command line, hooks, memory and eval harness: TypeScript 7 and Effect 4, run directly by Node 24 (no build step) |
+| `apps/landing` | the landing page: Vite and React |
 
 ```
 npm install
-npm test               # vitest
-npm run typecheck      # tsc
+npm test               # every workspace's tests (vitest), through turbo
+npm run typecheck      # every workspace's tsc
+npm run build          # the landing page, into apps/landing/dist
+npm run dev            # the landing page's dev server
+npm run cli -- <args>  # the command line, same as node apps/cli/src/cli.ts <args>
 ```
+
+Commands in this README run from the repo root, where eval runs go
+(`runs/`).
 
 ## Summarize a session
 
 ```
-node src/cli.ts traces <session id or path to .jsonl> [--json]
+node apps/cli/src/cli.ts traces <session id or path to .jsonl> [--json]
 ```
 
 Reads Claude Code's transcript (including subagents) and prints tokens, tool
@@ -90,10 +101,10 @@ subject.
 **Workflow records**, one per finished run, are the evidence:
 
 ```
-node src/cli.ts record import runs/excalidraw/*/ [--task ID ...]   # eval runs (of some tasks only)
-node src/cli.ts record session SESSION_ID              # a session that committed its change with passing tests
-node src/cli.ts record annotate --all --per-task 4     # a model's reading, a few cents a record
-node src/cli.ts record list | show ID
+node apps/cli/src/cli.ts record import runs/excalidraw/*/ [--task ID ...]   # eval runs (of some tasks only)
+node apps/cli/src/cli.ts record session SESSION_ID              # a session that committed its change with passing tests
+node apps/cli/src/cli.ts record annotate --all --per-task 4     # a model's reading, a few cents a record
+node apps/cli/src/cli.ts record list | show ID
 ```
 
 A record holds what the log and the diff show without any model: files
@@ -111,9 +122,9 @@ and against the log, and dropped if it doesn't hold.
 steps with where they happen in each repo, and warnings with their triggers.
 
 ```
-node src/cli.ts memory build --conditions   # merge the records; a replay check commits or rejects
-node src/cli.ts memory show [VERSION]
-node src/cli.ts memory replay | triggers | candidates
+node apps/cli/src/cli.ts memory build --conditions   # merge the records; a replay check commits or rejects
+node apps/cli/src/cli.ts memory show [VERSION]
+node apps/cli/src/cli.ts memory replay | triggers | candidates
 ```
 
 Each build is a candidate. The replay check asks, for every past task,
@@ -127,16 +138,16 @@ and decide which near-identical step names are one step (a few cents).
 **Search**, exact and by words (search by meaning is for the hosted version):
 
 ```
-node src/cli.ts search help dialog shortcut
-node src/cli.ts search --exact handleKeyboardGlobally [--type record|kind|step|warning]
+node apps/cli/src/cli.ts search help dialog shortcut
+node apps/cli/src/cli.ts search --exact handleKeyboardGlobally [--type record|kind|step|warning]
 ```
 
 **Hand-over**, through Claude Code hooks:
 
 ```
-node src/cli.ts handover --cwd REPO "Change the zen mode shortcut to Alt+M"   # what a task would get
-node src/cli.ts hooks install [--scope user|project|local]                   # or `hooks print`, for claude --settings
-node src/cli.ts hooks status | uninstall
+node apps/cli/src/cli.ts handover --cwd REPO "Change the zen mode shortcut to Alt+M"   # what a task would get
+node apps/cli/src/cli.ts hooks install [--scope user|project|local]                   # or `hooks print`, for claude --settings
+node apps/cli/src/cli.ts hooks status | uninstall
 ```
 
 At a session's first prompt, the hook hands over the route for the task and
@@ -156,37 +167,37 @@ That memory is v0 (tag `memory-v0`); `hooks install` installs its hooks.
 Memory v1 is what `singularity setup` installs for daily use (above), and
 lives in the same home, under `tenants/<tenant>/workflows/`. Setup replaces
 v0's hooks if it finds them. In daily use v1 learns repo by repo
-(`src/workflows/Learn.ts`): a repo's memory is learned alone and merged back,
+(`apps/cli/src/workflows/Learn.ts`): a repo's memory is learned alone and merged back,
 so one repo never replaces another's, and ids two repos share get the second
 repo's id appended. The commands below are the parts it is made of, as the
 eval suites use them:
 
 ```
-node src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)
-node src/cli.ts workflows show [AT] [--json]                                 # print it
-node src/cli.ts workflows cues [--repo DIR]                                   # write cues, so tasks are picked without a model (one model call or two)
-node src/cli.ts workflows finish [--repo DIR]                                 # learn what each workflow's checks rewrite (no model)
-node src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--parts 2] [--draft] # preview a task's hand-over
-node src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR] [--dry-run] # learn from new runs
-node src/cli.ts workflows common --task ID --task ID ... [--kind WORDS] [--repo DIR] [--dry-run] # learn what runs of different tasks of a kind did alike
-node src/cli.ts workflows candidates                                         # proposals and what became of them
+node apps/cli/src/cli.ts workflows build [--task ID ...] [--repo DIR] [--fresh]       # induce from the records (one model call or two)
+node apps/cli/src/cli.ts workflows show [AT] [--json]                                 # print it
+node apps/cli/src/cli.ts workflows cues [--repo DIR]                                   # write cues, so tasks are picked without a model (one model call or two)
+node apps/cli/src/cli.ts workflows finish [--repo DIR]                                 # learn what each workflow's checks rewrite (no model)
+node apps/cli/src/cli.ts workflows handover TASK... --cwd REPO [--at COMMIT] [--pick cues|words|model] [--parts 2] [--draft] # preview a task's hand-over
+node apps/cli/src/cli.ts workflows evolve [--task ID ...] [--setup S ...] [--records-from HOME] [--repo DIR] [--dry-run] # learn from new runs
+node apps/cli/src/cli.ts workflows common --task ID --task ID ... [--kind WORDS] [--repo DIR] [--dry-run] # learn what runs of different tasks of a kind did alike
+node apps/cli/src/cli.ts workflows candidates                                         # proposals and what became of them
 ```
 
 Since the tenth session: **what tasks of a kind share** (`workflows common`,
-`src/workflows/Common.ts`). Learned task by task, two bug fixes became a
+`apps/cli/src/workflows/Common.ts`). Learned task by task, two bug fixes became a
 workflow each, which no other bug can use. This pass reads the runs of
 several tasks of one kind (bug fixes) and keeps only what runs of at least two
 different tasks did: how a bug is reproduced in a test here, how the fix is
 checked (the test failing without it, with `git stash`), the mistakes made on
 the way. Its places include blocks runs **read** without changing them
-(`src/workflows/Reads.ts`), such as the test helpers' `Keyboard` class, which
+(`apps/cli/src/workflows/Reads.ts`), such as the test helpers' `Keyboard` class, which
 the hand-over shows as an outline: the block's first line and its members',
 from the code at task start. Run `workflows cues` after it.
 
 Since the eighth session: the hand-over ends with **one command** that runs
 every check its workflows need, with the snapshot files earlier runs
-regenerated (`src/workflows/Finish.ts`); `evolve` also reads **what each run
-still looked up before its first edit** (`src/workflows/Lookups.ts`;
+regenerated (`apps/cli/src/workflows/Finish.ts`); `evolve` also reads **what each run
+still looked up before its first edit** (`apps/cli/src/workflows/Lookups.ts`;
 `--dry-run` prints it), writes the cues again and replays with them; and the
 `workflows-split` setup carries a hand-over longer than one hook can (Claude
 Code cuts each at 10,000 characters) in two parts, from two task-start hooks.
@@ -195,7 +206,7 @@ v1 keeps small workflows written with blanks (`{field}`, `{key}`), learned
 from runs, and a graph of them whose edges say when one leads to another. A
 step's place is kept as the blocks that enclose the edit (`class App ›
 getContextMenuItems › if (this.state.viewModeEnabled) › return [`), never as
-code; at task start its hooks (`src/workflows/hook.ts`) pick the workflows the
+code; at task start its hooks (`apps/cli/src/workflows/hook.ts`) pick the workflows the
 task needs, find each place in the code as it is (in the file it moved to, if
 it moved) and hand them over with current line numbers. `evolve` revises
 memory from what new runs did and what it showed them, and keeps the revision
@@ -205,9 +216,9 @@ fewer they left alone.
 **Local first** (tag `memory-local-first`): picking makes no model call. Each
 workflow carries cues, phrases that say a task needs it and where a task
 states its blanks' values, written once by `workflows cues`
-(`src/workflows/CueWriter.ts`); at task start they are matched exactly against
+(`apps/cli/src/workflows/CueWriter.ts`); at task start they are matched exactly against
 the task, its negated clauses ("don't add a shortcut") left out, and the
-blanks the task states are filled in (`src/workflows/Cues.ts`). That is the
+blanks the task states are filled in (`apps/cli/src/workflows/Cues.ts`). That is the
 hook's default and `workflows handover`'s; memory without cues is picked by
 words. `SINGULARITY_SELECTOR=model` (or `--pick model`) has a model call pick
 instead, as v1 was first measured. A build writes workflows without cues: run
@@ -224,21 +235,21 @@ the change itself for this task, from those workflows and the code at their
 places (about 5-10 cents, half a minute). Each edit is checked against the
 code before it is handed over (its old lines are in their file exactly once),
 and the agent gets the complete change instead of the steps
-(`src/workflows/Draft.ts`). Memory still keeps no code.
+(`apps/cli/src/workflows/Draft.ts`). Memory still keeps no code.
 
 ## Run an evaluation
 
 ```
-node src/cli.ts eval run examples/excalidraw/suite.toml --reps 3 [--task ID ...] [--dry-run]
-node src/cli.ts eval report runs/excalidraw/<run dir> [more dirs...] [--compare]
+node apps/cli/src/cli.ts eval run apps/cli/examples/excalidraw/suite.toml --reps 3 [--task ID ...] [--dry-run]
+node apps/cli/src/cli.ts eval report runs/excalidraw/<run dir> [more dirs...] [--compare]
 ```
 
-A suite (TOML, see `examples/excalidraw/suite.toml` and `src/eval/Suite.ts`)
+A suite (TOML, see `apps/cli/examples/excalidraw/suite.toml` and `apps/cli/src/eval/Suite.ts`)
 names a source repo, agent settings, and tasks. Each task has a base commit, a
 prompt, and check commands that decide success. `check_files` can add hidden
 tests after the agent finishes, so the agent can't edit them to pass.
-`examples/excalidraw/` is the real evaluation suite (two task families against
-a local excalidraw clone); `examples/toy/` is a small, cheap one against this
+`apps/cli/examples/excalidraw/` is the real evaluation suite (two task families against
+a local excalidraw clone); `apps/cli/examples/toy/` is a small, cheap one against this
 repo's history.
 
 Every run starts from a clean clone of the repo at the task's base commit, in
@@ -271,7 +282,7 @@ command without running anything.
   $0.01, counted in the run's cost). The chosen steps are handed over once as a
   checklist: when each applies, how, what to avoid, and the files and commands
   involved. Learning asks Sonnet to turn each run into graph edits (see
-  `src/eval/GraphLearner.ts`). Both calls go through `claude -p --json-schema`
+  `apps/cli/src/eval/GraphLearner.ts`). Both calls go through `claude -p --json-schema`
   with your login. `--graph-version N` uses an earlier version.
 - `saved-scripts-warnings`: the closest past run, as `saved-scripts` gives it,
   plus the graph's warnings: the mistakes and dead ends recorded on its steps,
@@ -311,18 +322,18 @@ with baselines from the same version. Runs never update Claude Code.
 Build memory from runs already recorded, without running the agent again:
 
 ```
-node src/cli.ts eval learn examples/excalidraw/suite.toml runs/excalidraw/baseline-1 \
+node apps/cli/src/cli.ts eval learn apps/cli/examples/excalidraw/suite.toml runs/excalidraw/baseline-1 \
   --setup saved-scripts --memory runs/excalidraw/memory/saved-scripts --task altkey-zen-m
 ```
 
 See what a setup would hand the agent for each task, and inspect a graph:
 
 ```
-node src/cli.ts eval inject examples/excalidraw/suite.toml --setup graph --memory runs/excalidraw/memory/graph
-node src/cli.ts graph show runs/excalidraw/memory/graph
+node apps/cli/src/cli.ts eval inject apps/cli/examples/excalidraw/suite.toml --setup graph --memory runs/excalidraw/memory/graph
+node apps/cli/src/cli.ts graph show runs/excalidraw/memory/graph
 ```
 
 `report --compare --baseline saved-scripts` compares setups against
 saved-scripts instead of no memory.
 
-New setups implement `MemorySetup` in `src/eval/Setups.ts`.
+New setups implement `MemorySetup` in `apps/cli/src/eval/Setups.ts`.
