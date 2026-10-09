@@ -26,6 +26,8 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"
+import { layerCommand } from "./commands/Layer.ts"
+import { webBenchCommand } from "./commands/WebBench.ts"
 import { memoryCommand } from "./commands/Memory.ts"
 import { recordCommand } from "./commands/Records.ts"
 import { searchCommand } from "./commands/Search.ts"
@@ -407,7 +409,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([...setupCommands, evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand]),
+  Command.withSubcommands([...setupCommands, evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand, layerCommand, webBenchCommand]),
   Command.run({ version: VERSION }),
   Effect.catchTags({
     SuiteError: reportError,

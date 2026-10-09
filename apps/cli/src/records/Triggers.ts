@@ -9,6 +9,9 @@
  *   `handleKeyboardGlobally`).
  * - `error`: a tool call failed, and its output contains every string in `all`
  *   (`matches of the string to replace`).
+ * - `page` (web): the page an agent just read shows every string in `all` and
+ *   none in `none`; `action` (web): the control an action used is named with
+ *   them. Code events never match these; src/web/Reader.ts does.
  *
  * Matching is case-sensitive substring search, never regular expressions, so
  * a trigger means the same thing to whoever reads it.
@@ -17,7 +20,7 @@ import { Schema } from "effect"
 import type { ToolCall } from "../traces/index.ts"
 import { EDIT_TOOLS, reportsFailure, SHELL_TOOLS, SHELL_WRITE } from "../traces/index.ts"
 
-export const TriggerOn = Schema.Literals(["command", "edit", "error"])
+export const TriggerOn = Schema.Literals(["command", "edit", "error", "page", "action"])
 export type TriggerOn = typeof TriggerOn.Type
 
 export const Trigger = Schema.Struct({
@@ -79,6 +82,9 @@ export const matchTrigger = (t: Trigger, e: ToolEvent): boolean => {
     }
     case "error":
       return e.failed && e.output !== undefined && containsAll(e.output, t.all) && containsNone(e.output, t.none)
+    case "page":
+    case "action":
+      return false
   }
 }
 
@@ -97,6 +103,10 @@ export const describeTrigger = (t: Trigger): string => {
       return `an edit${t.file === null ? "" : ` to a file ending in \`${t.file}\``} that writes ${q(t.all)}${none}`
     case "error":
       return `a failure that says ${q(t.all)}`
+    case "page":
+      return `a page that shows ${q(t.all)}${none}`
+    case "action":
+      return `an action on a control named with ${q(t.all)}${none}`
   }
 }
 

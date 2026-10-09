@@ -58,7 +58,14 @@ export const Place = Schema.Struct({
    * "outline", its first line and the first line of each member (a helper
    * class's methods), for places runs read.
    */
-  show: Schema.optionalKey(Schema.Literals(["entry", "outline"]))
+  show: Schema.optionalKey(Schema.Literals(["entry", "outline"])),
+  /**
+   * A place on a web page rather than in code (src/web/Places.ts): `file` is
+   * the page's address as a pattern, and each block's `head` is a region
+   * around the control (`region "Actions"`), the last one the control itself.
+   * Absent for code.
+   */
+  kind: Schema.optionalKey(Schema.Literal("web"))
 })
 export type Place = typeof Place.Type
 
