@@ -13,7 +13,7 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { matchSubject } from "../records/Subjects.ts"
 import { isMiss, readSkips, type Skip } from "../workflows/Commits.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
-import { learnState, spentToday, waitReason } from "../workflows/Learn.ts"
+import { budgetReason, learnState, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
 import { readLearn } from "./Preferences.ts"
@@ -99,6 +99,7 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
     const subjects = yield* (yield* RecordStore).subjects()
     const here = repo === undefined ? undefined : matchSubject(subjects, repo)
     const committed = yield* (yield* WorkflowStore).candidates("committed")
+    const spent = yield* spentToday()
     const out: Array<string> = []
     const w = Math.max(0, ...subjects.map((x) => x.name.length)) + 3
     for (const subject of subjects) {
@@ -110,7 +111,12 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
         : "no workflows yet"
       const changes = `${plural(state.records.length, "change")} stored${state.learned.length > 0 ? `, ${state.learned.length} learned from` : ""}`
       const waiting = waitReason(state, prefs.every, false)
-      const next = waiting === undefined ? s.yellow("ready to learn") : s.dim(waiting)
+      const short = prefs.auto ? budgetReason(roundUsd(state), spent, prefs.max_usd_per_day) : undefined
+      const next = waiting !== undefined
+        ? s.dim(waiting)
+        : short === undefined
+        ? s.yellow("ready to learn")
+        : `${s.yellow("ready to learn with singularity learn")}${s.dim(`: ${short}`)}`
       const mark = here?.id === subject.id ? s.cyan(" ← here") : ""
       out.push(`    ${subject.name.padEnd(w)}${knows} · ${changes}${last === undefined ? "" : ` · learned ${shortDate(last)}`}${mark}`)
       out.push(`    ${" ".repeat(w)}${next}`)
@@ -118,7 +124,7 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
       if (missed.length > 0) out.push(`    ${" ".repeat(w)}${s.dim(`left out: ${missed.map(([reason, n]) => `${n} ${reason}`).join("; ")}`)}`)
     }
     if (repo !== undefined && here === undefined) out.push(`    ${s.dim(`${path.basename(repo.root)} (here): no changes stored yet`)}`)
-    return { out, spent: yield* spentToday() }
+    return { out, spent }
   }).pipe(Effect.provide(layers))
   yield* say(`\n  ${s.bold("Repos")}`)
   if (lines.out.length === 0) yield* say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)

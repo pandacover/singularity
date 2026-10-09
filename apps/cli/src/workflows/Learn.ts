@@ -242,3 +242,19 @@ export const spentToday = Effect.fn("spentToday")(function*() {
 
 /** A rough price for learning from `changes` changes: what the eval memories cost to build and revise. */
 export const estimateUsd = (changes: number): number => 0.1 + 0.05 * changes
+
+/** The next round's rough price: a first build reads every change, a learning round the new ones. */
+export const roundUsd = (state: LearnState): number =>
+  estimateUsd(state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length)
+
+const dollars = (x: number): string => `$${x.toFixed(2)}`
+
+/**
+ * Why learning on its own doesn't start the next round: today's limit
+ * doesn't leave enough for its estimate. A round that won't fit waits for
+ * another day, a higher limit or `singularity learn`; undefined when it fits.
+ */
+export const budgetReason = (estimate: number, spent: number, limit: number): string | undefined =>
+  spent + estimate <= limit
+    ? undefined
+    : `the next round, about ${dollars(estimate)}, is more than today's limit leaves (${dollars(Math.max(0, limit - spent))} of ${dollars(limit)})`
