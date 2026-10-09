@@ -1,0 +1,9 @@
+memory code v2 frozen: 2026-10-09T11:46:36Z
+apps/cli/src: 159 files 0c25b98fe073adb763e4f14aa8b7cbaa38f9312e5841d54c6d47c2892ec4333d
+benchmark sealed: 8e65d2f9e214bae3ad634c84ec3871c7c2abdbf3fc4187d1ae001a3c724b7253
+claude: 2.1.295 (C:/singularity-workspaces/tools/claude-pinned/claude.exe)
+first version: 158 files 69219c63bafe3adce14104f200365f66665b91a28479915114c91dc549eebfc8, kept at C:/singularity-workspaces/new-job-v2/frozen-src-v1
+
+In git: the commit that adds this file holds exactly this code. The hash
+(hash-src.mjs, here) also counted Python caches in apps/cli/src/singularity/,
+which git ignores, so a checkout hashes differently; its TypeScript is the same.

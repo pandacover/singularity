@@ -31,15 +31,21 @@ import { join } from "node:path"
 
 const home = () => process.env.SINGULARITY_HOME || join(homedir(), ".singularity")
 
-/** Whether the session was handed v1 memory at its start, checked with nothing but the file system. */
-const hasSession = (stdin: string): boolean => {
+/**
+ * Which reader handed the session memory at its start (src/layer/Api.ts):
+ * code (v1's session file) or web, checked with nothing but the file system.
+ */
+const sessionKind = (stdin: string): "code" | "web" | undefined => {
   try {
     const sessionId = (JSON.parse(stdin) as { session_id?: unknown }).session_id
     const config = JSON.parse(readFileSync(join(home(), "config.json"), "utf-8")) as { tenant?: unknown }
-    if (typeof sessionId !== "string" || typeof config.tenant !== "string") return false
-    return existsSync(join(home(), "tenants", config.tenant, "workflows", "sessions", `${sessionId.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`))
+    if (typeof sessionId !== "string" || typeof config.tenant !== "string") return undefined
+    const file = `${sessionId.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`
+    if (existsSync(join(home(), "tenants", config.tenant, "workflows", "sessions", file))) return "code"
+    if (existsSync(join(home(), "tenants", config.tenant, "web", "sessions", file))) return "web"
+    return undefined
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -65,15 +71,22 @@ if (process.env.SINGULARITY_HOOKS !== "off") {
   try {
     const stdin = await readStdin()
     let out: string | undefined
+    // Every event goes to the memory layer's calls (src/layer/Api.ts): start, step, end.
     if (event === "post-tool-use") {
-      if (hasSession(stdin)) out = await (await import("./HookTool.ts")).postToolUse(stdin)
+      const kind = sessionKind(stdin)
+      if (kind === "code") out = await (await import("./HookTool.ts")).postToolUse(stdin)
+      else if (kind === "web") out = await (await import("../web/HookStep.ts")).webPostToolUse(stdin)
     } else if (event === "user-prompt-submit") {
-      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 1, parts)
+      out = await (await import("../layer/Api.ts")).startFromHook(stdin, 1, parts)
     } else if (event === "user-prompt-submit-2") {
       out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2, parts)
     } else if (event === "session-end") {
-      const outcome = await (await import("./HookEnd.ts")).sessionEnd(stdin)
-      if (outcome?.reason === "recorded" && outcome.subject !== undefined) await (await import("../setup/AutoLearn.ts")).afterRecord(outcome.subject)
+      if (sessionKind(stdin) === "web") {
+        await (await import("../web/HookStep.ts")).webSessionEnd(stdin)
+      } else {
+        const outcome = await (await import("./HookEnd.ts")).sessionEnd(stdin)
+        if (outcome?.reason === "recorded" && outcome.subject !== undefined) await (await import("../setup/AutoLearn.ts")).afterRecord(outcome.subject)
+      }
     } else {
       logError(event, new Error(`unknown hook event ${JSON.stringify(event)}`))
     }
