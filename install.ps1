@@ -29,7 +29,7 @@
   function Done($text) { Write-Host "  $text " -NoNewline; Write-Host ([char]0x2713) -ForegroundColor Green -NoNewline }
   function Fail($text) { Write-Host ''; Write-Host ''; Write-Host '  ' -NoNewline; Write-Host ([char]0x2717) -ForegroundColor Red -NoNewline; Write-Host " $text"; Write-Host '' }
   # A node's major version, 0 if it doesn't run.
-  function Major($exe) { try { [int]((& $exe -p 'process.versions.node.split(".")[0]') | Out-String).Trim() } catch { 0 } }
+  function Major($exe) { try { [int]((& $exe -p 'parseInt(process.versions.node)') | Out-String).Trim() } catch { 0 } }
 
   Write-Host ''
   Write-Host "  $([char]0x25C6) " -ForegroundColor Magenta -NoNewline
