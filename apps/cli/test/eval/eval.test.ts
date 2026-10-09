@@ -310,7 +310,8 @@ describe("the hooks setup", () => {
 
       // The hooks ran in the agent's session, against the run's own copy of the home.
       const seen = seenByAgent(claudeHome, r.session_id)
-      assert.strictEqual(seen.env.SINGULARITY_HOOKS, "on")
+      // Hooks installed for daily work stay off; the run's own fire, marked by the flag.
+      assert.strictEqual(seen.env.SINGULARITY_HOOKS, "off")
       assert.strictEqual(seen.env.SINGULARITY_HOME, join(runDir, "memory-home"))
       assert.include(seen.args, "--settings")
       const said = (event: string): Array<string> =>
@@ -340,21 +341,37 @@ describe("the hooks setup", () => {
     })
   }, 60_000)
 
-  it("won't run next to hooks installed for daily work, which would hand everything over twice", async () => {
+  it("runs next to hooks installed for daily work, which stay silent, so memory is handed over once", async () => {
     const root = tempDir()
     const repo = makeRepo(root)
     const claudeHome = join(root, "claude-home")
+    const homeDir = join(root, "memory-home")
+    const answers = join(root, "answers.json")
     mkdirSync(claudeHome)
     writeFileSync(join(claudeHome, "settings.json"), JSON.stringify(withOurHooks({}, process.execPath, HOOK_SCRIPT)))
-    await withEnv({ CLAUDE_CONFIG_DIR: claudeHome }, async () => {
-      const homeDir = join(root, "memory-home")
-      await run(loadHome(homeDir))
+    await withEnv({
+      CLAUDE_CONFIG_DIR: claudeHome,
+      SINGULARITY_WORKSPACES: join(root, "workspaces"),
+      FAKE_CLAUDE_ANSWERS: answers,
+      FAKE_CLAUDE_BASH: "yarn test:update --watch=false"
+    }, async () => {
+      const kind = await seedHome(homeDir, repo)
+      writeFileSync(answers, JSON.stringify([{ kind: kind.id, why: "same task", steps: kind.route.map((e) => ({ id: e.step, why: "needed", applies: true })) }]))
       const suite = await run(loadSuite(writeSuite(root, repo)))
-      const setup = await run(makeSetup("hooks", homeDir, true, { selector: { claude: FAKE_CLAUDE, cwd: root, model: "sonnet" } }))
-      const failure = await run(Effect.flip(runSuite(suite, setup, join(root, "out"), FAKE_CLAUDE, { workspaces: join(root, "ws"), taskIds: ["t1"] })))
-      assert.include(failure.message, "installed")
+      const setup = await run(makeSetup("hooks", homeDir, true, { selector: { claude: FAKE_CLAUDE, cwd: join(root, "llm"), model: "sonnet" } }))
+      const [r] = (await run(
+        runSuite(suite, setup, join(root, "out"), FAKE_CLAUDE, { workspaces: join(root, "ws"), taskIds: ["t1"] })
+      )) as Array<Record<string, any>>
+      assert.isTrue(r.success)
+      const seen = seenByAgent(claudeHome, r.session_id)
+      const ran = (event: string) => seen.hook_outputs.filter((o) => o.event === event)
+      // Both copies ran at each event; only the run's own said anything.
+      assert.strictEqual(ran("UserPromptSubmit").length, 2)
+      assert.strictEqual(ran("UserPromptSubmit").filter((o) => o.stdout !== "").length, 1)
+      assert.strictEqual(ran("PostToolUse").filter((o) => o.stdout !== "").length, 1)
+      assert.strictEqual(r.injection.hook_errors, 0)
     })
-  }, 30_000)
+  }, 60_000)
 })
 
 describe("processes", () => {

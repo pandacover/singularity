@@ -1,7 +1,7 @@
 /**
  * How well the places memory learns from some tasks fit another task, read
  * from the records of a memory home (no new runs, no model; the home is only
- * read):
+ * read; default the eval home, runs/eval-home):
  *
  *     node apps/cli/examples/excalidraw/check-places.ts --repo REPO [--home HOME] [--from TASK ...] [--verbose]
  *
@@ -29,7 +29,7 @@ import { Console, Effect, FileSystem, Path, Schema } from "effect"
 import { median } from "../../src/eval/PyFormat.ts"
 import { findPlaces, type SpotSource } from "../../src/handover/Excerpts.ts"
 import { fileAt } from "../../src/local/Git.ts"
-import { loadHome } from "../../src/local/Home.ts"
+import { EVAL_HOME, loadHome } from "../../src/local/Home.ts"
 import { applyAliases, readAliases } from "../../src/memory/Aliases.ts"
 import { buildGraph, kindIdOf, kindNames, stepIdOf } from "../../src/memory/Build.ts"
 import { withSpots } from "../../src/memory/Merge.ts"
@@ -40,7 +40,7 @@ const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(WorkflowRe
 
 const args = process.argv.slice(2)
 const valuesOf = (flag: string) => args.flatMap((a, i) => (a === flag && args[i + 1] !== undefined ? [args[i + 1]] : []))
-const homeArg = valuesOf("--home")[0]
+const homeArg = valuesOf("--home")[0] ?? EVAL_HOME
 const repoArg = valuesOf("--repo")[0]
 const from = valuesOf("--from")
 const verbose = args.includes("--verbose")

@@ -145,6 +145,16 @@ records use those keys.
   file with plain `node:fs` and loads modules only for the event at hand.
   Keep it fast (about 0.1 s without memory, 0.4 s with). Tests use a temporary
   `SINGULARITY_HOME`, never the real one.
+- Two memory homes. `~/.singularity` is our own: the memory of the sessions
+  we work in, with singularity set up in our Claude Code. Evals and
+  benchmarks have `runs/eval-home` (`EVAL_HOME` in `src/local/Home.ts`): the
+  records of eval runs and the memory built from them; runs measure frozen
+  copies of it under `runs/<suite>/memory/`. Commands for eval work take
+  `--home runs/eval-home`, or run as `npm run cli:eval -- ...`; never record
+  or build eval memory in `~/.singularity`. Runs work with singularity
+  installed: the harness sets `SINGULARITY_HOOKS=off`, which silences the
+  installed hooks, and marks the run's own with `--eval-run`
+  (`RUN_HOOK_FLAG` in `src/handover/Install.ts`), which fire anyway.
 - Claude Code cuts a hook's text at 10,000 characters and hands the agent a
   file path instead. The hand-over at task start stays under
   `MAX_HANDOVER_CHARS` (`src/handover/TaskStart.ts`); anything added to it

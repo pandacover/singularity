@@ -14,7 +14,8 @@
  * `<home>/hook-errors.log` and the hook exits 0 with no output.
  * `SINGULARITY_HOOKS=off` turns every hook off (the eval harness sets it, so
  * hooks installed for daily work stay out of measurement runs, and so do the
- * model calls memory makes itself).
+ * model calls memory makes itself), except a run's own hooks, which the
+ * harness marks with `--eval-run` (`RUN_HOOK_FLAG` in handover/Install.ts).
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
@@ -55,7 +56,7 @@ const logError = (event: string, error: unknown) => {
 }
 
 const event = process.argv[2] ?? ""
-if (process.env.SINGULARITY_HOOKS !== "off") {
+if (process.env.SINGULARITY_HOOKS !== "off" || process.argv.includes("--eval-run")) {
   try {
     const stdin = await readStdin()
     let out: string | undefined

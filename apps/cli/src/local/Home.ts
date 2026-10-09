@@ -16,6 +16,15 @@ import { Config, Effect, FileSystem, Option, Path, Schema } from "effect"
 import { homedir } from "node:os"
 
 export const HOME_ENV = "SINGULARITY_HOME"
+
+/**
+ * The memory home of evals and benchmarks, from the repo root like `runs/`:
+ * the records of eval runs and the memory built from them, from which the
+ * frozen homes runs measure (`runs/<suite>/memory/`) are copied. Eval work
+ * passes it (`--home`, or `npm run cli:eval`), so `~/.singularity` holds only
+ * the memory of our own sessions.
+ */
+export const EVAL_HOME = "runs/eval-home"
 export const DEFAULT_TENANT = "local"
 
 /** Tenant, subject and record ids are also directory and file names. */

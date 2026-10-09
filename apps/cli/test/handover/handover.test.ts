@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { eventOfHook } from "../../src/handover/HookInput.ts"
-import { hasOurHooks, withOurHooks, withoutOurHooks } from "../../src/handover/Install.ts"
+import { hasOurHooks, RUN_HOOK_FLAG, withOurHooks, withoutOurHooks } from "../../src/handover/Install.ts"
 import { firing, onToolEvent } from "../../src/handover/OnTool.ts"
 import { readSession } from "../../src/handover/Session.ts"
 import { recordSession } from "../../src/handover/SessionEnd.ts"
@@ -227,8 +227,8 @@ describe("a session with memory", () => {
 })
 
 describe("the hook script", () => {
-  const hook = (event: string, input: object, env: Record<string, string>) =>
-    execFileSync(process.execPath, [HOOK, event], { input: JSON.stringify(input), env: { ...process.env, ...env }, encoding: "utf-8" })
+  const hook = (event: string, input: object, env: Record<string, string>, args: ReadonlyArray<string> = []) =>
+    execFileSync(process.execPath, [HOOK, event, ...args], { input: JSON.stringify(input), env: { ...process.env, ...env }, encoding: "utf-8" })
 
   it("answers a tool call with the warning, and stays quiet when off or without memory", async () => {
     const root = tempDir()
@@ -237,17 +237,22 @@ describe("the hook script", () => {
     const [w] = buildGraph([readRecord(ZEN, "k", [step("run the tests")], { flag: true, lessons: [flagLesson("run the tests")] })], { tenant: "local" }).warnings
     mkdirSync(join(tenantDir, "sessions"), { recursive: true })
     writeFileSync(join(homeDir, "config.json"), JSON.stringify({ tenant: "local" }))
-    writeFileSync(join(tenantDir, "sessions", "s1.json"), JSON.stringify({
-      session_id: "s1", tenant: "local", subject: "repo", repo: root, head: null, started_at: "2026-10-01T10:00:00Z",
-      prompt: "x", version: 1, kind: null, steps: [], warnings: [], triggers: [w], selection: null
-    }))
+    for (const id of ["s1", "s2"]) {
+      writeFileSync(join(tenantDir, "sessions", `${id}.json`), JSON.stringify({
+        session_id: id, tenant: "local", subject: "repo", repo: root, head: null, started_at: "2026-10-01T10:00:00Z",
+        prompt: "x", version: 1, kind: null, steps: [], warnings: [], triggers: [w], selection: null
+      }))
+    }
     const call = { session_id: "s1", hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "yarn test:update --watch=false" }, tool_response: { stdout: "", stderr: "" } }
     const out = JSON.parse(hook("post-tool-use", call, { SINGULARITY_HOME: homeDir }))
     assert.strictEqual(out.hookSpecificOutput.hookEventName, "PostToolUse")
     assert.include(out.hookSpecificOutput.additionalContext, "--watch=false")
     assert.strictEqual(hook("post-tool-use", call, { SINGULARITY_HOME: homeDir }), "")
     assert.strictEqual(hook("post-tool-use", { ...call, session_id: "s9" }, { SINGULARITY_HOME: homeDir }), "")
-    assert.strictEqual(hook("post-tool-use", { ...call, session_id: "s1" }, { SINGULARITY_HOME: homeDir, SINGULARITY_HOOKS: "off" }), "")
+    assert.strictEqual(hook("post-tool-use", { ...call, session_id: "s2" }, { SINGULARITY_HOME: homeDir, SINGULARITY_HOOKS: "off" }), "")
+    // An eval run's own hook fires although hooks are off, as installed ones must stay in the run.
+    const run = JSON.parse(hook("post-tool-use", { ...call, session_id: "s2" }, { SINGULARITY_HOME: homeDir, SINGULARITY_HOOKS: "off" }, [RUN_HOOK_FLAG]))
+    assert.include(run.hookSpecificOutput.additionalContext, "--watch=false")
     assert.isFalse(existsSync(join(homeDir, "hook-errors.log")))
   })
 })

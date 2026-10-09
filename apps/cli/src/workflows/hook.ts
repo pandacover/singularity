@@ -23,7 +23,9 @@
  *
  * A hook must never break the session it serves: any error is written to
  * `<home>/hook-errors.log` and the hook exits 0 with no output.
- * `SINGULARITY_HOOKS=off` turns every hook off.
+ * `SINGULARITY_HOOKS=off` turns every hook off, except an eval run's own,
+ * which the harness marks with `--eval-run` (`RUN_HOOK_FLAG` in
+ * handover/Install.ts): hooks installed for daily work stay silent in runs.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
@@ -67,7 +69,7 @@ const logError = (event: string, error: unknown) => {
 
 const event = process.argv[2] ?? ""
 const parts = process.argv.find((a) => a.startsWith("--parts="))?.slice("--parts=".length) ?? process.env.SINGULARITY_HANDOVER_PARTS
-if (process.env.SINGULARITY_HOOKS !== "off") {
+if (process.env.SINGULARITY_HOOKS !== "off" || process.argv.includes("--eval-run")) {
   try {
     const stdin = await readStdin()
     let out: string | undefined

@@ -9,7 +9,8 @@
  * answers with the next entry of the JSON array in $FAKE_CLAUDE_ANSWERS (the
  * last one repeats), and records each call as `<that file>.call<n>.json`.
  *
- * With `--settings` that has hooks, it runs them as Claude Code would:
+ * With hooks in the user's settings ($CLAUDE_CONFIG_DIR/settings.json) or in
+ * `--settings`, it runs them as Claude Code would, the user's first:
  * UserPromptSubmit with the prompt, PostToolUse after its Write (and after a
  * Bash call it pretends to make, if $FAKE_CLAUDE_BASH names a command), and
  * SessionEnd once the transcript is written. What the hooks print is recorded
@@ -53,9 +54,14 @@ interface HookEntry {
   readonly hooks?: ReadonlyArray<{ readonly command: string }>
 }
 const settingsArg = args.includes("--settings") ? args[args.indexOf("--settings") + 1] : undefined
-const hooks: Record<string, ReadonlyArray<HookEntry>> = settingsArg === undefined
-  ? {}
-  : JSON.parse(existsSync(settingsArg) ? readFileSync(settingsArg, "utf-8") : settingsArg).hooks ?? {}
+const hooksOf = (json: string): Record<string, ReadonlyArray<HookEntry>> => JSON.parse(json).hooks ?? {}
+const userSettings = process.env.CLAUDE_CONFIG_DIR === undefined ? undefined : join(process.env.CLAUDE_CONFIG_DIR, "settings.json")
+const userHooks = userSettings !== undefined && existsSync(userSettings) ? hooksOf(readFileSync(userSettings, "utf-8")) : {}
+const flagHooks = settingsArg === undefined ? {} : hooksOf(existsSync(settingsArg) ? readFileSync(settingsArg, "utf-8") : settingsArg)
+const hooks: Record<string, ReadonlyArray<HookEntry>> = {}
+for (const event of new Set([...Object.keys(userHooks), ...Object.keys(flagHooks)])) {
+  hooks[event] = [...(userHooks[event] ?? []), ...(flagHooks[event] ?? [])]
+}
 const hookOutputs: Array<{ event: string; stdout: string }> = []
 const runHooks = (event: string, input: Record<string, unknown>) => {
   for (const entry of hooks[event] ?? []) {

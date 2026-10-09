@@ -22,13 +22,12 @@
  */
 import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { HOOK_SCRIPT, hooksSettings } from "../handover/Install.ts"
-import { eventsOf, memoryHookEvents } from "../setup/HookFiles.ts"
 import { HOME_ENV, loadHome } from "../local/Home.ts"
 import * as JsonMemoryStore from "../memory/JsonMemoryStore.ts"
 import { MemoryStore } from "../memory/MemoryStore.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
-import { claudeHome, emptyUsage, type Usage } from "../traces/index.ts"
+import { emptyUsage, type Usage } from "../traces/index.ts"
 import { CLAUDE_ENV } from "./Agent.ts"
 import type { Delivered, Injection, MemorySetup } from "./Setups.ts"
 import { MemoryError } from "./Setups.ts"
@@ -77,7 +76,6 @@ export const HandoverLine = Schema.Struct({
 export type HandoverLine = typeof HandoverLine.Type
 
 const decodeLine = Schema.decodeUnknownOption(Schema.fromJsonString(HandoverLine))
-const Settings = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 
 const usageOf = (u: typeof UsageJson.Type): Usage => ({
   input_tokens: u.input,
@@ -123,21 +121,6 @@ export const deliveredFrom = (lines: ReadonlyArray<HandoverLine>, hookErrors: nu
 const toMemoryError = (e: { readonly message: string }) =>
   e instanceof MemoryError ? e : new MemoryError({ message: `hooks memory: ${e.message}` })
 
-/** Hooks installed for daily work would run next to the run's own, and hand everything over twice. */
-const refuseInstalledHooks = Effect.fnUntraced(function*() {
-  const fs = yield* FileSystem.FileSystem
-  const path = yield* Path.Path
-  const file = path.join(yield* claudeHome, "settings.json")
-  if (!(yield* fs.exists(file))) return
-  const settings = Schema.decodeUnknownOption(Settings)(yield* fs.readFileString(file))
-  // From any checkout or install, v1's included: they would hand memory over next to the run's own.
-  if (Option.isSome(settings) && memoryHookEvents(eventsOf(settings.value, "wrapped")).length > 0) {
-    return yield* new MemoryError({
-      message: `memory hooks are installed in ${file}, so they would run twice; take them out for the run (singularity uninstall, or hooks uninstall)`
-    })
-  }
-})
-
 /** After the run: what the hooks handed over, from the copy's log; then the copy's records and graph go. */
 const collect = Effect.fn("HooksMemory.collect")(function*(runDir: string, runHome: string, tenantDir: string) {
   const fs = yield* FileSystem.FileSystem
@@ -165,7 +148,6 @@ export const makeHooksMemory = (options: HooksMemoryOptions): MemorySetup => {
     if (runDir === undefined) {
       return yield* new MemoryError({ message: "the hooks setup hands memory over during a run; preview it with `handover --home`" })
     }
-    yield* refuseInstalledHooks()
     const source = path.resolve(options.home)
     if (!(yield* fs.exists(path.join(source, "config.json")))) {
       return yield* new MemoryError({ message: `${source} isn't a memory home (it has no config.json)` })
@@ -189,13 +171,14 @@ export const makeHooksMemory = (options: HooksMemoryOptions): MemorySetup => {
       return { version, sources }
     }).pipe(Effect.provide(stores))
     const settings = path.join(runDir, HOOK_SETTINGS)
-    yield* fs.writeFileString(settings, JSON.stringify(hooksSettings(process.execPath, HOOK_SCRIPT), null, 2) + "\n")
+    yield* fs.writeFileString(settings, JSON.stringify(hooksSettings(process.execPath, HOOK_SCRIPT, [], true), null, 2) + "\n")
     return {
       systemPrompt: undefined,
       info: { memory: source, version, sources },
       args: ["--settings", settings],
       env: {
-        SINGULARITY_HOOKS: "on",
+        // Hooks installed for daily work stay off, with their own home; the run's own carry RUN_HOOK_FLAG.
+        SINGULARITY_HOOKS: "off",
         SINGULARITY_AUTOLEARN: "off",
         [HOME_ENV]: runHome,
         [CLAUDE_ENV]: JSON.stringify(options.claude),

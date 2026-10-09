@@ -132,7 +132,8 @@ export const agentEnv = (base: Readonly<Record<string, string | undefined>> = pr
   env.DISABLE_AUTOUPDATER = "1"
   // Our own hooks, if installed for daily work, stay out of measurement runs
   // and out of the model calls memory makes itself (a task-start hook inside
-  // the task-start model call would call itself). A suite's env can turn them on.
+  // the task-start model call would call itself). A run's own hooks fire
+  // anyway: the memory setups mark them with RUN_HOOK_FLAG (Install.ts).
   env.SINGULARITY_HOOKS = "off"
   return env
 }

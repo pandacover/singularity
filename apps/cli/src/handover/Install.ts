@@ -51,11 +51,23 @@ const isOurs = (script: string) => (entry: unknown): boolean => {
   )
 }
 
-/** The `hooks` settings for our hook script, as `claude --settings` takes them; `extra` adds hooks of its own. */
-export const hooksSettings = (node: string, script: string, extra: ReadonlyArray<HookSpec> = []): Json => {
+/**
+ * Marks an eval run's own hooks. The harness turns hooks off in the agent's
+ * environment (`SINGULARITY_HOOKS=off`), so hooks installed for daily work
+ * stay silent in the run, with their own memory home; hooks with this flag
+ * fire anyway. `hook.ts` and `workflows/hook.ts` check it by its text.
+ */
+export const RUN_HOOK_FLAG = "--eval-run"
+
+/**
+ * The `hooks` settings for our hook script, as `claude --settings` takes them;
+ * `extra` adds hooks of its own, `run` marks them as an eval run's own.
+ */
+export const hooksSettings = (node: string, script: string, extra: ReadonlyArray<HookSpec> = [], run = false): Json => {
   const hooks: Record<string, Array<Json>> = {}
   for (const h of [...HOOKS, ...extra]) {
-    const entry: Json = { hooks: [{ type: "command", command: hookCommand(node, script, h.arg), timeout: h.timeout }] }
+    const arg = run ? `${h.arg} ${RUN_HOOK_FLAG}` : h.arg
+    const entry: Json = { hooks: [{ type: "command", command: hookCommand(node, script, arg), timeout: h.timeout }] }
     if (h.matcher !== undefined) entry.matcher = h.matcher
     hooks[h.event] = [...(hooks[h.event] ?? []), entry]
   }

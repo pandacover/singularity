@@ -141,7 +141,7 @@ export const runBench = Effect.fn("runBench")(function*(o: BenchOptions) {
   }
   const settingsFile = path.join(out, "hooks.json")
   if (o.condition === "memory" || o.condition === "memory-frozen") {
-    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT, [browserSpec("PostToolUse"), browserSpec("PostToolUseFailure")])
+    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT, [browserSpec("PostToolUse"), browserSpec("PostToolUseFailure")], true)
     yield* fs.writeFileString(settingsFile, JSON.stringify(hooks, null, 2) + "\n")
   } else if (o.condition === "guide" || o.condition === "awm") {
     const command = `"${process.execPath.replace(/\\/g, "/")}" "${STATIC_HOOK_SCRIPT.replace(/\\/g, "/")}"`
@@ -183,7 +183,7 @@ export const runBench = Effect.fn("runBench")(function*(o: BenchOptions) {
       const command = [...buildCommand([o.claude], cfg, sessionId), ...extra]
       const env: Record<string, string> =
         o.condition === "memory" || o.condition === "memory-frozen"
-          ? { SINGULARITY_HOOKS: "on", SINGULARITY_AUTOLEARN: "off", SINGULARITY_HOME: memoryHome!, SINGULARITY_SELECTOR: "cues", SINGULARITY_HANDOVER_PARTS: "1" }
+          ? { SINGULARITY_HOOKS: "off", SINGULARITY_AUTOLEARN: "off", SINGULARITY_HOME: memoryHome!, SINGULARITY_SELECTOR: "cues", SINGULARITY_HANDOVER_PARTS: "1" }
           : o.condition === "guide" || o.condition === "awm"
           ? { SINGULARITY_STATIC_HANDOVER: path.resolve(o.handover!) }
           : {}

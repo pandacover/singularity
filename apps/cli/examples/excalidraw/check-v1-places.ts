@@ -4,7 +4,7 @@
  *     node apps/cli/examples/excalidraw/check-v1-places.ts --repo REPO [--memory HOME] [--records HOME] [--no-model | --cues] [--verbose]
  *
  * For each task with successful no-memory runs (in the `--records` home,
- * default ~/.singularity), memory v1 (the head of the `--memory` home)
+ * default the eval home, runs/eval-home), memory v1 (the head of the `--memory` home)
  * picks the workflows the task needs, as at task start (a model call, about
  * two cents; `--no-model` picks by words, `--cues` by memory's cues, both
  * without a model; with `--verbose`, `--cues` also lists the blanks it
@@ -24,12 +24,11 @@
  */
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Path } from "effect"
-import { homedir } from "node:os"
 import { defaultClaude } from "../../src/eval/Agent.ts"
 import { median } from "../../src/eval/PyFormat.ts"
 import { defaultWorkspaces } from "../../src/eval/Runner.ts"
 import { fileAt } from "../../src/local/Git.ts"
-import { loadHome } from "../../src/local/Home.ts"
+import { EVAL_HOME, loadHome } from "../../src/local/Home.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
 import { gatherEvidence, shapeOf } from "../../src/workflows/Evidence.ts"
@@ -45,7 +44,7 @@ const args = process.argv.slice(2)
 const valueOf = (flag: string) => args.flatMap((a, i) => (a === flag && args[i + 1] !== undefined ? [args[i + 1]] : []))[0]
 const repoArg = valueOf("--repo")
 const memoryArg = valueOf("--memory") ?? "runs/excalidraw/memory/v1-seed"
-const recordsArg = valueOf("--records") ?? `${homedir()}/.singularity`
+const recordsArg = valueOf("--records") ?? EVAL_HOME
 const noModel = args.includes("--no-model")
 const byCues = args.includes("--cues")
 const thinking = args.includes("--thinking")

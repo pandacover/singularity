@@ -19,11 +19,10 @@
 import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { fileURLToPath } from "node:url"
 import { type HookSpec, hooksSettings } from "../handover/Install.ts"
-import { eventsOf, memoryHookEvents } from "../setup/HookFiles.ts"
 import { HOME_ENV, loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
-import { claudeHome, emptyUsage, type Usage } from "../traces/index.ts"
+import { emptyUsage, type Usage } from "../traces/index.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import { CLAUDE_ENV } from "./Agent.ts"
@@ -98,7 +97,6 @@ export const WorkflowHandoverLine = Schema.Struct({
 export type WorkflowHandoverLine = typeof WorkflowHandoverLine.Type
 
 const decodeLine = Schema.decodeUnknownOption(Schema.fromJsonString(WorkflowHandoverLine))
-const Settings = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 
 const usageOf = (u: typeof UsageJson.Type): Usage => ({
   input_tokens: u.input,
@@ -149,21 +147,6 @@ export const workflowsDeliveredFrom = (lines: ReadonlyArray<WorkflowHandoverLine
 const toMemoryError = (e: { readonly message: string }) =>
   e instanceof MemoryError ? e : new MemoryError({ message: `workflows memory: ${e.message}` })
 
-/** Memory hooks installed for daily work (v0's or v1's) would run next to the run's own, and hand memory over twice. */
-const refuseInstalledHooks = Effect.fnUntraced(function*() {
-  const fs = yield* FileSystem.FileSystem
-  const path = yield* Path.Path
-  const file = path.join(yield* claudeHome, "settings.json")
-  if (!(yield* fs.exists(file))) return
-  const settings = Schema.decodeUnknownOption(Settings)(yield* fs.readFileString(file))
-  // From any checkout or install (`singularity setup` points them at ~/.singularity/app).
-  if (Option.isSome(settings) && memoryHookEvents(eventsOf(settings.value, "wrapped")).length > 0) {
-    return yield* new MemoryError({
-      message: `memory hooks are installed in ${file}, so they would run next to the run's own; take them out for the run (singularity uninstall)`
-    })
-  }
-})
-
 /** After the run: what the hooks handed over, from the copy's log; then the copy's records and memory go. */
 const collect = Effect.fn("WorkflowsMemory.collect")(function*(runDir: string, runHome: string, tenantDir: string) {
   const fs = yield* FileSystem.FileSystem
@@ -192,7 +175,6 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
     if (runDir === undefined) {
       return yield* new MemoryError({ message: "the workflows setup hands memory over during a run; preview it with `workflows handover`" })
     }
-    yield* refuseInstalledHooks()
     const source = path.resolve(options.home)
     if (!(yield* fs.exists(path.join(source, "config.json")))) {
       return yield* new MemoryError({ message: `${source} isn't a memory home (it has no config.json)` })
@@ -220,14 +202,15 @@ export const makeWorkflowsMemory = (options: WorkflowsMemoryOptions): MemorySetu
       return { version, sources }
     }).pipe(Effect.provide(stores))
     const settings = path.join(runDir, HOOK_SETTINGS)
-    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT, options.parts === 2 ? [SECOND_PART] : [])
+    const hooks = hooksSettings(process.execPath, WORKFLOWS_HOOK_SCRIPT, options.parts === 2 ? [SECOND_PART] : [], true)
     yield* fs.writeFileString(settings, JSON.stringify(options.draft === true ? withStartTimeout(hooks, DRAFT_HOOK_TIMEOUT) : hooks, null, 2) + "\n")
     return {
       systemPrompt: undefined,
       info: { memory: source, version, sources },
       args: ["--settings", settings],
       env: {
-        SINGULARITY_HOOKS: "on",
+        // Hooks installed for daily work stay off, with their own home; the run's own carry RUN_HOOK_FLAG.
+        SINGULARITY_HOOKS: "off",
         SINGULARITY_AUTOLEARN: "off",
         [HOME_ENV]: runHome,
         [CLAUDE_ENV]: JSON.stringify(options.claude),

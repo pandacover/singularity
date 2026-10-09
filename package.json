@@ -17,7 +17,8 @@
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "cli": "node apps/cli/src/cli.ts"
+    "cli": "node apps/cli/src/cli.ts",
+    "cli:eval": "node --env-file=apps/cli/eval.env apps/cli/src/cli.ts"
   },
   "devDependencies": {
     "turbo": "2.11.7"
