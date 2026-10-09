@@ -13,9 +13,10 @@
  *   security-guidance plugin appends its warnings). It starts the script only
  *   in sessions memory handed something over to, checked as hook.ts checks.
  * - `on_session_finalize`, Hermes's SessionEnd (when the CLI, the TUI or the
- *   gateway closes a session): the session is recorded if it committed a
- *   change with passing tests. Its transcript is the session in Hermes's
- *   database (traces/Hermes.ts), where the script also finds where it ran.
+ *   gateway closes a session): memory stores the changes the session
+ *   committed with its checks passing that it hasn't stored yet. Its
+ *   transcript is the session in Hermes's database (traces/Hermes.ts), where
+ *   the script also finds where it ran.
  *
  * Hermes loads a plugin of the user's only once its name is in
  * `plugins.enabled` in its config.yaml. Setup puts it there with an edit of
@@ -38,7 +39,7 @@ const MARKER = "# Installed by `singularity setup`; `singularity uninstall` remo
 
 const MANIFEST = `${MARKER}
 name: ${PLUGIN_NAME}
-description: "Memory from singularity: hands over what earlier sessions learned in a repository when a task starts there, warns when a mistake made before is about to happen again, and learns from sessions that end with their change committed."
+description: "Memory from singularity: hands over what earlier sessions learned in a repository when a task starts there, warns when a mistake made before is about to happen again, and learns from the changes its sessions commit with their checks passing."
 author: singularity
 provides_hooks:
   - pre_llm_call
@@ -54,8 +55,8 @@ export const pluginCode = (launch: Launch): string =>
 When a task starts, hands over what earlier sessions learned in its repository
 (pre_llm_call); after a shell command or an edit, warns when a mistake made
 there before is about to happen again (transform_tool_result); when a session
-closes, records it for memory to learn from if it committed a change with
-passing tests (on_session_finalize). All run singularity's hook script in
+closes, stores the changes it committed with their checks passing, for
+memory to learn from (on_session_finalize). All run singularity's hook script in
 Claude Code's hook format. A hook must never break the session it serves:
 errors go to hook-errors.log in singularity's home, and the agent carries on.
 """
@@ -205,7 +206,7 @@ def on_transform_tool_result(tool_name: str = "", args: Any = None, result: Any 
 
 
 def on_session_finalize(session_id: Optional[str] = None, **_: Any) -> None:
-    """Records the session that closed, if it committed a change with passing tests."""
+    """Stores the changes the closed session committed with their checks passing."""
     try:
         if _off() or not session_id:
             return None

@@ -204,7 +204,7 @@ const checkClasses = (keys: ReadonlyArray<string>): Set<string> =>
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "..." : s)
 
 export interface ExtractOptions {
-  /** The run succeeded: its checks passed, or its change was committed with passing tests. */
+  /** The run succeeded: its checks passed, or its change was committed with its checks passing. */
   readonly succeeded?: boolean | undefined
 }
 

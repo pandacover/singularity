@@ -210,6 +210,13 @@ export const RunInfo = Schema.Struct({
   base_commit: Schema.NullOr(Schema.String),
   /** Sessions: the commit that holds the change. */
   head_commit: Schema.NullOr(Schema.String),
+  /**
+   * The part of the log that is this run, for a session that committed
+   * several changes (one record each): from its previous commit (exclusive;
+   * null from the session's start) to this one, ISO times. Without it, the
+   * whole log.
+   */
+  segment: Schema.optionalKey(Schema.Struct({ from: Schema.NullOr(Schema.String), to: Schema.String })),
   outcome: Schema.Literals(["success", "failure"]),
   started_at: Schema.NullOr(Schema.String),
   cost_usd: Schema.NullOr(Schema.Number),

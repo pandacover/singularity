@@ -4,10 +4,10 @@
  *     singularity setup [--yes] [--agent ID ...] [--no-path]   set memory up in this machine's coding agents
  *     singularity status                                       what memory knows, and where it is set up
  *     singularity recall TASK...                               what a task here would be handed
- *     singularity learn [--past] [--all] [--dry-run]           learn from recorded sessions now
+ *     singularity learn [--past] [--all] [--dry-run]           learn from the changes stored now
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
- * `learn --auto --subject ID` is the background round the session-end hook
+ * `learn --auto --subject ID` is the background round storing a change
  * starts (src/setup/AutoLearn.ts).
  */
 import { Console, DateTime, Effect, FileSystem, Layer, Option, Path } from "effect"
@@ -28,7 +28,7 @@ import { describeOutcome, runSetup } from "../setup/Setup.ts"
 import { runStatus } from "../setup/Status.ts"
 import { confirm, makeStyle, plural, tilde, usd, wantsColor, withSpinner } from "../setup/Ui.ts"
 import { unwireAll } from "../setup/Wiring.ts"
-import { backfill } from "../workflows/Backfill.ts"
+import { storePast } from "../workflows/Commits.ts"
 import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { estimateUsd, learnState, learnSubject, spentToday, waitReason } from "../workflows/Learn.ts"
@@ -50,10 +50,12 @@ const setup = Command.make(
   {
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("take every default and ask nothing (never learns right away)")),
     agent: Flag.Literals("agent", AGENT_IDS).pipe(Flag.atLeast(0), Flag.withDescription("only this agent (repeatable; default: every agent found)")),
-    noPath: Flag.Boolean("no-path").pipe(Flag.withDefault(false), Flag.withDescription("don't put the singularity command on PATH"))
+    noPath: Flag.Boolean("no-path").pipe(Flag.withDefault(false), Flag.withDescription("don't put the singularity command on PATH")),
+    dailyLimit: Flag.Finite("daily-limit").pipe(Flag.optional, Flag.withDescription("the most learning on its own may spend a day, in dollars (default: asked, or $1)"))
   },
   Effect.fn(function*(args) {
     const ok = yield* runSetup({
+      dailyLimit: Option.getOrUndefined(args.dailyLimit),
       yes: args.yes,
       only: args.agent,
       path: !args.noPath,
@@ -100,7 +102,7 @@ const recall = Command.make(
   })
 ).pipe(Command.withDescription("print what memory would hand a task in this repo (no model call)"))
 
-/** The background round the session-end hook starts: one subject, within the lock and the day's limit. */
+/** The background round storing a change starts: one subject, within the lock and the day's limit. */
 const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string) {
   const path = yield* Path.Path
   const stamp = DateTime.formatIso(yield* DateTime.now)
@@ -131,12 +133,12 @@ const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string
 const learn = Command.make(
   "learn",
   {
-    past: Flag.Boolean("past").pipe(Flag.withDefault(false), Flag.withDescription("first record this repo's past Claude Code, Codex and Hermes Agent sessions (no model call)")),
-    all: Flag.Boolean("all").pipe(Flag.withDefault(false), Flag.withDescription("every repo memory has new sessions for, not only this one")),
+    past: Flag.Boolean("past").pipe(Flag.withDefault(false), Flag.withDescription("first store the changes this repo's past Claude Code, Codex and Hermes Agent sessions committed (no model call)")),
+    all: Flag.Boolean("all").pipe(Flag.withDefault(false), Flag.withDescription("every repo memory has new changes for, not only this one")),
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo (default: here)")),
     dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("say what would be learned, and what it would cost, and stop")),
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("don't ask before spending")),
-    auto: Flag.Boolean("auto").pipe(Flag.withDefault(false), Flag.withDescription("the background round after a session (with --subject)")),
+    auto: Flag.Boolean("auto").pipe(Flag.withDefault(false), Flag.withDescription("the background round after a change is stored (with --subject)")),
     subject: Flag.String("subject").pipe(Flag.optional, Flag.withDescription("with --auto: the repo's subject id")),
     claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
     home: homeFlag
@@ -156,9 +158,10 @@ const learn = Command.make(
 
     if (args.past) {
       if (repo === undefined) return yield* say(`${cwd} isn't in a git repository.`)
-      const result = yield* withSpinner(`reading past sessions in ${path.basename(repo.root)}`, backfill(repo.root, sessionHomes(dirsOf()), home.tenantDir), interactive()).pipe(Effect.provide(stores))
+      const result = yield* withSpinner(`reading past sessions in ${path.basename(repo.root)}`, storePast(repo.root, sessionHomes(dirsOf()), home.tenantDir), interactive()).pipe(Effect.provide(stores))
       const skipped = [...result.skipped].map(([reason, n]) => `${n} ${reason}`).join("; ")
-      yield* say(`${plural(result.sessions, "past session")}: ${result.recorded.length} recorded${skipped === "" ? "" : s.dim(` (${skipped})`)}`)
+      const kept = result.stored.length + result.existing.length
+      yield* say(`${plural(result.sessions, "past session")}, ${plural(result.examined + result.existing.length, "commit")}: ${plural(kept, "change")} kept${skipped === "" ? "" : s.dim(` (left out: ${skipped})`)}`)
     }
 
     const subjects: ReadonlyArray<Subject> = yield* Effect.gen(function*() {
@@ -171,7 +174,7 @@ const learn = Command.make(
     if (subjects.length === 0) {
       return yield* say(repo === undefined && !args.all
         ? `${cwd} isn't in a git repository; pass --repo, or --all for every repo memory knows.`
-        : "No sessions recorded here yet. Memory records Claude Code, Codex and Hermes Agent sessions that commit a change with passing tests; --past looks through earlier ones.")
+        : "No changes stored here yet. Memory keeps the changes Claude Code, Codex and Hermes Agent sessions commit with their checks passing; --past looks through earlier sessions.")
     }
     const prefs = yield* readLearn(home.root)
     let spent = 0
@@ -182,14 +185,14 @@ const learn = Command.make(
         yield* say(`${s.dim("·")} ${subject.name}: not yet, ${waiting}`)
         continue
       }
-      const sessions = state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length
-      const estimate = estimateUsd(sessions)
+      const changes = state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length
+      const estimate = estimateUsd(changes)
       const what = state.memory.workflows.length === 0 ? "a first memory" : "a learning round"
       if (args.dryRun) {
-        yield* say(`${subject.name}: ${what} from ${plural(sessions, "session")}, about ${usd(estimate)}`)
+        yield* say(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}`)
         continue
       }
-      const go = yield* confirm(`${subject.name}: ${what} from ${plural(sessions, "session")}, about ${usd(estimate)}. Go ahead?`, true, interactive() && !args.yes).pipe(Effect.orElseSucceed(() => false))
+      const go = yield* confirm(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}. Go ahead?`, true, interactive() && !args.yes).pipe(Effect.orElseSucceed(() => false))
       if (!go) continue
       const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
       const outcome = yield* withSpinner(
@@ -210,7 +213,7 @@ const learn = Command.make(
     }
     if (spent > 0) yield* say(s.dim(`spent ${usd(spent)} in all`))
   })
-).pipe(Command.withDescription("learn from recorded sessions now: a first memory for a repo, or a learning round"))
+).pipe(Command.withDescription("learn from the changes stored now: a first memory for a repo, or a learning round"))
 
 const uninstall = Command.make(
   "uninstall",

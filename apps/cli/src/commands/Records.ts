@@ -1,7 +1,7 @@
 /**
  * `singularity record ...`: build, list and show workflow records.
  */
-import { Console, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
+import { Console, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { defaultClaude } from "../eval/Agent.ts"
 import { lowerPriority } from "../eval/Proc.ts"
@@ -11,10 +11,17 @@ import { recordSession } from "../handover/SessionEnd.ts"
 import { loadHome } from "../local/Home.ts"
 import { describeRecord, recordLine } from "../records/Describe.ts"
 import { importRunDirs } from "../records/FromRuns.ts"
+import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { ReportError } from "../eval/Report.ts"
+import { homedir } from "node:os"
+import { sessionHomes } from "../setup/Agents.ts"
+import { afterRecord } from "../setup/AutoLearn.ts"
+import { releaseLock, takeLock } from "../setup/Background.ts"
 import { findTranscript, parseSession } from "../traces/index.ts"
+import { storeCommits } from "../workflows/Commits.ts"
+import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { homeFlag, recordsLayer } from "./Common.ts"
 import { memoryLayer } from "./Memory.ts"
 
@@ -156,7 +163,66 @@ const session = Command.make(
   }, (effect, args) => Effect.provide(effect, Layer.merge(recordsLayer(args.home), memoryLayer(args.home))))
 ).pipe(Command.withDescription("record a finished session, if it committed a change and its tests pass"))
 
+/** How long a background run waits for another to finish before giving up (the next moment looks again). */
+const STORE_WAIT_MS = 120_000
+
+const commits = Command.make(
+  "commits",
+  {
+    cwd: Flag.String("cwd").pipe(Flag.optional, Flag.withDescription("a checkout of the repo (default: where the session ran, else here)")),
+    session: Flag.String("session").pipe(Flag.optional, Flag.withDescription("the session a hook ran for: its commits are looked at again")),
+    transcript: Flag.String("transcript").pipe(Flag.optional, Flag.withDescription("that session's log (default: found by its id)")),
+    days: Flag.Int("days").pipe(Flag.withDefault(7), Flag.withDescription("look at the commits of the last N days")),
+    all: Flag.Boolean("all").pipe(Flag.withDefault(false), Flag.withDescription("every commit the sessions still on disk made, looked at again")),
+    background: Flag.Boolean("background").pipe(Flag.withDefault(false), Flag.withDescription("as the hooks start it: below normal priority, one run at a time, then learning if it is time")),
+    home: homeFlag
+  },
+  Effect.fn(function*(args) {
+    const path = yield* Path.Path
+    const home = yield* loadHome(Option.getOrUndefined(args.home))
+    const session = yield* Effect.gen(function*() {
+      if (Option.isNone(args.session)) return undefined
+      const transcript = Option.isSome(args.transcript) ? args.transcript.value : yield* findTranscript(args.session.value)
+      return transcript === undefined ? undefined : { sessionId: args.session.value, transcript }
+    })
+    // Where the session ran, when its hook didn't say: its log does.
+    const cwd = Option.isSome(args.cwd)
+      ? path.resolve(args.cwd.value)
+      : session === undefined
+      ? process.cwd()
+      : yield* parseSession(session.transcript).pipe(Effect.map((t) => t.cwd ?? process.cwd()), Effect.orElseSucceed(() => process.cwd()))
+    const stamp = args.background ? `${DateTime.formatIso(yield* DateTime.now)} ` : ""
+    const say = (line: string) => Console.log(`${stamp}${line}`)
+    if (args.background) {
+      yield* lowerPriority
+      let waited = 0
+      while (!takeLock(home.root, "store.lock")) {
+        if (waited >= STORE_WAIT_MS) return yield* say(`${cwd}: another run is still storing; the next one looks again`)
+        yield* Effect.sleep("500 millis")
+        waited += 500
+      }
+    }
+    const since = args.all ? undefined : DateTime.toEpochMillis(yield* DateTime.now) - args.days * 24 * 3600 * 1000
+    const result = yield* storeCommits(cwd, sessionHomes({ home: homedir(), env: process.env }), home.tenantDir, { since, session, again: args.all }).pipe(
+      Effect.provide(Layer.merge(
+        JsonRecordStore.layer(home.tenantDir, home.tenant),
+        JsonWorkflowStore.layer(JsonWorkflowStore.workflowsDir(home.tenantDir, path), home.tenant)
+      )),
+      Effect.ensuring(Effect.sync(() => args.background && releaseLock(home.root, "store.lock")))
+    )
+    const name = result.subject ?? path.basename(cwd)
+    for (const id of result.stored) yield* say(`${name}: stored ${id}`)
+    const skipped = [...result.skipped].map(([reason, n]) => `${n} ${reason}`).join("; ")
+    if (result.examined > 0 || !args.background) {
+      yield* say(`${name}: ${result.examined} new commits looked at, ${result.stored.length} stored${skipped === "" ? "" : ` (left out: ${skipped})`}`)
+    }
+    if (args.background && result.subject !== undefined && result.stored.length > 0) {
+      if (yield* Effect.promise(() => afterRecord(result.subject!))) yield* say(`${name}: started a learning round`)
+    }
+  })
+).pipe(Command.withDescription("store the changes sessions committed, one record per commit (the hooks run this on their own)"))
+
 export const recordCommand = Command.make("record").pipe(
   Command.withDescription("workflow records: what finished runs show"),
-  Command.withSubcommands([importRuns, session, list, show, annotate])
+  Command.withSubcommands([importRuns, session, commits, list, show, annotate])
 )

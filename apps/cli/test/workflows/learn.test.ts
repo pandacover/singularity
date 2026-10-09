@@ -8,7 +8,9 @@ import { identifyRepo } from "../../src/local/Git.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { sourceFiles } from "../../src/records/Models.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { backfill, branchCommits, pastSessions, projectDirName, sessionRange } from "../../src/workflows/Backfill.ts"
+import { commitRecordId } from "../../src/records/Build.ts"
+import { branchCommits, storePast } from "../../src/workflows/Commits.ts"
+import { pastSessions, projectDirName } from "../../src/workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { learnState, learnSubject, mergeSubject, waitReason } from "../../src/workflows/Learn.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
@@ -33,6 +35,8 @@ const makeRepo = (root: string, name: string, commits: ReadonlyArray<number>): s
   const repo = join(root, name)
   mkdirSync(repo)
   gitAt(repo, undefined, "init", "-q")
+  // The repo's own author: memory leaves other authors' commits alone.
+  gitAt(repo, undefined, "config", "user.email", "t@example.com")
   writeFileSync(join(repo, "app.ts"), `export const name = "${name}"\nexport const colors = ["red"]\n`)
   gitAt(repo, at(-3600), "add", ".")
   gitAt(repo, at(-3600), "commit", "-qm", "start")
@@ -45,7 +49,10 @@ const makeRepo = (root: string, name: string, commits: ReadonlyArray<number>): s
 
 const usage = { input_tokens: 5, output_tokens: 20, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 }
 
-/** A Claude Code transcript of a session in `cwd` from `start` (seconds) for ten seconds: an edit, then `npm test` unless tests is "none". */
+/**
+ * A Claude Code transcript of a session in `cwd` from `start` (seconds) for ten seconds: an edit, then `npm test`
+ * and `git commit` five seconds in (makeRepo's commit), unless tests is "none".
+ */
 const writeTranscript = (claudeHome: string, cwd: string, sessionId: string, start: number, prompt: string, tests: "pass" | "fail" | "none") => {
   const msg = (n: number, content: Array<unknown>) => ({
     type: "assistant",
@@ -61,7 +68,12 @@ const writeTranscript = (claudeHome: string, cwd: string, sessionId: string, sta
     { type: "user", timestamp: at(start), cwd, sessionId, message: { role: "user", content: prompt } },
     msg(1, [{ type: "tool_use", id: "t1", name: "Edit", input: { file_path: join(cwd, "app.ts"), old_string: "\"red\"", new_string: "\"red\", \"blue\"" } }]),
     result(2, "t1", false),
-    ...(tests === "none" ? [] : [msg(3, [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }]), result(4, "t2", tests === "fail")]),
+    ...(tests === "none" ? [] : [
+      msg(3, [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }]),
+      result(4, "t2", tests === "fail"),
+      msg(5, [{ type: "tool_use", id: "t3", name: "Bash", input: { command: "git commit -qam change" } }]),
+      result(6, "t3", false)
+    ]),
     msg(10, [{ type: "text", text: "Done" }])
   ]
   const dir = join(claudeHome, "projects", projectDirName(cwd))
@@ -111,19 +123,7 @@ describe("past sessions", () => {
     expect(projectDirName("/home/a/repo.js")).toBe("-home-a-repo-js")
   })
 
-  it("takes a session's commits from its first event to a few minutes after its last", () => {
-    const commits = [
-      { hash: "c3", parent: "c2", time: 9_000_000 },
-      { hash: "c2", parent: "c1", time: 1_100_000 },
-      { hash: "c1", parent: "c0", time: 1_050_000 },
-      { hash: "c0", parent: undefined, time: 0 }
-    ]
-    expect(sessionRange(commits, 1_000_000, 1_060_000)).toEqual({ base: "c0", head: "c2" })
-    expect(sessionRange(commits, 1_060_000, 1_070_000)).toEqual({ base: "c1", head: "c2" })
-    expect(sessionRange(commits, 2_000_000, 2_100_000)).toBeUndefined()
-  })
-
-  it("records past sessions that committed a change with passing tests, each with its own commits", async () => {
+  it("stores the changes past sessions committed with passing checks, each with its own commit", async () => {
     const root = tempDir()
     const claudeHome = join(root, "claude")
     const homeDir = join(root, "home")
@@ -139,22 +139,23 @@ describe("past sessions", () => {
     expect(sessions.map((s) => s.sessionId.slice(0, 8))).toEqual(["aaaaaaa1", "aaaaaaa2", "aaaaaaa3", "aaaaaaa4"])
 
     const home = await run(loadHome(homeDir))
-    const result = await run(backfill(repo, { claude: claudeHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
-    expect(result.recorded).toEqual(["app-aaaaaaa1", "app-aaaaaaa4"])
-    expect(Object.fromEntries(result.skipped)).toEqual({ "nothing was committed": 1, "the last test run failed": 1 })
+    const commits = await run(branchCommits(repo, undefined))
+    const result = await run(storePast(repo, { claude: claudeHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
+    expect(result.stored).toEqual([commitRecordId("app", commits[2].hash), commitRecordId("app", commits[0].hash)])
+    expect(Object.fromEntries(result.skipped)).toEqual({ "the last check before it failed": 1 })
 
-    const commits = await run(branchCommits(repo))
     const records = await run(Effect.gen(function*() {
       return yield* (yield* RecordStore).find({ subject: "app" })
     }).pipe(Effect.provide(storesFor(homeDir))))
     // The last session's record holds its own commit only, not the ones before it.
-    const last = records.find((r) => r.id === "app-aaaaaaa4")!
+    const last = records.find((r) => r.run.session_id.startsWith("aaaaaaa4"))!
     expect([last.run.base_commit, last.run.head_commit]).toEqual([commits[1].hash, commits[0].hash])
     expect(sourceFiles(last)).toEqual(["app.ts"])
 
-    // Running it again records nothing twice.
-    const again = await run(backfill(repo, { claude: claudeHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
-    expect(again.recorded).toEqual(["app-aaaaaaa1", "app-aaaaaaa4"])
+    // Running it again stores nothing twice.
+    const again = await run(storePast(repo, { claude: claudeHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
+    expect(again.stored).toEqual([])
+    expect(again.existing).toEqual(result.stored)
   }, 60_000)
 })
 
@@ -195,7 +196,7 @@ describe("learning repo by repo", () => {
     expect(again.workflows.map((w) => `${w.subject}:${w.id}`)).toEqual(["b:fix-b", "a:fix"])
   })
 
-  it("waits for two sessions before a first memory, then for new ones", () => {
+  it("waits for two changes before a first memory, then for new ones", () => {
     const state = (records: number, fresh: number, workflows: number) => ({
       records: Array.from({ length: records }) as never,
       learned: [],
@@ -203,10 +204,10 @@ describe("learning repo by repo", () => {
       fresh: Array.from({ length: fresh }) as never,
       memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`))
     })
-    expect(waitReason(state(1, 1, 0), 3, false)).toBe("1 of 2 sessions recorded for a first build")
+    expect(waitReason(state(1, 1, 0), 3, false)).toBe("1 of 2 changes stored for a first build")
     expect(waitReason(state(2, 2, 0), 3, false)).toBeUndefined()
     expect(waitReason(state(2, 0, 0), 3, false)).toBe("nothing new since the last try")
-    expect(waitReason(state(5, 2, 1), 3, false)).toBe("2 of 3 new sessions recorded")
+    expect(waitReason(state(5, 2, 1), 3, false)).toBe("2 of 3 new changes stored")
     expect(waitReason(state(5, 1, 1), 3, true)).toBeUndefined()
   })
 
@@ -226,7 +227,7 @@ describe("learning repo by repo", () => {
       writeTranscript(claudeHome, repo, `${name.padEnd(7, "x")}2-0000-0000-0000-000000000002`, 3600, "Add green to the colors", "pass")
       return withEnv({ FAKE_CLAUDE_ANSWERS: answers, SINGULARITY_HOME: homeDir }, () =>
         run(Effect.gen(function*() {
-          yield* backfill(repo, { claude: claudeHome }, home.tenantDir)
+          yield* storePast(repo, { claude: claudeHome }, home.tenantDir)
           const subject = (yield* (yield* RecordStore).subjectFor((yield* identifyRepo(repo))!))!
           const outcome = yield* learnSubject(subject, config)
           return { repo, subject, outcome }
@@ -248,7 +249,7 @@ describe("learning repo by repo", () => {
     }).pipe(Effect.provide(storesFor(homeDir))))
     expect(after.memory.workflows.map((w) => `${w.subject}:${w.id}`)).toEqual(["alpha:change-colors", "beta:change-colors-beta"])
     expect(after.memory.workflows.every((w) => w.cues?.any.includes("colors"))).toBe(true)
-    expect(after.waiting).toMatchObject({ kind: "waiting", reason: "0 of 3 new sessions recorded" })
+    expect(after.waiting).toMatchObject({ kind: "waiting", reason: "0 of 3 new changes stored" })
     expect(after.stateA.learned).toHaveLength(2)
     // (A workflow with no place and only checks is folded into the one finishing command.)
     expect(after.handed.text).toContain("When all your edits are in, run once: `npm test`")
@@ -284,7 +285,9 @@ const writeRollout = (codexHome: string, cwd: string, sessionId: string, start: 
     line(2, "event_msg", { type: "token_count", info: { total_token_usage: { total_tokens: 100 }, last_token_usage: { input_tokens: 90, cached_input_tokens: 40, output_tokens: 10 } } }),
     ...(tests === "none" ? [] : [
       line(3, "response_item", { type: "function_call", call_id: "c2", name: "shell_command", arguments: JSON.stringify({ command: "npm test", workdir: cwd }) }),
-      line(4, "response_item", { type: "function_call_output", call_id: "c2", output: `Exit code: ${tests === "fail" ? 1 : 0}\nWall time: 1 seconds\nOutput:\nok\n` })
+      line(4, "response_item", { type: "function_call_output", call_id: "c2", output: `Exit code: ${tests === "fail" ? 1 : 0}\nWall time: 1 seconds\nOutput:\nok\n` }),
+      line(5, "response_item", { type: "function_call", call_id: "c3", name: "shell_command", arguments: JSON.stringify({ command: "git commit -qam change", workdir: cwd }) }),
+      line(6, "response_item", { type: "function_call_output", call_id: "c3", output: "Exit code: 0\nWall time: 1 seconds\nOutput:\n\n" })
     ]),
     line(10, "event_msg", { type: "task_complete" })
   ]
@@ -322,12 +325,14 @@ const writeHermes = async (hermesHome: string, cwd: string, start: number, tests
   message.run("20260901_100003_bbbbbb", "tool", "[Duplicate tool output — same content as a more recent call]", "h1", null, "patch", s(3))
   message.run("20260901_100003_bbbbbb", "assistant", "", null, call("h2", "terminal", { command: "npm test" }), null, s(4))
   message.run("20260901_100003_bbbbbb", "tool", JSON.stringify({ output: "ok", exit_code: tests === "fail" ? 1 : 0, error: null }), "h2", null, "terminal", s(5))
+  message.run("20260901_100003_bbbbbb", "assistant", "", null, call("h3", "terminal", { command: "git commit -qam change" }), null, s(5))
+  message.run("20260901_100003_bbbbbb", "tool", JSON.stringify({ output: "", exit_code: 0, error: null }), "h3", null, "terminal", s(6))
   message.run("20260901_100003_bbbbbb", "assistant", "Done", null, null, null, s(10))
   db.close()
 }
 
 describe("past sessions in Codex and Hermes Agent", () => {
-  it("records them like Claude Code's, each with its own commits", async () => {
+  it("stores their changes like Claude Code's, each with its own commit", async () => {
     const root = tempDir()
     const codexHome = join(root, "codex")
     const hermesHome = join(root, "hermes")
@@ -342,22 +347,23 @@ describe("past sessions in Codex and Hermes Agent", () => {
     expect(sessions.map((s) => [s.agent, s.sessionId.slice(0, 8)])).toEqual([["codex", "ccccccc1"], ["codex", "ccccccc2"], ["hermes", "20260901"]])
 
     const home = await run(loadHome(homeDir))
-    const result = await run(backfill(repo, { codex: codexHome, hermes: hermesHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
-    expect(result.recorded).toEqual(["app-ccccccc1", "app-20260901"])
-    expect(Object.fromEntries(result.skipped)).toEqual({ "the last test run failed": 1 })
+    const commits = await run(branchCommits(repo, undefined))
+    const result = await run(storePast(repo, { codex: codexHome, hermes: hermesHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
+    expect(result.stored).toEqual([commitRecordId("app", commits[2].hash), commitRecordId("app", commits[0].hash)])
+    expect(Object.fromEntries(result.skipped)).toEqual({ "the last check before it failed": 1 })
 
-    const commits = await run(branchCommits(repo))
     const records = await run(Effect.gen(function*() {
       return yield* (yield* RecordStore).find({ subject: "app" })
     }).pipe(Effect.provide(storesFor(homeDir))))
-    const hermes = records.find((r) => r.id === "app-20260901")!
+    const hermes = records.find((r) => r.run.head_commit === commits[0].hash)!
     // The task is both sessions: the edit before Hermes compressed, the tests after; the prompt the user's own.
     expect(hermes.run.log).toBe(`${join(hermesHome, "state.db")}#20260901_100003_bbbbbb`)
     expect([hermes.run.base_commit, hermes.run.head_commit]).toEqual([commits[1].hash, commits[0].hash])
-    expect(hermes.run.cost_usd).toBeCloseTo(0.02)
+    // A change is part of its session: the session's running cost isn't its own.
+    expect(hermes.run.cost_usd).toBeNull()
     expect(hermes.task).toEqual({ prompt: "Add blue to the colors", followups: [] })
     expect(sourceFiles(hermes)).toEqual(["app.ts"])
-    const codex = records.find((r) => r.id === "app-ccccccc1")!
+    const codex = records.find((r) => r.run.head_commit === commits[2].hash)!
     expect([codex.run.base_commit, codex.run.head_commit]).toEqual([commits[3].hash, commits[2].hash])
     expect(codex.run.tokens).toBe(100)
     expect(codex.task).toEqual({ prompt: "Add blue to the colors", followups: [] })

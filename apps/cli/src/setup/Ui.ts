@@ -73,3 +73,9 @@ export const withSpinner = <A, E, R>(label: string, effect: Effect.Effect<A, E, 
 /** A yes/no question; the default when there is no terminal to ask in. */
 export const confirm = (message: string, initial: boolean, interactive: boolean) =>
   interactive ? Prompt.run(Prompt.Confirm({ message, initial })) : Effect.succeed(initial)
+
+/** An amount of dollars, none below zero; the default when there is no terminal to ask in. */
+export const askDollars = (message: string, initial: number, interactive: boolean) =>
+  interactive
+    ? Prompt.run(Prompt.Number({ message, default: initial, min: 0, precision: 2, incrementBy: 0.5, decrementBy: 0.5 }))
+    : Effect.succeed(initial)

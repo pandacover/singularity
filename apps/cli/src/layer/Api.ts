@@ -185,7 +185,7 @@ export interface EndResponse {
   readonly reason: string
 }
 
-/** end, as a caller makes it. The code reader's session end stays the hook's (HookEnd.ts), unchanged. */
+/** end, as a caller makes it. The code reader stores a session's changes from its hooks, as they are committed (workflows/Commits.ts). */
 export const end = (req: EndRequest): Promise<EndResponse> =>
   Effect.runPromise(
     Effect.gen(function*() {
