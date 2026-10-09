@@ -39,7 +39,8 @@ describe("hook entries", () => {
       timeout: 90,
       additionalContextLimit: 4000
     })
-    expect(codex.SessionEnd).toBeUndefined()
+    // Codex's sessions are read too, so their end records them.
+    expect(codex.SessionEnd[0].hooks[0]).toMatchObject({ command: "node \"C:/app/src/workflows/hook.ts\" session-end", timeout: 30 })
     const gemini = hookEvents("gemini", claudeLaunch, bareLaunch)
     expect(Object.keys(gemini)).toEqual(["BeforeAgent", "AfterTool"])
     expect(gemini.BeforeAgent[0].hooks[0].timeout).toBe(90_000)
@@ -229,7 +230,7 @@ describe("setup", () => {
     const claude = json(join(home, ".claude", "settings.json"))
     expect(claude.model).toBe("opus")
     expect(Object.keys(claude.hooks)).toEqual(["Stop", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionEnd"])
-    expect(Object.keys(json(join(home, ".codex", "hooks.json")).hooks)).toEqual(["UserPromptSubmit", "PostToolUse"])
+    expect(Object.keys(json(join(home, ".codex", "hooks.json")).hooks)).toEqual(["UserPromptSubmit", "PostToolUse", "SessionEnd"])
     expect(Object.keys(json(join(home, ".gemini", "settings.json")).hooks)).toEqual(["BeforeAgent", "AfterTool"])
     expect(Object.keys(json(join(home, ".factory", "hooks.json")))).toEqual(["UserPromptSubmit", "PostToolUse"])
     expect(existsSync(join(home, ".cursor", "hooks.json"))).toBe(false)
@@ -294,7 +295,7 @@ describe("setup", () => {
     const states = await run(Effect.gen(function*() {
       return yield* agentStates(yield* detectAgents(dirs, () => Effect.succeed(false)), dirs)
     }))
-    expect(states.find((s) => s.agent.id === "hermes")).toMatchObject({ found: true, hookEvents: ["pre_llm_call", "transform_tool_result"], skill: true })
+    expect(states.find((s) => s.agent.id === "hermes")).toMatchObject({ found: true, hookEvents: ["pre_llm_call", "transform_tool_result", "on_session_finalize"], skill: true })
     const removed = await run(unwireAll(dirs))
     expect(removed.plugins).toEqual([slashes(join(hermes, "plugins", "singularity"))])
     expect(existsSync(join(hermes, "plugins", "singularity"))).toBe(false)

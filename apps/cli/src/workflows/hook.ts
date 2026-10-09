@@ -12,7 +12,8 @@
  * from two hooks (`SINGULARITY_HANDOVER_PARTS` says the same for eval runs).
  * The same script serves Codex, Gemini CLI and Droid, whose hooks speak
  * Claude Code's format, and Hermes Agent, whose plugin (src/setup/HermesPlugin.ts)
- * speaks it for Hermes; only Claude Code's sessions are recorded at their end.
+ * speaks it for Hermes. Claude Code's, Codex's and Hermes's sessions are
+ * recorded at their end (Hermes's plugin names its session in its database).
  * When a recorded session makes it time to learn, and the user turned
  * learning on its own on, a learning round starts in the background
  * (src/setup/AutoLearn.ts).

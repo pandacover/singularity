@@ -1,12 +1,12 @@
 # singularity
 
-> Procedural memory for coding agents. It learns workflows from a repository's past Claude Code sessions and hands them to the next session at task start, so repeated kinds of change take fewer turns and tokens. It never writes the change itself.
+> Procedural memory for coding agents. It learns workflows from a repository's past Claude Code, Codex and Hermes Agent sessions and hands them to the next session at task start, so repeated kinds of change take fewer turns and tokens. It never writes the change itself.
 
 Source: https://github.com/pandacover/singularity
 
 ## What it does
 
-1. Record: when a Claude Code session ends with its change committed and its tests passing, memory keeps a record of it: what changed, where, which commands ran, what went wrong. Records stay on the machine.
+1. Record: when a Claude Code, Codex or Hermes Agent session ends with its change committed and its tests passing, memory keeps a record of it: what changed, where, which commands ran, what went wrong. Records stay on the machine.
 2. Learn: after a few records in a repository, memory learns workflows from them: steps with blanks, where each kind of change goes, how it is checked, and the phrases in a task that call for it. Learning calls a model.
 3. Hand over: at task start, workflows whose phrases appear in the task are picked by plain text matching (no model call), their blanks filled from the task, and their places found in the code as it is that day. The agent gets steps, places and warnings, and still writes every line itself.
 4. Catch repeats: during a task, when a known mistake happens again, its fix arrives with the error.
@@ -46,10 +46,10 @@ Setup flags: `--yes` (`-y`) takes every default and asks nothing; `--agent <clau
 | Agent | What memory does there | Files |
 |---|---|---|
 | Claude Code | hands over at task start, warns during the task, learns from sessions | hooks in `~/.claude/settings.json`, skill |
-| Codex | hands over, warns (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
+| Codex | hands over, warns, learns from sessions (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
 | Gemini CLI | hands over, warns | hooks in `~/.gemini/settings.json`, skill |
 | Droid | hands over, warns | hooks in `~/.factory/hooks.json`, skill |
-| Hermes Agent | hands over, warns | plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), enabled in its `config.yaml`; skill |
+| Hermes Agent | hands over, warns, learns from sessions | plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), enabled in its `config.yaml`; skill |
 | Cursor, OpenCode, agents that read `~/.agents/skills` | when asked | skill |
 
 It never touches the rest of an agent's settings, and keeps a copy of each file it changes (`<file>.before-singularity`). Hooks never break a session: errors go to `~/.singularity/hook-errors.log`.

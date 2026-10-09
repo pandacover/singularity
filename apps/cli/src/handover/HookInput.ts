@@ -13,7 +13,8 @@ import { relativizer } from "../records/Extract.ts"
 
 export const HookInput = Schema.Struct({
   session_id: Schema.String,
-  transcript_path: Schema.optionalKey(Schema.String),
+  // Codex sends null when a session has no transcript.
+  transcript_path: Schema.optionalKey(Schema.NullOr(Schema.String)),
   cwd: Schema.optionalKey(Schema.String),
   hook_event_name: Schema.optionalKey(Schema.String),
   prompt: Schema.optionalKey(Schema.String),

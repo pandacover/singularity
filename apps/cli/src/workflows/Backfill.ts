@@ -1,19 +1,33 @@
 /**
- * The Claude Code sessions a repository had before memory was set up,
- * recorded the way the session-end hook records a session that just ended
- * (HookEnd.ts): those that committed a change while they ran, and whose last
- * test run passed.
+ * The sessions a repository had before memory was set up, in Claude Code,
+ * Codex and Hermes Agent, recorded the way the session-end hook records a
+ * session that just ended (HookEnd.ts): those that committed a change while
+ * they ran, and whose last test run passed.
  *
  * Claude Code keeps a session's transcript in a directory named after the
  * directory it ran in, every character but letters and digits made a dash
  * (`C:\a\b` is `C--a-b`). Sessions in the repo or below it are found by that
- * name, then confirmed by the `cwd` the transcript records. A session's
- * commits are those on the current branch made between its first and last
- * event, and a few minutes after, for a commit made as it closed.
+ * name, then confirmed by the `cwd` the transcript records. Codex keeps its
+ * sessions by date (`sessions/YYYY/MM/DD/rollout-*.jsonl`), each saying on
+ * its first line where it ran; Hermes Agent keeps them in its database
+ * (traces/Hermes.ts). A session's commits are those on the current branch
+ * made between its first and last event, and a few minutes after, for a
+ * commit made as it closed.
  */
 import { Effect, FileSystem, Option, Path, Schema, Stream } from "effect"
 import { git } from "../local/Git.ts"
+import { hermesTasks } from "../traces/Hermes.ts"
 import { recordWorkflowSession, type SessionOutcome } from "./HookEnd.ts"
+
+/** Where the agents whose past sessions memory reads keep their own files; an agent left out isn't read. */
+export interface AgentHomes {
+  /** Claude Code's configuration directory. */
+  readonly claude?: string | undefined
+  /** Codex's home (`CODEX_HOME`, or `~/.codex`). */
+  readonly codex?: string | undefined
+  /** Hermes Agent's home, which holds its `state.db`. */
+  readonly hermes?: string | undefined
+}
 
 /** Claude Code's name for a project directory. */
 export const projectDirName = (dir: string): string => dir.replace(/[^A-Za-z0-9]/g, "-")
@@ -69,6 +83,8 @@ const inside = (dir: string, root: string): boolean => {
 }
 
 export interface PastSession {
+  /** The agent the session ran in. */
+  readonly agent: "claude" | "codex" | "hermes"
   readonly sessionId: string
   readonly transcript: string
   readonly cwd: string
@@ -76,8 +92,8 @@ export interface PastSession {
   readonly last: number
 }
 
-/** The transcripts of sessions that ran in `repoRoot` or below it, oldest first. */
-export const pastSessions = Effect.fn("pastSessions")(function*(repoRoot: string, claudeHomeDir: string) {
+/** Claude Code's sessions that ran in `repoRoot` or below it. */
+const claudeSessions = Effect.fn("claudeSessions")(function*(repoRoot: string, claudeHomeDir: string) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const projects = path.join(claudeHomeDir, "projects")
@@ -91,9 +107,60 @@ export const pastSessions = Effect.fn("pastSessions")(function*(repoRoot: string
       const transcript = path.join(projects, dir, f)
       const peek = yield* peekTranscript(transcript).pipe(Effect.orElseSucceed((): Peek => ({ cwd: undefined, first: undefined, last: undefined })))
       if (peek.cwd === undefined || peek.first === undefined || peek.last === undefined || !inside(peek.cwd, repoRoot)) continue
-      out.push({ sessionId: f.replace(/\.jsonl$/, ""), transcript, cwd: peek.cwd, first: peek.first, last: peek.last })
+      out.push({ agent: "claude", sessionId: f.replace(/\.jsonl$/, ""), transcript, cwd: peek.cwd, first: peek.first, last: peek.last })
     }
   }
+  return out
+})
+
+/** A Codex rollout's first line: the session's id, where it ran and when it started. */
+const CodexMeta = Schema.fromJsonString(Schema.Struct({
+  timestamp: Schema.String,
+  type: Schema.Literal("session_meta"),
+  payload: Schema.Struct({ id: Schema.String, cwd: Schema.String })
+}))
+const decodeCodexMeta = Schema.decodeUnknownOption(CodexMeta)
+
+/** Codex's sessions that ran in `repoRoot` or below it, live and archived. */
+const codexSessions = Effect.fn("codexSessions")(function*(repoRoot: string, codexHome: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const out: Array<PastSession> = []
+  for (const dir of ["sessions", "archived_sessions"].map((d) => path.join(codexHome, d))) {
+    if (!(yield* fs.exists(dir).pipe(Effect.orElseSucceed(() => false)))) continue
+    const files = yield* fs.readDirectory(dir, { recursive: true }).pipe(Effect.orElseSucceed(() => [] as Array<string>))
+    for (const f of files.filter((f) => /^rollout-.*\.jsonl$/.test(path.basename(f)))) {
+      const transcript = path.join(dir, f)
+      // The first line holds Codex's instructions too: tens of kilobytes, read whole.
+      const first = yield* fs.stream(transcript).pipe(Stream.decodeText(), Stream.splitLines, Stream.runHead, Effect.orElseSucceed(() => Option.none<string>()))
+      const meta = Option.flatMap(first, (line) => decodeCodexMeta(line))
+      if (Option.isNone(meta) || !inside(meta.value.payload.cwd, repoRoot)) continue
+      const started = Date.parse(meta.value.timestamp)
+      const peek = yield* peekTranscript(transcript).pipe(Effect.orElseSucceed((): Peek => ({ cwd: undefined, first: undefined, last: undefined })))
+      if (Number.isNaN(started) || peek.last === undefined) continue
+      out.push({ agent: "codex", sessionId: meta.value.payload.id, transcript, cwd: meta.value.payload.cwd, first: started, last: peek.last })
+    }
+  }
+  return out
+})
+
+/** Hermes Agent's tasks that ran in `repoRoot` or below it. */
+const hermesSessions = Effect.fn("hermesSessions")(function*(repoRoot: string, hermesHomeDir: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const db = path.join(hermesHomeDir, "state.db")
+  if (!(yield* fs.exists(db).pipe(Effect.orElseSucceed(() => false)))) return [] as Array<PastSession>
+  const tasks = yield* hermesTasks(db).pipe(Effect.orElseSucceed(() => []))
+  return tasks.filter((t) => inside(t.cwd, repoRoot)).map((t): PastSession => ({ agent: "hermes", ...t }))
+})
+
+/** The transcripts of sessions that ran in `repoRoot` or below it, in every agent given, oldest first. */
+export const pastSessions = Effect.fn("pastSessions")(function*(repoRoot: string, homes: AgentHomes) {
+  const out: Array<PastSession> = [
+    ...(homes.claude === undefined ? [] : yield* claudeSessions(repoRoot, homes.claude)),
+    ...(homes.codex === undefined ? [] : yield* codexSessions(repoRoot, homes.codex)),
+    ...(homes.hermes === undefined ? [] : yield* hermesSessions(repoRoot, homes.hermes))
+  ]
   return out.sort((a, b) => a.first - b.first)
 })
 
@@ -134,11 +201,11 @@ export interface BackfillResult {
 /** Record a repo's past sessions; ones recorded before are counted as recorded. */
 export const backfill = Effect.fn("backfill")(function*(
   repoRoot: string,
-  claudeHomeDir: string,
+  homes: AgentHomes,
   tenantDir: string,
   onSession?: (done: number, total: number) => Effect.Effect<void>
 ) {
-  const sessions = yield* pastSessions(repoRoot, claudeHomeDir)
+  const sessions = yield* pastSessions(repoRoot, homes)
   const commits = yield* branchCommits(repoRoot)
   const recorded: Array<string> = []
   const skipped = new Map<string, number>()

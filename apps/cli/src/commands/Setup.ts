@@ -20,7 +20,7 @@ import { type Home, loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import type { Subject } from "../records/Subjects.ts"
-import { AGENT_IDS, type AgentDirs, claudeDir } from "../setup/Agents.ts"
+import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
 import { releaseLock, takeLock } from "../setup/AutoLearn.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
 import { readLearn } from "../setup/Preferences.ts"
@@ -131,7 +131,7 @@ const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string
 const learn = Command.make(
   "learn",
   {
-    past: Flag.Boolean("past").pipe(Flag.withDefault(false), Flag.withDescription("first record this repo's past Claude Code sessions (no model call)")),
+    past: Flag.Boolean("past").pipe(Flag.withDefault(false), Flag.withDescription("first record this repo's past Claude Code, Codex and Hermes Agent sessions (no model call)")),
     all: Flag.Boolean("all").pipe(Flag.withDefault(false), Flag.withDescription("every repo memory has new sessions for, not only this one")),
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo (default: here)")),
     dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("say what would be learned, and what it would cost, and stop")),
@@ -156,8 +156,7 @@ const learn = Command.make(
 
     if (args.past) {
       if (repo === undefined) return yield* say(`${cwd} isn't in a git repository.`)
-      const claudeHomeDir = claudeDir(dirsOf())
-      const result = yield* withSpinner(`reading past Claude Code sessions in ${path.basename(repo.root)}`, backfill(repo.root, claudeHomeDir, home.tenantDir), interactive()).pipe(Effect.provide(stores))
+      const result = yield* withSpinner(`reading past sessions in ${path.basename(repo.root)}`, backfill(repo.root, sessionHomes(dirsOf()), home.tenantDir), interactive()).pipe(Effect.provide(stores))
       const skipped = [...result.skipped].map(([reason, n]) => `${n} ${reason}`).join("; ")
       yield* say(`${plural(result.sessions, "past session")}: ${result.recorded.length} recorded${skipped === "" ? "" : s.dim(` (${skipped})`)}`)
     }
@@ -172,7 +171,7 @@ const learn = Command.make(
     if (subjects.length === 0) {
       return yield* say(repo === undefined && !args.all
         ? `${cwd} isn't in a git repository; pass --repo, or --all for every repo memory knows.`
-        : "No sessions recorded here yet. Memory records Claude Code sessions that commit a change with passing tests; --past looks through earlier ones.")
+        : "No sessions recorded here yet. Memory records Claude Code, Codex and Hermes Agent sessions that commit a change with passing tests; --past looks through earlier ones.")
     }
     const prefs = yield* readLearn(home.root)
     let spent = 0
