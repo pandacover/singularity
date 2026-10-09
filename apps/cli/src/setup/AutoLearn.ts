@@ -1,8 +1,8 @@
 /**
- * Learning on its own: after memory stores a session's change, a background
+ * Learning on its own: after memory stores a change, a background
  * `singularity learn --auto` starts when the user turned it on, the repo has
- * enough new changes, today's learning stayed under the daily limit, and no
- * other round is running.
+ * enough new changes, what today's limit leaves covers the round's estimate,
+ * and no other round is running.
  *
  * The round outlives what started it, so it is a detached process
  * (Background.ts). It writes to `<home>/learn.log` and holds
@@ -14,7 +14,7 @@ import { Effect, Layer, Path } from "effect"
 import { loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
-import { learnState, spentToday, waitReason } from "../workflows/Learn.ts"
+import { budgetReason, learnState, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
 import { lockHeld, startInBackground } from "./Background.ts"
 import { readLearn } from "./Preferences.ts"
 
@@ -38,8 +38,9 @@ export const afterRecord = (subject: string): Promise<boolean> =>
         JsonWorkflowStore.layer(JsonWorkflowStore.workflowsDir(home.tenantDir, path), home.tenant)
       )
       const ready = yield* Effect.gen(function*() {
-        if (waitReason(yield* learnState(subject), prefs.every, false) !== undefined) return false
-        return (yield* spentToday()) < prefs.max_usd_per_day
+        const state = yield* learnState(subject)
+        if (waitReason(state, prefs.every, false) !== undefined) return false
+        return budgetReason(roundUsd(state), yield* spentToday(), prefs.max_usd_per_day) === undefined
       }).pipe(Effect.provide(stores))
       if (!ready) return false
       startInBackground(home.root, ["learn", "--auto", "--subject", subject])

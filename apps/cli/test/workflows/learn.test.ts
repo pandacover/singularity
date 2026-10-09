@@ -12,7 +12,7 @@ import { commitRecordId } from "../../src/records/Build.ts"
 import { branchCommits, storePast } from "../../src/workflows/Commits.ts"
 import { pastSessions, projectDirName } from "../../src/workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
-import { learnState, learnSubject, mergeSubject, waitReason } from "../../src/workflows/Learn.ts"
+import { budgetReason, learnState, learnSubject, mergeSubject, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { emptyMemory, type WorkflowMemory } from "../../src/workflows/Models.ts"
 import { forSubject, startTask } from "../../src/workflows/Start.ts"
@@ -209,6 +209,22 @@ describe("learning repo by repo", () => {
     expect(waitReason(state(2, 0, 0), 3, false)).toBe("nothing new since the last try")
     expect(waitReason(state(5, 2, 1), 3, false)).toBe("2 of 3 new changes stored")
     expect(waitReason(state(5, 1, 1), 3, true)).toBeUndefined()
+  })
+
+  it("starts a round on its own only when what the day's limit leaves covers its estimate", () => {
+    const state = (records: number, unlearned: number, workflows: number) => ({
+      records: Array.from({ length: records }) as never,
+      learned: [],
+      unlearned: Array.from({ length: unlearned }) as never,
+      fresh: [],
+      memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`))
+    })
+    // A first build reads every change; a learning round, the new ones.
+    expect(roundUsd(state(38, 38, 0))).toBeCloseTo(2)
+    expect(roundUsd(state(41, 3, 2))).toBeCloseTo(0.25)
+    expect(budgetReason(2, 0, 1)).toBe("the next round, about $2.00, is more than today's limit leaves ($1.00 of $1.00)")
+    expect(budgetReason(0.25, 0.9, 1)).toBe("the next round, about $0.25, is more than today's limit leaves ($0.10 of $1.00)")
+    expect(budgetReason(0.25, 0.5, 1)).toBeUndefined()
   })
 
   it("builds a repo's first memory from its sessions, with cues, and keeps another repo's when it learns that one", async () => {

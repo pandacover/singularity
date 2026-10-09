@@ -6,8 +6,9 @@
  *
  * - `auto`: learn on its own after a change is stored, once a repo has
  *   `every` new changes, in the background.
- * - `max_usd_per_day`: what learning on its own may spend in a day; past it,
- *   learning waits for the next day or for `singularity learn`.
+ * - `max_usd_per_day`: what learning on its own may spend in a day. A round
+ *   starts on its own only when its estimate fits in what is left of it;
+ *   otherwise it waits for another day, a higher limit or `singularity learn`.
  */
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { DEFAULT_TENANT, homeRoot } from "../local/Home.ts"

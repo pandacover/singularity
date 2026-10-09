@@ -43,7 +43,8 @@ network can't reach, instead of waiting minutes.)
 Setup also puts the `singularity` command on your PATH and asks whether
 memory may learn on its own (about $0.25 a round on your Claude account) and
 how much it may spend a day ($1 unless you choose; `--daily-limit` sets it
-without asking). It never touches the rest of an agent's settings, and keeps a
+without asking). A round whose estimate wouldn't fit in what's left of the
+day's limit waits; `singularity learn` runs it by hand. It never touches the rest of an agent's settings, and keeps a
 copy of each file it changes (`<file>.before-singularity`).
 
 How memory gets to know a repo: when a Claude Code, Codex or Hermes Agent

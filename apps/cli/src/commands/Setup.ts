@@ -31,7 +31,7 @@ import { unwireAll } from "../setup/Wiring.ts"
 import { storePast } from "../workflows/Commits.ts"
 import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
-import { estimateUsd, learnState, learnSubject, spentToday, waitReason } from "../workflows/Learn.ts"
+import { budgetReason, learnState, learnSubject, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
 import { startTask } from "../workflows/Start.ts"
 import { homeFlag } from "./Common.ts"
 
@@ -102,7 +102,7 @@ const recall = Command.make(
   })
 ).pipe(Command.withDescription("print what memory would hand a task in this repo (no model call)"))
 
-/** The background round storing a change starts: one subject, within the lock and the day's limit. */
+/** The background round storing a change starts: one subject, within the lock, when what the day's limit leaves covers it. */
 const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string) {
   const path = yield* Path.Path
   const stamp = DateTime.formatIso(yield* DateTime.now)
@@ -110,10 +110,10 @@ const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string
   if (!takeLock(home.root)) return yield* log("another round is running")
   yield* Effect.gen(function*() {
     const prefs = yield* readLearn(home.root)
-    const spent = yield* spentToday()
-    if (spent >= prefs.max_usd_per_day) return yield* log(`today's limit is spent (${usd(spent)} of ${usd(prefs.max_usd_per_day)})`)
     const subject = (yield* (yield* RecordStore).subjects()).find((x) => x.id === subjectId)
     if (subject === undefined) return yield* log("no such repo in memory")
+    const short = budgetReason(roundUsd(yield* learnState(subjectId)), yield* spentToday(), prefs.max_usd_per_day)
+    if (short !== undefined) return yield* log(`waits: ${short}`)
     const outcome = yield* learnSubject(subject, {
       claude: yield* defaultClaude(),
       cwd: path.join(defaultWorkspaces(), "_learner"),
@@ -186,7 +186,7 @@ const learn = Command.make(
         continue
       }
       const changes = state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length
-      const estimate = estimateUsd(changes)
+      const estimate = roundUsd(state)
       const what = state.memory.workflows.length === 0 ? "a first memory" : "a learning round"
       if (args.dryRun) {
         yield* say(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}`)
