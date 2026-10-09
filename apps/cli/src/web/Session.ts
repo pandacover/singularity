@@ -17,6 +17,10 @@ import { webDir } from "./Records.ts"
 
 export const MAX_WEB_HANDOVER_CHARS = 9800
 
+/** Pitfalls whose id starts with this are the notes on fields that start set (Presets.ts), written without a model. */
+export const PRESET_PREFIX = "preset-"
+export const isPresetNote = (p: { readonly id: string }): boolean => p.id.startsWith(PRESET_PREFIX)
+
 export const WebSession = Schema.Struct({
   session_id: Schema.String,
   tenant: Schema.String,

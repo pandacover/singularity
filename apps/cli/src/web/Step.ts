@@ -11,7 +11,7 @@ import { graphOrder, type Place, type Workflow, type WorkflowMemory } from "../w
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import { browserTool } from "./Extract.ts"
 import { findPlace, pagePattern } from "./Places.ts"
-import { appendEvents, logHandover, PageFile, readEvents, readWebState, responseText, safeId, sessionsDir, type WebEvent, webTriggerFires } from "./Session.ts"
+import { appendEvents, isPresetNote, logHandover, PageFile, readEvents, readWebState, responseText, safeId, sessionsDir, type WebEvent, webTriggerFires } from "./Session.ts"
 import { byRef, pageOf, pageText, parseSnapshot } from "./Snapshot.ts"
 
 const describeNode = (role: string, name: string, ref: string | undefined) => `${role}${name === "" ? "" : ` ${JSON.stringify(name)}`}${ref === undefined ? "" : ` [ref=${ref}]`}`
@@ -83,7 +83,10 @@ export const webStep = Effect.fn("web.step")(function*(
   yield* logHandover(tenantDir, { at: now, session_id: input.sessionId, moment: "step", subject: state.subject, version: state.version, tool: kind, page: page ?? null, pointers: added.filter((e) => e.kind === "pointer").map((e) => e.id), pitfalls: warnings.map((p) => p.id) })
   const lines: Array<string> = []
   if (out.length > 0) lines.push("Memory: this page has places from the steps you were handed:", ...out)
-  if (warnings.length > 0) lines.push("Memory from earlier sessions in this app: this matches a mistake made before.", ...warnings.map((p) => `- ${p.text}`))
+  const rules = warnings.filter((p) => !isPresetNote(p))
+  const presets = warnings.filter(isPresetNote)
+  if (rules.length > 0) lines.push("Memory from earlier sessions in this app: this matches a mistake made before.", ...rules.map((p) => `- ${p.text}`))
+  if (presets.length > 0) lines.push("Memory: this form has fields that start set.", ...presets.map((p) => `- ${p.text}`))
   return lines.join("\n")
 })
 

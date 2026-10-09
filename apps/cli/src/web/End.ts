@@ -48,10 +48,12 @@ export const webEnd = Effect.fn("web.end")(function*(
       chain: a.chain === undefined ? null : a.chain.map((r) => ({ role: r.role, name: r.name })),
       place: a.place ?? null,
       text: a.text ?? null,
+      was: a.was ?? null,
       failed: a.failed,
       error: a.error ?? null
     })),
     messages: view.messages.map((m) => ({ after: m.after, page: m.page ?? null, text: m.text })),
+    forms: view.forms.map((f) => ({ page: f.page, fields: f.fields.map((x) => ({ control: x.control, state: x.state, changed: x.changed })) })),
     turns: trace.responses.filter((r) => r.agentId === undefined).length,
     tokens: usageTotal(traceUsage(trace)),
     cost_usd: typeof cost === "number" ? cost : null,

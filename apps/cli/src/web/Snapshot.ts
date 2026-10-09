@@ -127,3 +127,51 @@ export const messagesOf = (nodes: ReadonlyArray<SnapNode>): Array<string> => {
 /** All the text of a snapshot in one string, for warnings that watch what a page shows. */
 export const pageText = (nodes: ReadonlyArray<SnapNode>): string =>
   nodes.map((n) => [n.name, n.text ?? ""].filter((s) => s !== "").join(" ")).filter((s) => s !== "").join("\n")
+
+/** Controls that hold a value a form sends: what a field is set to before anyone touches it is its default. */
+const TOGGLES = new Set(["checkbox", "switch", "menuitemcheckbox"])
+const CHOICES = new Set(["radio", "menuitemradio"])
+const PICKERS = new Set(["combobox", "listbox"])
+const TEXTS = new Set(["textbox", "searchbox", "spinbutton", "slider"])
+
+export const isField = (role: string): boolean => TOGGLES.has(role) || CHOICES.has(role) || PICKERS.has(role) || TEXTS.has(role)
+export const isToggle = (role: string): boolean => TOGGLES.has(role)
+
+/** The elements inside a node, in document order. */
+export const descendants = (nodes: ReadonlyArray<SnapNode>, node: SnapNode): Array<SnapNode> => {
+  const out: Array<SnapNode> = []
+  for (let i = node.index + 1; i < nodes.length && nodes[i].depth > node.depth; i++) out.push(nodes[i])
+  return out
+}
+
+/** A select's first option when it only asks to choose (`— choose —`, `Select…`): no value yet. */
+const PLACEHOLDER = /^[\s\-—–_.…]*$|\b(choose|select|pick)\b/i
+
+export interface FieldState {
+  /** In words: `ticked`, `unticked`, `selected`, the option chosen, `filled`, `empty`. */
+  readonly state: string
+  /** Whether it is set to something before anyone touches it: a ticked box, a chosen option, text already in. */
+  readonly set: boolean
+}
+
+/** What a form field is set to, as the snapshot shows it; undefined for anything that isn't a field. Never the text typed in. */
+export const fieldState = (nodes: ReadonlyArray<SnapNode>, node: SnapNode): FieldState | undefined => {
+  if (TOGGLES.has(node.role)) {
+    const c = node.attrs.checked
+    return c === undefined || c === "false" ? { state: "unticked", set: false } : c === "mixed" ? { state: "partly ticked", set: true } : { state: "ticked", set: true }
+  }
+  if (CHOICES.has(node.role)) return node.attrs.checked === undefined || node.attrs.checked === "false" ? { state: "not selected", set: false } : { state: "selected", set: true }
+  if (PICKERS.has(node.role)) {
+    const options = descendants(nodes, node).filter((n) => n.role === "option")
+    const chosen = options.find((o) => o.attrs.selected !== undefined && o.attrs.selected !== "false")
+    if (chosen !== undefined) return { state: chosen.name, set: !(chosen === options[0] && PLACEHOLDER.test(chosen.name)) }
+    // No options: a box one types into and picks a suggestion from. What is in it was typed, like a text box's.
+    const text = (node.text ?? "").trim()
+    return text === "" ? { state: "empty", set: false } : { state: "filled", set: true }
+  }
+  if (TEXTS.has(node.role)) {
+    const text = (node.text ?? (typeof node.attrs.value === "string" ? node.attrs.value : "")).trim()
+    return text === "" ? { state: "empty", set: false } : { state: "filled", set: true }
+  }
+  return undefined
+}

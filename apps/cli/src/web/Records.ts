@@ -18,10 +18,19 @@ export const WebActionJson = Schema.Struct({
   chain: Schema.NullOr(Schema.Array(Schema.Struct({ role: Schema.String, name: Schema.String }))),
   place: Schema.NullOr(Schema.String),
   text: Schema.NullOr(Schema.String),
+  /** For a form field: what it was set to just before (`ticked`, an option). Absent in records from before it was kept. */
+  was: Schema.optionalKey(Schema.NullOr(Schema.String)),
   failed: Schema.Boolean,
   error: Schema.NullOr(Schema.String)
 })
 export type WebActionJson = typeof WebActionJson.Type
+
+/** A page the session acted on that opened with fields already set, and whether it changed each. */
+export const WebFormJson = Schema.Struct({
+  page: Schema.String,
+  fields: Schema.Array(Schema.Struct({ control: Schema.String, state: Schema.String, changed: Schema.Boolean }))
+})
+export type WebFormJson = typeof WebFormJson.Type
 
 export const WebRecord = Schema.Struct({
   id: Schema.String,
@@ -38,6 +47,8 @@ export const WebRecord = Schema.Struct({
   feedback: Schema.NullOr(Schema.String),
   actions: Schema.Array(WebActionJson),
   messages: Schema.Array(Schema.Struct({ after: Schema.Int, page: Schema.NullOr(Schema.String), text: Schema.String })),
+  /** Fields set before the session touched them. Absent in records from before they were kept. */
+  forms: Schema.optionalKey(Schema.Array(WebFormJson)),
   turns: Schema.NullOr(Schema.Int),
   tokens: Schema.NullOr(Schema.Int),
   cost_usd: Schema.NullOr(Schema.Number),

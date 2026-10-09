@@ -5,7 +5,9 @@
  * and pitfalls, in the same format as code memory (src/workflows/Induce.ts).
  *
  * Sessions that failed count: their feedback and the pages' messages are
- * where an app's rules are learned, including rules it never states.
+ * where an app's rules are learned, including rules it never states. So do
+ * the fields a form opened with already set, and whether each session changed
+ * them: what a procedure leaves out, the agent leaves as it is.
  *
  * Then the answer is checked mechanically, as for code: no text may carry a
  * task's own values; a step's place must be one where two sessions acted; a
@@ -18,7 +20,8 @@ import { describeTrigger, triggerProblem } from "../records/Triggers.ts"
 import { type InduceConfig, type InductionAnswer, InductionAnswer as InductionAnswerSchema, namedValue } from "../workflows/Induce.ts"
 import { type Edge, END, FORMAT, type Pitfall, type Place, START, type Workflow, type WorkflowMemory } from "../workflows/Models.ts"
 import { describeWebPlace, webPlace } from "./Places.ts"
-import type { WebRecord } from "./Records.ts"
+import type { WebFormJson, WebRecord } from "./Records.ts"
+import { isPresetNote, PRESET_PREFIX } from "./Session.ts"
 
 export interface WebRun {
   readonly record: string
@@ -29,6 +32,7 @@ export interface WebRun {
   readonly feedback: string | null
   readonly actions: WebRecord["actions"]
   readonly messages: WebRecord["messages"]
+  readonly forms: ReadonlyArray<WebFormJson>
   readonly turns: number | null
 }
 
@@ -63,6 +67,7 @@ export const webEvidence = (subject: string, records: ReadonlyArray<WebRecord>):
     feedback: r.feedback,
     actions: r.actions,
     messages: r.messages,
+    forms: r.forms ?? [],
     turns: r.turns
   }))
   return { subject, places, runs }
@@ -81,6 +86,7 @@ From the sessions you are given, extract reusable workflows: small sub-routines 
   - \`place: null\` when the control isn't among the listed places, or is only usable through one session; then say how to find it.
   - \`when\`: if a step applies only in some cases, say when, in words a new task's text can decide. Null if always.
 - Tell apart what tasks asked for, what the app needed although the task didn't say so (a required field, a confirmation, a reason code), and what a session did that turned out wrong. Learn from failed sessions too: a step that failed or a check that failed says what not to do.
+- Forms open with some fields already set: a ticked box, a chosen option, text already in. Each session lists the fields of the forms it sent that it found set, and whether it changed them; an action on a field says what the field was before ("was ticked"). Steps that name only the fields sessions changed hide the others from the agent, who then leaves them as they are. Where a step sends a form with such a field, name the field and say it starts set. Say when to change it only as far as the sessions show: where sessions changed it, say when ("'Send SMS reminder' starts ticked: untick it when the member doesn't want reminders"). Where sessions only left it as it was, never tell the agent to leave it: that sessions' tasks didn't need it changed doesn't mean the next one won't. Tell the agent to decide it from the task.
 - Keep each workflow complete for its purpose, its steps in the order they are best done. \`from_runs\`: ids of the sessions it was learned from.
 - \`use_when\`: what in a task's text means the workflow is needed.
 - \`checks\`: how the agent can confirm the work in the app (what a page should show afterwards), in plain words. May be empty.
@@ -91,7 +97,7 @@ From the sessions you are given, extract reusable workflows: small sub-routines 
 
 ## Pitfalls and rules
 
-From what went wrong, keep what another task could run into again, in general words: what goes wrong and what to do instead. Sources, which you cite in \`detours\` (the field's name is historical):
+From what went wrong, keep what another task could run into again, in general words: what goes wrong and what to do instead. Every pitfall is handed over at the start of every task in this app, whether or not a workflow is picked, so write each to stand on its own: where it applies (the page or form, in words) and what to do. A failed session's feedback often states a rule the app never shows; a field the session left as the form set it is a likely cause. Sources, which you cite in \`detours\` (the field's name is historical):
 - "<session id>#<action number>": an action that failed, or that a later message or the feedback shows was wrong;
 - "<session id>#feedback": what the manager said after the session (the app's rules, including ones it never shows on screen);
 - "<session id>#message<k>": a message a page showed (an alert, an error, a status line), numbered from 1 as listed.
@@ -101,7 +107,7 @@ A pitfall may have an exact \`trigger\` that tells it is about to happen, checke
 - \`on: "page"\`: the page the agent just read shows every string in \`all\` and none in \`none\` (words of a dialog, a form's label, a heading), so the warning comes before the agent acts on it.
 - \`on: "action"\`: the control an action used is named with every string in \`all\`.
 - \`on: "error"\`: a failed browser call whose output contains every string in \`all\`.
-\`file\` is always null. Use a null trigger when there are no such strings; a pitfall without a trigger is handed over at the start with its workflow, or as a rule of the app when no workflow carries it.
+\`file\` is always null. Use a null trigger when there are no such strings; a pitfall without a trigger is only handed over at the start.
 
 \`entries\` is always an empty list here. Ids: short kebab-case names in general words ("find-order", "refund-needs-manager-note").`
 
@@ -113,8 +119,9 @@ const describeAction = (a: WebRecord["actions"][number]): string => {
   const where = a.place !== null ? `${a.place}` : a.chain !== null ? `${a.page ?? "?"} › ${a.chain.map((c) => (c.name === "" ? c.role : `${c.role} "${c.name}"`)).join(" › ")}` : a.page ?? ""
   const what = a.kind === "navigate" ? `went to ${a.page ?? "?"}` : `${a.kind} ${where}`
   const text = a.text === null ? "" : ` with ${code(clip(oneLine(a.text), 120))}`
+  const was = a.was === undefined || a.was === null ? "" : ` (was ${a.was})`
   const failed = a.failed ? `; FAILED: ${clip(oneLine(a.error ?? ""), 200)}` : ""
-  return `#${a.index} ${what}${text}${failed}`
+  return `#${a.index} ${what}${text}${was}${failed}`
 }
 
 /** What the model reads: the places, then each task with its sessions; on a second try, its answer and what was wrong. */
@@ -127,7 +134,7 @@ export const webInductionPrompt = (evidence: WebEvidence, current: WorkflowMemor
       "Revise it rather than starting over: keep what the sessions still support, change what they show is wrong or missing.",
       "",
       "```json",
-      JSON.stringify({ workflows: current.workflows.map(({ cues: _c, ...w }) => w), edges: current.edges, pitfalls: current.pitfalls }, null, 1),
+      JSON.stringify({ workflows: current.workflows.map(({ cues: _c, ...w }) => w), edges: current.edges, pitfalls: current.pitfalls.filter((p) => !isPresetNote(p)) }, null, 1),
       "```",
       ""
     )
@@ -155,6 +162,12 @@ export const webInductionPrompt = (evidence: WebEvidence, current: WorkflowMemor
       for (const a of r.actions) {
         lines.push(`- ${describeAction(a)}`)
         for (const m of messagesAfter.get(a.index) ?? []) lines.push(`  message${m.k}: the page showed ${JSON.stringify(clip(m.text, 200))}`)
+      }
+      if (r.forms.length > 0) {
+        lines.push("Fields already set in the forms the session sent, as it first saw them:")
+        for (const f of r.forms) {
+          lines.push(`- ${f.page}: ${f.fields.map((x) => `${x.control} ${x.state === "filled" ? "filled in" : x.state}, ${x.changed ? "changed" : "left as it was"}`).join("; ")}`)
+        }
       }
       lines.push("")
     }
@@ -197,7 +210,8 @@ export const checkWebAnswer = (answer: InductionAnswer, evidence: WebEvidence, t
   const pitfalls: Array<Pitfall> = []
   const learned = new Map((current?.pitfalls ?? []).map((x) => [x.id, x]))
   for (const p of answer.pitfalls) {
-    const id = slug(p.id)
+    // `preset-` names the notes on fields that start set, written without a model (Presets.ts).
+    const id = slug(p.id).startsWith(PRESET_PREFIX) ? `rule-${slug(p.id)}` : slug(p.id)
     if (pitfalls.some((x) => x.id === id)) continue
     const before = learned.get(id)
     const sources = p.detours.flatMap((ref) => {

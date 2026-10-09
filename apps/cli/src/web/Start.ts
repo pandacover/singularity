@@ -1,18 +1,24 @@
 /**
  * start, for the web reader: the app is the first address in the task's
- * text; memory for it picks workflows by their cues (no model), fills the
- * blanks the task states, and hands them over with each step's place in
- * words, then the app's rules no workflow carries. Pitfalls with a trigger
- * are armed for the session (Step.ts).
+ * text. Memory hands over every rule it has for the app, whatever the task
+ * (a rule that only came with a picked workflow was lost whenever the task's
+ * wording picked none), and the forms that open with fields already set
+ * (Presets.ts); then the workflows it picks by their cues (no model), the
+ * blanks the task states filled in, each step's place in words. Pitfalls with
+ * a trigger are armed for the session (Step.ts).
  */
 import { DateTime, Effect, FileSystem, Path } from "effect"
 import { writeFileWhole } from "../local/Files.ts"
 import { applyFills, cueChoice, fillsOfChosen, hasCues } from "../workflows/Cues.ts"
-import { END, type Pitfall, START, type WorkflowMemory } from "../workflows/Models.ts"
+import { END, START, type WorkflowMemory } from "../workflows/Models.ts"
 import { type Selected, wordChoice } from "../workflows/Select.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import { describeWebPlace, taskValues } from "./Places.ts"
-import { logHandover, MAX_WEB_HANDOVER_CHARS, sessionsDir, type WebSession, webSessionFile, webTarget } from "./Session.ts"
+import { isPresetNote, logHandover, MAX_WEB_HANDOVER_CHARS, sessionsDir, type WebSession, webSessionFile, webTarget } from "./Session.ts"
+
+/** Room for the app's rules, and for the notes on fields that start set; the workflows get the rest. */
+const RULES_CHARS = 4500
+const PRESETS_CHARS = 1500
 
 /** Memory a subject may get: its own workflows, places and pitfalls, and the edges between them. */
 export const forWebSubject = (m: WorkflowMemory, subject: string): WorkflowMemory => {
@@ -30,7 +36,19 @@ export const forWebSubject = (m: WorkflowMemory, subject: string): WorkflowMemor
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-/** The hand-over at task start: the workflows picked, each step with its place in words; then what memory knows of the app's rules. */
+/** The lines that fit in the room, in order; one too long for what is left gives way to the next. */
+const within = <T extends { readonly line: string }>(items: ReadonlyArray<T>, room: number): Array<T> => {
+  const out: Array<T> = []
+  let used = 0
+  for (const it of items) {
+    if (used + it.line.length + 1 > room) continue
+    out.push(it)
+    used += it.line.length + 1
+  }
+  return out
+}
+
+/** The hand-over at task start: the app's rules and the forms that start set, every time; then the workflows picked, each step with its place in words. */
 export const renderWebHandover = (
   memory: WorkflowMemory,
   chosen: ReadonlyArray<Selected>,
@@ -39,14 +57,24 @@ export const renderWebHandover = (
   budget = MAX_WEB_HANDOVER_CHARS
 ): { readonly text: string | undefined; readonly places: Array<string>; readonly pitfalls: Array<string> } => {
   const places = new Map(memory.places.map((p) => [p.id, p]))
-  const pitfalls = new Map(memory.pitfalls.map((p) => [p.id, p]))
   const usedPlaces: Array<string> = []
-  const usedPitfalls: Array<string> = []
   const lines: Array<string> = [
-    `Memory from earlier sessions in this app (${origin}): how this kind of work was done before, and what went wrong.`,
-    "Places say where earlier sessions found each control; when a page you read shows one, memory points to it then. Pages may have changed since: trust what the page shows.",
+    `Memory from earlier sessions in this app (${origin}): its rules, and how this kind of work was done before.`,
+    "Steps are what earlier sessions did, not a script: read each page and form before you act on it, since the task may need what they don't say. Places say where earlier sessions found each control; when a page you read shows one, memory points to it then. Pages may have changed since: trust what the page shows.",
     ""
   ]
+  // The picked workflows' rules first, then the rest, those more sessions showed first.
+  const picked = new Set(chosen.flatMap((c) => c.workflow.pitfalls))
+  const rules = within(
+    memory.pitfalls
+      .filter((p) => !isPresetNote(p))
+      .sort((a, b) => Number(picked.has(b.id)) - Number(picked.has(a.id)) || b.evidence.length - a.evidence.length || a.id.localeCompare(b.id))
+      .map((p) => ({ id: p.id, line: `- ${p.text}` })),
+    RULES_CHARS
+  )
+  if (rules.length > 0) lines.push("## Rules of this app, from earlier sessions and the manager's feedback", ...rules.map((r) => r.line), "")
+  const presets = within(memory.pitfalls.filter(isPresetNote).map((p) => ({ id: p.id, line: `- ${p.text}` })), PRESETS_CHARS)
+  if (presets.length > 0) lines.push("## Forms that open with fields already set", ...presets.map((r) => r.line), "")
   for (const c of chosen) {
     const w = c.workflow
     const values = fills?.get(w.id) ?? new Map<string, string>()
@@ -61,27 +89,10 @@ export const renderWebHandover = (
       const where = p === undefined ? "" : ` (at ${describeWebPlace(p)})`
       lines.push(`${n}. ${applyFills(s.do, values)}${s.when === null ? "" : ` [${s.when}]`}${where}`)
     })
-    // A workflow's own pitfalls come with it, triggered or not: rules are cheap to read and costly to miss.
-    const own = w.pitfalls.map((id) => pitfalls.get(id)).filter((p): p is Pitfall => p !== undefined)
-    for (const p of own) {
-      if (!usedPitfalls.includes(p.id)) usedPitfalls.push(p.id)
-      lines.push(`Watch out: ${p.text}`)
-    }
     lines.push("")
   }
-  // Rules of the app no workflow carries: what earlier sessions were told, or ran into, anywhere in it.
-  const inWorkflows = new Set(memory.workflows.flatMap((w) => w.pitfalls))
-  const general = memory.pitfalls.filter((p) => p.trigger === null && !inWorkflows.has(p.id) && !usedPitfalls.includes(p.id))
-  if (general.length > 0) {
-    lines.push("## What earlier sessions learned about this app")
-    for (const p of general.slice(0, 12)) {
-      usedPitfalls.push(p.id)
-      lines.push(`- ${p.text}`)
-    }
-    lines.push("")
-  }
-  if (chosen.length === 0 && general.length === 0) return { text: undefined, places: [], pitfalls: [] }
-  return { text: clip(lines.join("\n").trimEnd(), budget), places: usedPlaces, pitfalls: usedPitfalls }
+  if (chosen.length === 0 && rules.length === 0 && presets.length === 0) return { text: undefined, places: [], pitfalls: [] }
+  return { text: clip(lines.join("\n").trimEnd(), budget), places: usedPlaces, pitfalls: [...rules, ...presets].map((r) => r.id) }
 }
 
 export interface WebStartResult {
