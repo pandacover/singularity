@@ -10,7 +10,7 @@ const memDone = Math.max(...mem.map((r) => r.turns))
 const sum = (rs: ReadonlyArray<Run>) => `median ${med(rs.map((r) => r.turns))} turns · ${fmtK(med(rs.map((r) => r.tokens)))} tokens`
 const KIND = { r: "", w: " w", x: " x", o: " o" }
 
-/** Figure 1: each run is a column of its turns, side by side. */
+/** Figure 2: each run is a column of its turns, side by side. */
 export const Turns = () => {
   const tip = useTip()
   const host = useRef<HTMLDivElement>(null)
@@ -50,9 +50,9 @@ export const Turns = () => {
   )
 
   return (
-    <figure aria-labelledby="f1t">
+    <figure className="fig-turns" aria-labelledby="f2t">
       <div className="fig-head">
-        <h3 id="f1t"><span className="label">Figure 1</span>Where the turns went</h3>
+        <h3 id="f2t"><span className="label">Figure 2</span>Where the turns went</h3>
         <div className="legend" aria-hidden="true">
           <span><i className="lg" />reading, searching</span>
           <span><i className="lg w" />editing</span>

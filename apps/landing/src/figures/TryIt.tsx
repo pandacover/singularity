@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { cueChoice, cueMatch, fillsFor, NEGATED, positiveText } from "../cues.ts"
 import { MEMORY } from "../data/memory.ts"
 import { reduced, sleep, useOnceVisible } from "../lib.ts"
@@ -9,27 +9,31 @@ const EXAMPLES = [
   ["Zen mode shortcut", "Change the zen mode keyboard shortcut from Alt+Z to Alt+M. Update everything that shows or tests the shortcut."],
   ["Something unrelated", "Fix the typo in the README's installation section."]
 ] as const
+const LONGEST = EXAMPLES.reduce((a, [, t]) => (t.length > a.length ? t : a), "")
 
-/** The task with what called for a workflow underlined and what is negated struck through. */
-const marked = (text: string, phrases: ReadonlyArray<string>): ReactNode => {
-  const tags = new Uint8Array(text.length)
-  for (const m of text.matchAll(NEGATED)) for (let i = m.index; i < m.index + m[0].length; i++) tags[i] = 1
+/** The task with each workflow's words marked, and what is negated struck through. The marks stay put as
+ * workflows arrive or are hovered; only their classes change, so the text under them never moves. */
+const marked = (text: string, words: ReadonlyArray<ReadonlyArray<string>>, shown: number, hot: number): ReactNode => {
+  const tags = new Int16Array(text.length).fill(-1)  // -1 plain, -2 negated, else the workflow whose words these are
+  for (const m of text.matchAll(NEGATED)) for (let i = m.index; i < m.index + m[0].length; i++) tags[i] = -2
   const low = text.toLowerCase()
-  for (const p of phrases) {
-    const q = p.trim().toLowerCase()
-    if (!q) continue
-    for (let i = low.indexOf(q); i !== -1; i = low.indexOf(q, i + 1)) {
-      let neg = false
-      for (let k = i; k < i + q.length; k++) if (tags[k] === 1) neg = true
-      if (!neg) for (let k = i; k < i + q.length; k++) tags[k] = 2
+  words.forEach((list, p) => {
+    for (const w of list) {
+      const q = w.trim().toLowerCase()
+      if (!q) continue
+      for (let i = low.indexOf(q); i !== -1; i = low.indexOf(q, i + 1)) {
+        let free = true
+        for (let k = i; k < i + q.length; k++) if (tags[k] !== -1) free = false
+        if (free) for (let k = i; k < i + q.length; k++) tags[k] = p
+      }
     }
-  }
+  })
   const out: Array<ReactNode> = []
   let cur = -1, buf = ""
   const flush = () => {
     if (!buf) return
     const k = out.length
-    out.push(cur === 1 ? <del key={k}>{buf}</del> : cur === 2 ? <mark key={k}>{buf}</mark> : buf)
+    out.push(cur === -2 ? <del key={k}>{buf}</del> : cur >= 0 ? <mark key={k} className={cur < shown ? (cur === hot ? "on hot" : "on") : undefined}>{buf}</mark> : buf)
     buf = ""
   }
   for (let i = 0; i < text.length; i++) {
@@ -48,30 +52,40 @@ const stepText = (text: string, fills: ReadonlyMap<string, string>) =>
   text.replace(/`([^`]+)`/g, "$1").split(/(\{[A-Za-z ]+\})/g).map((part, i) =>
     i % 2 === 0 ? part : fills.has(part) ? <Pill key={i} value={fills.get(part)!} filled /> : <Pill key={i} value={part.slice(1, -1)} filled={false} />)
 
-/** Figure 3: a prompt box, and what memory attaches to it. */
+/** Figure 4: a prompt box, and what memory attaches to it, each workflow beside the words that called for it. */
 export const TryIt = () => {
-  const [task, setTask] = useState(() => (reduced ? EXAMPLES[0][1] : ""))
-  const [pressed, setPressed] = useState(reduced ? 0 : -1)
+  const [task, setTask] = useState<string>(EXAMPLES[0][1])
+  const [pressed, setPressed] = useState(0)
   const [open, setOpen] = useState(-1)
+  const [hot, setHot] = useState(-1)
+  // how many attachments are shown: the first time the figure is seen they arrive one by one, each with its words
+  const [shown, setShown] = useState(reduced ? Infinity : 0)
   const demo = useRef(0)
   const ta = useRef<HTMLTextAreaElement>(null)
   const cp = useRef<HTMLDivElement>(null)
+  const sizer = useRef<HTMLDivElement>(null)
 
-  const t0 = performance.now()
-  let picks = cueChoice(MEMORY, task)
-  for (let i = 1; i < 20; i++) picks = cueChoice(MEMORY, task)
-  const ms = (performance.now() - t0) / 20
+  // timed once per task, so hovering and the arrivals don't redraw the number; in the list's order, so they light up top down
+  const { picks, ms } = useMemo(() => {
+    const t0 = performance.now()
+    let picks = cueChoice(MEMORY, task)
+    for (let i = 1; i < 20; i++) picks = cueChoice(MEMORY, task)
+    const ms = (performance.now() - t0) / 20
+    return { picks: picks.sort((a, b) => MEMORY.workflows.indexOf(a.workflow) - MEMORY.workflows.indexOf(b.workflow)), ms }
+  }, [task])
+  const pickOf = new Map(picks.map((c, p) => [c.workflow.id, p]))
 
+  // the words each workflow was called by: its own, and those of the steps it keeps
   const pos = positiveText(task)
-  const hits = picks.map((c) => c.hit)
-  for (const c of picks) for (const s of c.workflow.cues!.steps) { const h = cueMatch(pos, s.any, s.none); if (h) hits.push(h) }
+  const words = picks.map((c) => [c.hit, ...c.workflow.cues!.steps.flatMap((s) => cueMatch(pos, s.any, s.none) ?? [])])
   const empty = task.trim() === ""
 
+  // never shorter than the longest example, so switching examples keeps the box's height
   const fit = () => {
     const t = ta.current
     if (!t) return
     t.style.height = "auto"
-    t.style.height = `${t.scrollHeight}px`
+    t.style.height = `${Math.max(t.scrollHeight, sizer.current?.offsetHeight ?? 0)}px`
   }
   useLayoutEffect(fit, [task])
   useEffect(() => {
@@ -80,81 +94,86 @@ export const TryIt = () => {
     return () => removeEventListener("resize", fit)
   }, [])
 
-  // The first time it is seen, the first example types itself, so the cards can be seen arriving.
+  // an open list of steps closes on a click anywhere else
+  useEffect(() => {
+    if (open < 0) return
+    const away = (e: PointerEvent) => { if (!(e.target as Element).closest?.(".row.open")) setOpen(-1) }
+    addEventListener("pointerdown", away)
+    return () => removeEventListener("pointerdown", away)
+  }, [open])
+
+  const take = () => { demo.current++; setShown(Infinity) }
   useOnceVisible(cp, async () => {
-    if (reduced) return
-    const id = ++demo.current, text = EXAMPLES[0][1]
-    setPressed(0)
-    for (let i = 1; i <= text.length; i += 2) {
+    const id = ++demo.current
+    for (let i = 1; i <= picks.length; i++) {
+      await sleep(i === 1 ? 300 : 520)
       if (id !== demo.current) return
-      setTask(text.slice(0, i))
-      await sleep(16)
+      setShown(i)
     }
-    if (id === demo.current) setTask(text)
-  }, 0.4)
+  }, 0.5)
   useEffect(() => () => { demo.current++ }, [])
 
   return (
-    <div className="cp" ref={cp} aria-label="Figure 3: type a task, see what memory attaches">
+    <div className="cp" ref={cp} aria-label="Figure 4: type a task, see what memory attaches">
       <div className="starters">
         <span>Try</span>
         {EXAMPLES.map(([name, text], i) => (
-          <button key={name} type="button" aria-pressed={pressed === i} onClick={() => { demo.current++; setPressed(i); setTask(text); setOpen(-1) }}>{name}</button>
+          <button key={name} type="button" aria-pressed={pressed === i} onClick={() => { take(); setPressed(i); setTask(text); setOpen(-1) }}>{name}</button>
         ))}
       </div>
       <div className="box">
         <div className="top">
           <span className="gt" aria-hidden="true">&gt;</span>
           <div className="editor">
-            <div className="hl" aria-hidden="true">{marked(task, hits)}</div>
+            <div className="sizer" ref={sizer} aria-hidden="true">{LONGEST}</div>
+            {/* keyed by the task: a new task gets new text, rather than the old text moved about */}
+            <div className="hl" key={task} aria-hidden="true">{marked(task, words, shown, hot)}</div>
             <textarea
               ref={ta}
               value={task}
               spellCheck={false}
               aria-label="Task"
               placeholder="Describe a change to excalidraw…"
-              onChange={(e) => { demo.current++; setPressed(-1); setTask(e.target.value) }}
-              onFocus={() => { demo.current++ }}
+              onChange={(e) => { take(); setPressed(-1); setTask(e.target.value) }}
+              onFocus={take}
             />
           </div>
         </div>
         <div className="foot">
           <span><u>underlined</u> called for a workflow · <s>struck</s> is negated, so ignored</span>
-          <span>matched in {ms < 0.1 ? ms.toFixed(3) : ms.toFixed(2)} ms · no model call</span>
+          <span>matched in <span className="num">{ms.toFixed(3)}</span> ms · no model call</span>
         </div>
       </div>
-      <div className="hookline">
-        <i aria-hidden="true" />
-        <span>
-          {empty
-            ? "singularity is waiting for a task"
-            : picks.length
-            ? <>singularity attached <b>{picks.length}</b> of {MEMORY.workflows.length} workflows <span className="k">· click one to see its steps</span></>
-            : "singularity found nothing it knows, so it adds nothing"}
-        </span>
-      </div>
+      {/* every workflow in memory, always, one line each: a task only lights some up, so nothing below ever moves */}
       <div className="attach">
-        {picks.length === 0
-          ? <div className="empty">{empty ? "Attachments appear here as you type." : "Nothing attached. Your agent starts as it would without memory."}</div>
-          : picks.map((c, i) => {
-            const w = c.workflow, fills = fillsFor(task, w), isOpen = i === open
-            return (
-              // a card pops in when it is first picked, and stays put while it remains picked
+        <div className="attach-h">
+          <span>Your words</span>
+          <span key={empty ? "e" : "a"}>{empty
+            ? "Waiting for a task"
+            : <>Attached: <b className="num">{Math.min(shown, picks.length)}</b> of {MEMORY.workflows.length} workflows</>}</span>
+        </div>
+        {MEMORY.workflows.map((w, i) => {
+          const p = pickOf.get(w.id) ?? -1, c = p >= 0 && p < shown ? picks[p] : undefined
+          const fills = c ? fillsFor(task, w) : new Map<string, string>(), isOpen = i === open
+          return (
+            <div key={w.id} className={`row${c ? " lit" : ""}${isOpen ? " open" : ""}`} onMouseEnter={() => setHot(c ? p : -1)} onMouseLeave={() => setHot(-1)}>
               <button
-                key={w.id}
                 type="button"
-                className={`card new${isOpen ? " open" : ""}`}
                 aria-expanded={isOpen}
-                style={{ animationDelay: `${i * 40}ms` }}
-                onClick={() => setOpen(isOpen ? -1 : i)}
+                onClick={() => { take(); setOpen(isOpen ? -1 : i) }}
+                onFocus={() => setHot(c ? p : -1)}
+                onBlur={(e) => { setHot(-1); if (e.relatedTarget && !e.currentTarget.parentElement!.contains(e.relatedTarget)) setOpen(-1) }}
+                onKeyDown={(e) => { if (e.key === "Escape") setOpen(-1) }}
               >
-                <span className="ch"><span><b>{i + 1}</b> workflow</span><span>{w.steps.length} steps {isOpen ? "−" : "+"}</span></span>
-                <span className="nm">{w.name}</span>
-                {fills.size > 0 && <span className="fills">{[...fills].map(([k, v]) => <Pill key={k} value={v} filled />)}</span>}
-                {isOpen && <ol>{w.steps.map((s, j) => <li key={j} className={c.skip.includes(j + 1) ? "skip" : undefined}>{stepText(s.text, fills)}</li>)}</ol>}
+                <span className="why">{c ? `“${c.hit}”` : " "}</span>
+                <span className="arrow" aria-hidden="true">→</span>
+                <span className="nm"><span className="t">{w.name}</span><span className="fills" key={[...fills.values()].join("|")}>{[...fills].map(([k, v]) => <Pill key={k} value={v} filled />)}</span></span>
+                <span className="n">{w.steps.length - (c?.skip.length ?? 0)} steps {isOpen ? "−" : "+"}</span>
               </button>
-            )
-          })}
+              {isOpen && <ol className="pop">{w.steps.map((s, j) => <li key={j} className={c?.skip.includes(j + 1) ? "skip" : undefined}>{stepText(s.text, fills)}</li>)}</ol>}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

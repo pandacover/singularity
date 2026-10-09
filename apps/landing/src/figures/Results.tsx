@@ -63,7 +63,7 @@ const layout = (show: (row: Exclude<Row, { grp: string }>, m: number) => (e: Poi
   return { rows, top, bottom: y }
 }
 
-/** Figure 4: cost with memory, as a share of the cost without it. */
+/** Figure 5: cost with memory, as a share of the cost without it. */
 export const Results = () => {
   const tip = useTip()
   const [table, setTable] = useState(false)
@@ -75,14 +75,14 @@ export const Results = () => {
     </>))
 
   return (
-    <figure aria-labelledby="f4t">
-      <div className="fig-head"><h3 id="f4t"><span className="label">Figure 4</span>Cost with memory, as a share of the cost without it</h3></div>
+    <figure aria-labelledby="f5t">
+      <div className="fig-head"><h3 id="f5t"><span className="label">Figure 5</span>Cost with memory, as a share of the cost without it</h3></div>
       <div className="scroll">
         <svg
           id="res"
           viewBox={`0 0 1100 ${bottom + 12}`}
           role="img"
-          aria-labelledby="f4t"
+          aria-labelledby="f5t"
           onPointerMove={(e) => { if (!(e.target as Element).closest(".hit")) tip.hide() }}
           onPointerLeave={tip.hide}
         >
@@ -105,7 +105,7 @@ export const Results = () => {
         Medians of 3–4 runs per side. Left of 100% is cheaper.{" "}
         <button className="textbtn" type="button" onClick={() => setTable(!table)}>{table ? "Hide the numbers" : "Show the numbers"}</button>
       </figcaption>
-      <div id="f4table" hidden={!table}>
+      <div id="f5table" hidden={!table}>
         {table && (
           <table className="res">
             <thead><tr><th>Task</th><th>Runs</th>{METRICS.map((m) => [<th key={m}>{m[0] + m.slice(1).toLowerCase()} without</th>, <th key={`${m}w`}>with</th>])}</tr></thead>

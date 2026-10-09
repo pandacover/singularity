@@ -1,15 +1,64 @@
-import { useRef, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
+import { Collapse } from "./figures/Collapse.tsx"
 import { Mistake } from "./figures/Mistake.tsx"
 import { Results } from "./figures/Results.tsx"
 import { Stack } from "./figures/Stack.tsx"
 import { TryIt } from "./figures/TryIt.tsx"
 import { Turns } from "./figures/Turns.tsx"
 import { defaultOs, Install, type Os } from "./Install.tsx"
-import { Intro } from "./Intro.tsx"
+import { Logo } from "./Logo.tsx"
+import { Steps } from "./Steps.tsx"
 import { TipProvider } from "./Tip.tsx"
 
-const Dot = ({ yes }: { readonly yes: boolean }) => <span className={yes ? "dot-y" : "dot-n"} role="img" aria-label={yes ? "yes" : "no"} />
+// The landing page, written as a research article: a centred column of prose, figures wider than it on both
+// sides, and the contents down the left, following the reader.
+const TOC: ReadonlyArray<{ readonly id: string; readonly title: string }> = [
+  { id: "problem", title: "The same task, from zero" },
+  { id: "turns", title: "Where the turns go" },
+  { id: "method", title: "Workflows, not transcripts" },
+  { id: "picking", title: "Picking without a model" },
+  { id: "results", title: "Results" },
+  { id: "limits", title: "Limitations" },
+  { id: "rules", title: "Rules it keeps" },
+  { id: "use", title: "Use it" },
+  { id: "refs", title: "References" }
+]
+const IDS = TOC.map((s) => s.id)
 
+/** The section being read: the last one whose heading has passed a line near the top, or the last of all once the
+ * page can't scroll further; and how far through the page the reader is. */
+const useReading = () => {
+  const [at, setAt] = useState("")
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const read = () => {
+      raf = 0
+      const line = Math.min(innerHeight / 4, 160)
+      let cur = ""
+      for (const id of IDS) {
+        const el = document.getElementById(id)
+        if (el && el.getBoundingClientRect().top < line) cur = id
+      }
+      const max = document.documentElement.scrollHeight - innerHeight
+      setAt(max > 0 && scrollY >= max - 2 ? IDS[IDS.length - 1]! : cur)
+      setProgress(max > 0 ? Math.min(1, scrollY / max) : 0)
+    }
+    const on = () => { if (!raf) raf = requestAnimationFrame(read) }
+    read()
+    addEventListener("scroll", on, { passive: true })
+    addEventListener("resize", on)
+    return () => { removeEventListener("scroll", on); removeEventListener("resize", on); cancelAnimationFrame(raf) }
+  }, [])
+  return { at, progress }
+}
+
+const H2 = ({ id, children }: { readonly id: string; readonly children: ReactNode }) => {
+  const n = TOC.findIndex((s) => s.id === id) + 1
+  return <h2 id={id}><a href={`#${id}`}><span className="num">{n}</span>{children}</a></h2>
+}
+
+const Dot = ({ yes }: { readonly yes: boolean }) => <span className={yes ? "dot-y" : "dot-n"} role="img" aria-label={yes ? "yes" : "no"} />
 const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, warns: boolean, learns: boolean, note?: string]> = [
   ["Claude Code", true, true, true],
   ["Codex", true, true, false],
@@ -18,159 +67,229 @@ const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, warns: boolean, l
   ["Cursor, OpenCode", false, false, false, "through a skill, when asked"]
 ]
 
-const HowItWorks = () => (
-  <section id="how">
-    <header className="sh"><h2>How it works</h2></header>
-    <div className="steps">
-      <div className="phase p1">After a session</div>
-      <div className="phase p2">When the next one starts</div>
-      <div className="step s1">
-        <div className="n">1</div>
-        <h3>It keeps a record</h3>
-        <p>What changed, where, and what went wrong.</p>
-        <div className="vis">
-          <div className="vh">A “Minimap” setting</div>
-          <div className="vt">18 turns · 11 files edited</div>
-          <div className="vr" style={{ marginTop: 8 }}><span className="bad">✗</span><span><code>yarn test:update --watch=false</code></span></div>
-          <div className="vr"><span className="good">✓</span><span><code>yarn test:update</code></span></div>
+const Contents = ({ at, progress }: { readonly at: string; readonly progress: number }) => {
+  const [open, setOpen] = useState(false)
+  const top = TOC.find((s) => s.id === at)
+  return (
+    <nav className={`toc${open ? " open" : ""}`} aria-label="Contents">
+      {/* on narrow screens: a bar with the section being read, which opens the contents */}
+      <button className="toc-bar" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="label">Contents</span>
+        <span className="cur">{top ? `${TOC.indexOf(top) + 1}  ${top.title}` : "Abstract"}</span>
+        <span className="chev" aria-hidden="true">{open ? "−" : "+"}</span>
+      </button>
+      <div className="toc-body">
+        <a className="toc-home" href="#top"><Logo className="logo" /></a>
+        <div className="label toc-h">Contents</div>
+        <ol>
+          {TOC.map((s, i) => {
+            const on = s === top
+            return (
+              <li key={s.id} className={on ? "on" : undefined}>
+                <a href={`#${s.id}`} onClick={() => setOpen(false)}><span className="num">{i + 1}</span>{s.title}</a>
+              </li>
+            )
+          })}
+        </ol>
+        <div className="toc-foot">
+          <a href="#use">Install</a>
+          <a href="https://github.com/pandacover/singularity">GitHub</a>
         </div>
       </div>
-      <div className="step s2">
-        <div className="n">2</div>
-        <h3>It learns workflows</h3>
-        <p>Steps with blanks, and the phrases that call for them.</p>
-        <div className="vis">
-          <div className="vh">Add a field to the app state</div>
-          <ol>
-            <li>Add <span className="pill">field</span> to AppState</li>
-            <li>Default it to <span className="pill">default</span></li>
-            <li>Store it as the task says</li>
-          </ol>
-          <div className="vt">when a task says “new setting”</div>
-        </div>
-      </div>
-      <div className="step s3">
-        <div className="n">3</div>
-        <h3>It hands them over</h3>
-        <p>Picked by plain text, filled from your words, pointed at today’s code.</p>
-        <div className="vis">
-          <div className="vh">Add a field to the app state</div>
-          <ol>
-            <li>Add <span className="pill f">presenterModeEnabled</span> to AppState</li>
-            <li>Default it to <span className="pill f">false</span></li>
-            <li>Store it as the task says</li>
-          </ol>
-          <div className="vt">→ appState.ts, line 28</div>
-        </div>
-      </div>
-      <div className="step s4">
-        <div className="n">4</div>
-        <h3>It catches repeats</h3>
-        <p>A known mistake’s fix arrives the moment it happens again.</p>
-        <div className="vis">
-          <div className="vr"><span className="bad">✗</span><span><code>yarn test:update --watch=false</code></span></div>
-          <div className="say">Run it plain; the script already passes --watch.</div>
-          <div className="vr"><span className="good">✓</span><span><code>yarn test:update</code></span></div>
-        </div>
-      </div>
-    </div>
-  </section>
-)
+      <div className="toc-progress" aria-hidden="true"><i style={{ transform: `scaleX(${progress})` }} /></div>
+    </nav>
+  )
+}
 
 export const App = () => {
   const [os, setOs] = useState<Os>(defaultOs)
-  const replayIntro = useRef<(() => void) | null>(null)
+  const { at, progress } = useReading()
 
   return (
     <TipProvider>
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
-        <symbol id="bh" viewBox="-50 -50 100 100">
-          <circle r="50" fill="#1a1815" />
-          <g transform="rotate(27)">
-            <path d="M-3 0 L0 -50 L3 0Z" fill="#f2eee5" />
-            <path d="M-3 0 L0 50 L3 0Z" fill="#f2eee5" opacity="0.55" />
-            <ellipse rx="41" ry="7" fill="#f2eee5" opacity="0.4" />
-            <ellipse rx="22" ry="4.2" fill="#f2eee5" />
-            <ellipse cy="-1.2" rx="5" ry="4.4" fill="#1a1815" />
-          </g>
-        </symbol>
-      </svg>
+      <div className="ar" id="top">
+        <Contents at={at} progress={progress} />
 
-      <Intro replay={replayIntro} />
-
-      <div className="page">
-        <header className="mast">
-          <a className="wordmark" href="#"><svg className="logo" viewBox="0 0 100 100" aria-hidden="true"><use href="#bh" /></svg><span className="wm-name">singularity</span></a>
-          <nav aria-label="Sections">
-            <a href="#how">How it works</a>
-            <a href="#try">Try it</a>
-            <a href="#results">Results</a>
-            <a href="#install">Install</a>
-            <a href="https://github.com/pandacover/singularity">GitHub</a>
-          </nav>
-        </header>
-
-        <div className="open">
-          <h1>Coding agents forget your codebase between sessions. <span>singularity remembers the way around it.</span></h1>
-          <div className="after">
-            <p className="lede">It learns from your past Claude Code sessions, then hands the next one where to edit, how to check, and which mistakes to avoid.</p>
-            <Install os={os} setOs={setOs} requirement="Needs Node.js 24 and git." />
-          </div>
-        </div>
-
-        <Turns />
-        <Mistake />
-        <HowItWorks />
-
-        <section id="try">
-          <header className="sh"><h2>Try it</h2><p>Type a task the way you would to your agent. Memory attaches what it knows.</p></header>
-          <TryIt />
-        </section>
-
-        <section id="results">
-          <header className="sh"><h2>Results</h2><p>Pre-registered, one Claude Code version, hidden tests. All 40 runs passed.</p></header>
-          <Results />
-        </section>
-
-        <section id="rules">
-          <header className="sh"><h2>Rules it keeps</h2><p>Layer by layer, from your machine up to your agent.</p></header>
-          <Stack />
-        </section>
-
-        <section id="install">
-          <header className="sh"><h2>Install</h2><p>One command, then a short setup that asks before it changes anything.</p></header>
-          <Install os={os} setOs={setOs} style={{ maxWidth: 760 }} />
-          <div className="setup">
-            <div>
-              <span className="label">Works with</span>
-              <table className="agents">
-                <thead><tr><th>Agent</th><th>Hands over</th><th>Warns</th><th>Learns</th></tr></thead>
-                <tbody>
-                  {AGENTS.map(([name, handsOver, warns, learns, note]) => (
-                    <tr key={name}>
-                      <td>{name}{note && <small>{note}</small>}</td>
-                      <td><Dot yes={handsOver} /></td><td><Dot yes={warns} /></td><td><Dot yes={learns} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <article className="ar-main">
+          <header className="ar-head">
+            <div className="kicker"><span>Research note</span><span>October 2026</span></div>
+            <h1>Procedural memory for coding agents</h1>
+            <p className="dek">Coding agents forget your codebase between sessions. singularity keeps the way around it: workflows learned from past runs, picked from the words of the next task, and handed to the agent before it starts looking.</p>
+            <div className="byline">
+              <span><a href="https://github.com/pandacover/singularity">pandacover/singularity</a></span>
+              <span>Code on GitHub · runs on your machine</span>
             </div>
-            <div>
-              <span className="label">Then, if you’re curious</span>
-              <dl className="cmds">
-                <dt>singularity status</dt><dd>What memory knows, per repo.</dd>
-                <dt>singularity recall "…"</dt><dd>What a task would be handed.</dd>
-                <dt>singularity learn</dt><dd>Learn now.</dd>
-                <dt>singularity uninstall</dt><dd>Take it out again.</dd>
-              </dl>
-            </div>
-          </div>
-        </section>
+          </header>
 
-        <footer>
-          <span>singularity · <button type="button" onClick={() => replayIntro.current?.()}>replay the intro</button></span>
-          <span>Every number here comes from real runs · <a href="https://github.com/pandacover/singularity">GitHub</a></span>
-        </footer>
+          <section className="abstract" aria-labelledby="abs">
+            <h2 id="abs" className="label">Abstract</h2>
+            <p>
+              An agent asked for the same kind of change twice starts from zero both times, and most of its turns go to
+              finding places it has found before. We keep, from past Claude Code sessions, the way through a kind of task
+              as a <em>workflow</em>: steps with blanks, and the phrases that call for it. At the next task, workflows are
+              picked by plain text matching, with no model call, filled in from the task, and pointed at today’s code. On a
+              four-change task in excalidraw whose kinds memory had learned, the median run took 9.5 turns instead of 28.5
+              and 423k tokens instead of 1.90M. On tasks it hadn’t learned, turns moved between 25% fewer and 17% more.
+            </p>
+            <dl className="glance">
+              <div><dt>−67%</dt><dd>turns, four learned changes</dd></div>
+              <div><dt>−78%</dt><dd>tokens, same task</dd></div>
+              <div><dt>40 / 40</dt><dd>runs passed hidden tests</dd></div>
+            </dl>
+          </section>
+
+          <div className="ar-install">
+            <Install os={os} setOs={setOs} requirement="Needs Node.js 24 and git. Setup asks before it changes anything." />
+          </div>
+
+          <section>
+            <H2 id="problem">The same task, from zero</H2>
+            <p>
+              Ask a coding agent to add a setting to <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> and
+              it will find its way: read the app state, search for how other settings are stored, find the menu, run the
+              tests, fail once on a flag, run them again. Ask it for a second setting the next day and it does all of that
+              again. Nothing it learned about the codebase survives the session.
+            </p>
+            <p>
+              Figure 1 shows four real runs of one such task without memory. They spent 110 turns between them, most of
+              them reading and searching. Yet all four end up making much the same change, in the same
+              places. That shared way through is what memory keeps.
+            </p>
+            <div className="wide"><Collapse /></div>
+          </section>
+
+          <section>
+            <H2 id="turns">Where the turns go</H2>
+            <p>
+              The cost of forgetting is not in the edits. An agent with or without memory makes about the same edits;
+              what differs is how long it looks before making them. In eight runs of a task asking for four changes at
+              once, runs without memory spent a median of 16.5 turns just reading and searching. With memory, 4.5.
+            </p>
+            <div className="wide"><Turns /></div>
+            <p>
+              Fewer turns is not only faster. Every turn rereads the conversation so far, so a run that is a third as long
+              costs well under a third as much: 423k tokens instead of 1.90M. Rereads are billed at a fraction of new text,
+              so dollars fall a little less: $0.30 against $0.81.
+            </p>
+          </section>
+
+          <section>
+            <H2 id="method">Workflows, not transcripts</H2>
+            <p>
+              Memory could keep whole sessions and hand them back, but a transcript of one task is a poor guide to the next:
+              it is long, and most of it is the searching we want to skip. Instead memory keeps <em>procedures</em>, in the
+              spirit of Agent Workflow Memory [1] and procedural graphs [2]: the steps runs of one kind of task shared, with
+              blanks where they differed, and the phrases in a task that call for them.
+            </p>
+            <div className="wide"><Steps /></div>
+            <p>
+              Records stay on your machine. Learning a workflow uses a model, a few cents a call, and runs on its own only
+              if you said yes at setup, within a daily limit. Picking and handing over never call one. The agent gets steps,
+              places and warnings, and still writes every line itself: we also tried drafting the change at task start,
+              measured it, and dropped it.
+            </p>
+            <p>
+              The last step needs no task at all. Some mistakes recur across sessions, like a flag a script already passes.
+              Memory keeps them with their fixes, and when one happens again, the fix arrives with the error.
+            </p>
+            <div className="wide"><Mistake /></div>
+          </section>
+
+          <section>
+            <H2 id="picking">Picking without a model</H2>
+            <p>
+              Picking happens before the agent’s first turn, so it has to be fast and it has to be cheap. Memory picks with
+              plain text: each workflow carries the phrases written for it when it was learned, and a task picks the
+              workflows whose phrases it contains. Words under a negation (“not in view mode”, “don’t add a shortcut”)
+              don’t count. It takes a fraction of a millisecond.
+            </p>
+            <p>
+              Try it below. The task is yours to edit; the list is every workflow in memory, and your words light up the
+              ones they attach. It is the memory the measured runs used.
+            </p>
+            <figure className="wide fig-try" aria-labelledby="f4t">
+              <div className="fig-head"><h3 id="f4t"><span className="label">Figure 4</span>Type a task; memory attaches what it knows</h3></div>
+              <TryIt />
+            </figure>
+          </section>
+
+          <section>
+            <H2 id="results">Results</H2>
+            <p>
+              Each measurement was pre-registered, run on one pinned Claude Code version, and checked by hidden tests the
+              agent never saw. All 40 runs passed. Figure 5 shows the cost of each task with memory as a share of its cost
+              without.
+            </p>
+            <div className="wide"><Results /></div>
+            <p>
+              Where memory had learned every kind of change in the task, it cut turns by two thirds. Where it knew two of
+              the four, by about a third. On tasks it hadn’t learned, it mostly cost what no memory costs.
+            </p>
+          </section>
+
+          <section>
+            <H2 id="limits">Limitations</H2>
+            <ul className="limits">
+              <li><b>It helps with what it has seen.</b> The savings come from kinds of change memory has learned. On a new kind, a small task cost up to 17% more turns.</li>
+              <li><b>Small samples.</b> Three to four runs per side, on two repositories, excalidraw and validator.js. The medians are honest; their spread is wide.</li>
+              <li><b>Learning costs a little.</b> Building workflows calls a model. It is opt-in and capped per day; picking and handing over never call one.</li>
+              <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. Runs are only compared within one version.</li>
+            </ul>
+          </section>
+
+          <section>
+            <H2 id="rules">Rules it keeps</H2>
+            <p>Memory sits between your machine and your agent. Each layer keeps one rule.</p>
+            <figure className="wide" aria-labelledby="f6t">
+              <div className="fig-head"><h3 id="f6t"><span className="label">Figure 6</span>Layer by layer, from your machine up to your agent</h3></div>
+              <Stack />
+            </figure>
+          </section>
+
+          <section>
+            <H2 id="use">Use it</H2>
+            <p>One command installs it; a short setup asks before it changes anything.</p>
+            <div className="use-install"><Install os={os} setOs={setOs} /></div>
+            <div className="use-grid">
+              <div>
+                <span className="label">Works with</span>
+                <table className="agents">
+                  <thead><tr><th>Agent</th><th>Hands over</th><th>Warns</th><th>Learns</th></tr></thead>
+                  <tbody>
+                    {AGENTS.map(([name, handsOver, warns, learns, note]) => (
+                      <tr key={name}>
+                        <td>{name}{note && <small>{note}</small>}</td>
+                        <td><Dot yes={handsOver} /></td><td><Dot yes={warns} /></td><td><Dot yes={learns} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <span className="label">Then, if you’re curious</span>
+                <dl className="cmds">
+                  <dt>singularity status</dt><dd>What memory knows, per repo.</dd>
+                  <dt>singularity recall "…"</dt><dd>What a task would be handed.</dd>
+                  <dt>singularity learn</dt><dd>Learn now.</dd>
+                  <dt>singularity uninstall</dt><dd>Take it out again.</dd>
+                </dl>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <H2 id="refs">References</H2>
+            <ol className="refs">
+              <li><span>Agent Workflow Memory. <a href="https://arxiv.org/abs/2409.07429">arXiv:2409.07429</a>, 2024.</span></li>
+              <li><span>Procedural Graphs: Self-Evolving Execution Structures for LLM Agents. <a href="https://arxiv.org/abs/2609.09153">arXiv:2609.09153</a>, 2026.</span></li>
+            </ol>
+          </section>
+
+          <footer className="ar-foot">
+            <span>singularity</span>
+            <span>Every number here comes from real runs · <a href="https://github.com/pandacover/singularity">GitHub</a></span>
+          </footer>
+        </article>
       </div>
     </TipProvider>
   )
