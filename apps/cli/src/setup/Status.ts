@@ -1,14 +1,17 @@
 /**
  * `singularity status`: which agents have memory and how, what memory knows
- * in each repo, whether learning runs on its own, and whether hooks have
- * been failing. One screen.
+ * in each repo and which of its sessions' commits it left out and why,
+ * whether learning runs on its own, and whether hooks have been failing.
+ * One screen.
  */
 import { Console, DateTime, Effect, FileSystem, Layer, Path } from "effect"
 import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
+import { commitRecordId } from "../records/Build.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { matchSubject } from "../records/Subjects.ts"
+import { isMiss, readSkips, type Skip } from "../workflows/Commits.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { learnState, spentToday, waitReason } from "../workflows/Learn.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
@@ -20,7 +23,7 @@ import { agentStates, detectAgents, findExecutable } from "./Wiring.ts"
 export const VERSION = "0.2.0"
 
 const REACH: Record<Reach, string> = {
-  "learns": "hands over memory, learns from sessions",
+  "learns": "hands over memory, learns from changes",
   "hands-over": "hands over memory",
   "on-request": "memory when you ask for it"
 }
@@ -34,6 +37,22 @@ export const recentHookErrors = Effect.fn("recentHookErrors")(function*(home: Ho
   const entries = text.split(/\r?\n/).filter((l) => /^\d{4}-\d\d-\d\dT/.test(l) && Date.parse(l.split(" ")[0]) >= since)
   return { count: entries.length, last: entries.at(-1)?.split(" ").slice(1).join(" ").slice(0, 120) }
 })
+
+/**
+ * A repo's commits memory left out, by reason, most common first: the latest
+ * reason for each, leaving out commits stored since and those memory didn't
+ * miss (someone's own work, copies, commits stored with others).
+ */
+export const leftOut = (skips: ReadonlyArray<Skip>, subject: string, stored: ReadonlySet<string>): Array<readonly [string, number]> => {
+  const latest = new Map<string, string>()
+  for (const s of skips) if (s.subject === subject) latest.set(s.commit, s.reason)
+  const counts = new Map<string, number>()
+  for (const [commit, reason] of latest) {
+    if (!isMiss(reason) || stored.has(commitRecordId(subject, commit))) continue
+    counts.set(reason, (counts.get(reason) ?? 0) + 1)
+  }
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+}
 
 const shortDate = (iso: string): string => {
   const d = new Date(iso)
@@ -75,6 +94,7 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
   )
   const prefs = yield* readLearn(home.root)
   const repo = yield* identifyRepo(o.cwd)
+  const skips = yield* readSkips(home.tenantDir)
   const lines = yield* Effect.gen(function*() {
     const subjects = yield* (yield* RecordStore).subjects()
     const here = repo === undefined ? undefined : matchSubject(subjects, repo)
@@ -88,23 +108,25 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
       const knows = state.memory.workflows.length > 0
         ? `${plural(state.memory.workflows.length, "workflow")}, ${plural(state.memory.pitfalls.length, "known mistake")}`
         : "no workflows yet"
-      const sessions = `${plural(state.records.length, "session")} recorded${state.learned.length > 0 ? `, ${state.learned.length} learned from` : ""}`
+      const changes = `${plural(state.records.length, "change")} stored${state.learned.length > 0 ? `, ${state.learned.length} learned from` : ""}`
       const waiting = waitReason(state, prefs.every, false)
       const next = waiting === undefined ? s.yellow("ready to learn") : s.dim(waiting)
       const mark = here?.id === subject.id ? s.cyan(" ← here") : ""
-      out.push(`    ${subject.name.padEnd(w)}${knows} · ${sessions}${last === undefined ? "" : ` · learned ${shortDate(last)}`}${mark}`)
+      out.push(`    ${subject.name.padEnd(w)}${knows} · ${changes}${last === undefined ? "" : ` · learned ${shortDate(last)}`}${mark}`)
       out.push(`    ${" ".repeat(w)}${next}`)
+      const missed = leftOut(skips, subject.id, ids)
+      if (missed.length > 0) out.push(`    ${" ".repeat(w)}${s.dim(`left out: ${missed.map(([reason, n]) => `${n} ${reason}`).join("; ")}`)}`)
     }
-    if (repo !== undefined && here === undefined) out.push(`    ${s.dim(`${path.basename(repo.root)} (here): no sessions recorded yet`)}`)
+    if (repo !== undefined && here === undefined) out.push(`    ${s.dim(`${path.basename(repo.root)} (here): no changes stored yet`)}`)
     return { out, spent: yield* spentToday() }
   }).pipe(Effect.provide(layers))
   yield* say(`\n  ${s.bold("Repos")}`)
-  if (lines.out.length === 0) yield* say(`    ${s.dim("none yet: memory starts with a Claude Code session that commits a change with passing tests")}`)
+  if (lines.out.length === 0) yield* say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)
   for (const l of lines.out) yield* say(l)
 
   // Learning and hooks.
   yield* say(`\n  ${s.bold("Learning")}  ${prefs.auto
-    ? `on its own, every ${plural(prefs.every, "new session")} · ${usd(lines.spent)} of ${usd(prefs.max_usd_per_day)} spent today`
+    ? `on its own, every ${plural(prefs.every, "new change")} · ${usd(lines.spent)} of ${usd(prefs.max_usd_per_day)} spent today ${s.dim("(the limit: singularity setup --daily-limit)")}`
     : `when you run ${s.cyan("singularity learn")}${lines.spent > 0 ? ` · ${usd(lines.spent)} spent today` : ""}`}`)
   const errors = yield* recentHookErrors(home)
   yield* say(`  ${s.bold("Hooks")}     ${errors.count === 0

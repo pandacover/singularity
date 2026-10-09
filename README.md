@@ -41,22 +41,30 @@ network can't reach, instead of waiting minutes.)
 | Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | skill |
 
 Setup also puts the `singularity` command on your PATH and asks whether
-memory may learn on its own (about $0.25 a round on your Claude account, at
-most $1 a day). It never touches the rest of an agent's settings, and keeps a
+memory may learn on its own (about $0.25 a round on your Claude account) and
+how much it may spend a day ($1 unless you choose; `--daily-limit` sets it
+without asking). It never touches the rest of an agent's settings, and keeps a
 copy of each file it changes (`<file>.before-singularity`).
 
-How memory gets to know a repo: a Claude Code, Codex or Hermes Agent session
-that ends with its change committed and its tests passing becomes a record. After a few records
-in a repo, memory learns workflows from them (where each kind of change goes,
-how it is checked, the mistakes made on the way). From then on, a task that
-needs them gets them with its first prompt, found in the code as it is that
-day. In a repo with earlier sessions in any of those three, setup offers to
-start from them.
+How memory gets to know a repo: when a Claude Code, Codex or Hermes Agent
+session commits a change and the last check before the commit passed (tests,
+a typecheck, a build or a lint; a change to docs alone needs none), the
+change becomes a record, with the prompts and steps that led to it since the
+session's previous commit. It is stored right after the commit, in the
+background; each task start and session end also looks for commits the
+session didn't make itself (one made in an editor afterwards, say) and stores
+them with the session whose edits they hold, once. Commits memory leaves out
+are logged with the reason (`tenants/<tenant>/skipped.jsonl`), and
+`singularity status` shows them. After a few records in a repo, memory learns
+workflows from them (where each kind of change goes, how it is checked, the
+mistakes made on the way). From then on, a task that needs them gets them
+with its first prompt, found in the code as it is that day. In a repo with
+earlier sessions in any of those three, setup offers to start from them.
 
 ```
 singularity status              # which agents have memory, and what it knows per repo
 singularity recall "<task>"     # what a task here would be handed (no model call)
-singularity learn [--past]      # learn now; --past starts from this repo's earlier sessions
+singularity learn [--past]      # learn now; --past first stores what this repo's earlier sessions committed
 singularity setup               # again, to update or change your answers
 singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
 ```

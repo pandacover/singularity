@@ -3,11 +3,11 @@
  *
  * - Claude Code: the whole memory. Its hooks hand memory over when a task
  *   starts (in two parts, as `workflows-split` was measured), warn when a
- *   known mistake's trigger appears, and record a session that ends with its
- *   change committed and its tests passing, which memory learns from.
+ *   known mistake's trigger appears, and store each change a session commits
+ *   with its checks passing, which memory learns from (workflows/Commits.ts).
  * - Codex has hooks in Claude Code's format: memory is handed over at task
- *   start (in one part), warnings arrive during the task, and a session is
- *   recorded at its end like Claude Code's, its log read as Claude Code's
+ *   start (in one part), warnings arrive during the task, and its changes are
+ *   stored like Claude Code's, its log read as Claude Code's
  *   (traces/Codex.ts).
  * - Hermes Agent gets what Codex gets through a plugin of memory's own, which runs
  *   the same hook script (HermesPlugin.ts): its shell hooks can add text to a

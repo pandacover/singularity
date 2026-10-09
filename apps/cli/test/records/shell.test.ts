@@ -66,6 +66,25 @@ describe("segmentKey and commandKeys", () => {
     assert.strictEqual(key("/usr/bin/grep -rn x ."), "grep")
   })
 
+  it("sees through time limits and nice", () => {
+    assert.strictEqual(key("timeout 600 npx vitest run test/setup"), "npx vitest")
+    assert.strictEqual(key("timeout -k 5 --signal=KILL 900 npm test"), "npm test")
+    assert.strictEqual(key("gtimeout 30s yarn test:app --watch=false"), "yarn test:app")
+    assert.strictEqual(key("nice -n 10 npm test"), "npm test")
+    assert.strictEqual(key("timeout 60 env CI=1 vitest run"), "vitest")
+  })
+
+  it("names each task a task runner runs", () => {
+    assert.deepStrictEqual(commandKeys("npx turbo run typecheck build test 2>&1 | head"), ["npx turbo typecheck", "npx turbo build", "npx turbo test"])
+    assert.deepStrictEqual(commandKeys("timeout 900 npx turbo run test --filter @singularity/cli"), ["npx turbo test"])
+    assert.deepStrictEqual(commandKeys("turbo test -- src/a.test.ts"), ["turbo test"])
+    assert.deepStrictEqual(commandKeys("nx run-many -t test lint --parallel=3"), ["nx test", "nx lint"])
+    assert.deepStrictEqual(commandKeys("npx nx affected --targets=test,build"), ["npx nx test", "npx nx build"])
+    assert.deepStrictEqual(commandKeys("nx run app:test:ci"), ["nx test"])
+    // The runner's own commands run no task.
+    assert.deepStrictEqual(commandKeys("npx turbo prune web; nx graph"), ["npx turbo", "nx"])
+  })
+
   it("leaves out filters on piped output", () => {
     assert.deepStrictEqual(
       commandKeys("yarn tsc 2>&1 | tail -8; yarn test:app --watch=false 2>&1 | Select-Object -Last 30; git status --short"),
@@ -86,6 +105,10 @@ describe("classification", () => {
     assert.strictEqual(classifyKey("yarn lint"), "lint")
     assert.strictEqual(classifyKey("yarn install"), "install")
     assert.strictEqual(classifyKey("git status"), "other")
+    assert.strictEqual(classifyKey("npx turbo test"), "test")
+    assert.strictEqual(classifyKey("npx turbo typecheck"), "typecheck")
+    assert.strictEqual(classifyKey("bundle rspec"), "test")
+    assert.strictEqual(classifyKey("python -m unittest"), "test")
   })
 
   it("knows commands that only look around", () => {
@@ -109,5 +132,8 @@ describe("comparing runs of a command", () => {
     assert.deepStrictEqual(positionalArgs(seg("yarn test:app --watch=false -u contextmenu"), "yarn test:app"), ["contextmenu"])
     assert.deepStrictEqual(positionalArgs(seg("yarn vitest run tests/a.test.tsx"), "yarn vitest"), ["tests/a.test.tsx"])
     assert.deepStrictEqual(positionalArgs(seg("yarn run test:app"), "yarn test:app"), [])
+    assert.deepStrictEqual(positionalArgs(seg("timeout 600 npx vitest run test/setup"), "npx vitest"), ["test/setup"])
+    // A task runner's other tasks aren't test files.
+    assert.deepStrictEqual(positionalArgs(seg("npx turbo run test typecheck"), "npx turbo test"), [])
   })
 })

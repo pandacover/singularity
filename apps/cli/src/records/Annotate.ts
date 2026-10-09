@@ -20,12 +20,13 @@
 import { DateTime, Effect, FileSystem, Path, Schema } from "effect"
 import { fileAt, git, hasCommit } from "../local/Git.ts"
 import type { ToolCall, Trace } from "../traces/index.ts"
-import { condenseTrace, EDIT_TOOLS, parseSession, SHELL_TOOLS } from "../traces/index.ts"
+import { condenseTrace, EDIT_TOOLS, SHELL_TOOLS } from "../traces/index.ts"
 import { callStructured } from "../eval/Llm.ts"
 import { relativizer } from "./Extract.ts"
 import type { ModelPart, WorkflowRecord } from "./Models.ts"
 import { FalseLead, Landmark, StepOrigin } from "./Models.ts"
 import { RecordStore } from "./RecordStore.ts"
+import { recordTrace } from "./Segment.ts"
 import { classifyKey, commandKeys } from "./Shell.ts"
 import { describeTrigger, eventOfCall, matchTrigger, Trigger, triggerProblem } from "./Triggers.ts"
 
@@ -423,7 +424,7 @@ export const annotateRecord = Effect.fn("annotateRecord")(function*(
   const record = yield* store.get(id)
   const subject = (yield* store.subjects()).find((s) => s.id === record.subject)
   const repo = yield* repoWithBase(record, subject?.paths ?? [])
-  const trace = yield* parseSession(record.run.log)
+  const trace = yield* recordTrace(record)
   const diff = yield* recordDiff(record, repo)
   const vocabulary = options.vocabulary ?? vocabularyOf(yield* store.find({ subject: record.subject, annotated: true }))
   const answer = yield* callStructured({

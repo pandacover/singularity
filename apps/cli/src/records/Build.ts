@@ -15,6 +15,9 @@ import { spotsOfDiff } from "./Spots.ts"
 /** One record per session: the subject, then the start of the session id. */
 export const recordId = (subject: string, sessionId: string): string => `${subject}-${sessionId.slice(0, 8)}`
 
+/** One record per commit, for sessions in daily use: the subject, then the start of the commit's hash (longer than a session's, so the two never meet). */
+export const commitRecordId = (subject: string, commit: string): string => `${subject}-${commit.slice(0, 12)}`
+
 export interface BuildInput {
   readonly tenant: string
   readonly subject: string
@@ -27,6 +30,8 @@ export interface BuildInput {
   /** Where the run came from; turns, tool calls and models come from the log. */
   readonly run: Omit<RunInfo, "outcome" | "turns" | "tool_calls" | "models" | "session_id">
   readonly createdAt: string
+  /** The record's id, when it isn't the session's (a commit's: commitRecordId). */
+  readonly id?: string | undefined
 }
 
 export const buildRecord = (input: BuildInput): WorkflowRecord => {
@@ -35,7 +40,7 @@ export const buildRecord = (input: BuildInput): WorkflowRecord => {
   const [first, ...rest] = input.trace.prompts.map((p) => p.text.trim())
   return {
     format: RECORD_FORMAT,
-    id: recordId(input.subject, input.trace.sessionId),
+    id: input.id ?? recordId(input.subject, input.trace.sessionId),
     tenant: input.tenant,
     subject: input.subject,
     created_at: input.createdAt,

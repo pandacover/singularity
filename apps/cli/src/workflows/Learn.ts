@@ -1,10 +1,10 @@
 /**
  * Learning in daily use, repository by repository: the records of a repo's
- * sessions become its workflows, written with cues so a task starting there
+ * sessions' changes become its workflows, written with cues so a task starting there
  * is handed them without a model call. The first time, memory is built from
  * the records (`workflows build`, then `workflows cues`); after that, every
- * few new sessions, a learning round revises it and keeps the revision only
- * if, replayed over the sessions, it fits them at least as well (`workflows
+ * few new changes, a learning round revises it and keeps the revision only
+ * if, replayed over the changes, it fits them at least as well (`workflows
  * evolve`). One candidate per round, so a round is one version.
  *
  * Memory keeps every repo's workflows in one store, but induction reads one
@@ -26,10 +26,10 @@ import { END, START, type WorkflowMemory } from "./Models.ts"
 import { forSubject } from "./Start.ts"
 import { type WorkflowCandidate, WorkflowStore } from "./WorkflowStore.ts"
 
-/** A first build needs two sessions: a place counts only where two runs edited it. */
+/** A first build needs two changes: a place counts only where two runs edited it. */
 export const MIN_FIRST = 2
 
-/** New sessions a learning round waits for, by default. */
+/** New changes a learning round waits for, by default. */
 export const DEFAULT_EVERY = 3
 
 /**
@@ -81,9 +81,9 @@ export const mergeSubject = (full: WorkflowMemory, subject: string, revised: Wor
 }
 
 export interface LearnConfig extends InduceConfig {
-  /** New sessions a learning round waits for. */
+  /** New changes a learning round waits for. */
   readonly every: number
-  /** Learn even with fewer new sessions than `every` (at least one). */
+  /** Learn even with fewer new changes than `every` (at least one). */
   readonly now?: boolean | undefined
 }
 
@@ -112,7 +112,7 @@ export interface LearnState {
   /**
    * Records no round has read yet, committed or rejected: what starts a
    * round, so that a round memory rejected isn't paid for again until new
-   * sessions arrive.
+   * changes arrive.
    */
   readonly fresh: ReadonlyArray<WorkflowRecord>
   readonly memory: WorkflowMemory
@@ -123,7 +123,7 @@ export const learnState = Effect.fn("learnState")(function*(subject: string) {
   const records = yield* (yield* RecordStore).find({ subject, outcome: "success" })
   const candidates = yield* store.candidates()
   const learnedIds = new Set(candidates.filter((c) => c.status === "committed").flatMap((c) => c.records))
-  // A round that was rejected isn't tried again until a new session arrives.
+  // A round that was rejected isn't tried again until a new change arrives.
   const seen = new Set(candidates.filter((c) => c.status !== "pending").flatMap((c) => c.records))
   return {
     records,
@@ -138,16 +138,16 @@ export const learnState = Effect.fn("learnState")(function*(subject: string) {
 export const waitReason = (state: LearnState, every: number, now: boolean): string | undefined => {
   const first = state.memory.workflows.length === 0
   if (first) {
-    if (state.fresh.length === 0) return state.records.length === 0 ? "no sessions recorded yet" : "nothing new since the last try"
-    if (state.records.length < MIN_FIRST) return `${state.records.length} of ${MIN_FIRST} sessions recorded for a first build`
+    if (state.fresh.length === 0) return state.records.length === 0 ? "no changes stored yet" : "nothing new since the last try"
+    if (state.records.length < MIN_FIRST) return `${state.records.length} of ${MIN_FIRST} changes stored for a first build`
     return undefined
   }
   const need = now ? 1 : every
-  if (state.fresh.length < need) return `${state.fresh.length} of ${need} new sessions recorded`
+  if (state.fresh.length < need) return `${state.fresh.length} of ${need} new changes stored`
   return undefined
 }
 
-/** Learn one subject: a first build, or a learning round when enough new sessions arrived. */
+/** Learn one subject: a first build, or a learning round when enough new changes arrived. */
 export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject, config: LearnConfig) {
   const store = yield* WorkflowStore
   const state = yield* learnState(subject.id)
@@ -170,7 +170,7 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
     if (built.workflows.length === 0) {
       const candidate = yield* propose(built, records, induced.rationale, induced.costUsd)
       yield* store.reject(candidate.id, "no workflows")
-      return { kind: "kept", subject: subject.id, reason: "the sessions showed no workflow to keep yet", costUsd: induced.costUsd } satisfies LearnOutcome
+      return { kind: "kept", subject: subject.id, reason: "the changes showed no workflow to keep yet", costUsd: induced.costUsd } satisfies LearnOutcome
     }
     const cued = yield* writeCues(config, built, evidence.runs)
     const costUsd = induced.costUsd + cued.costUsd
@@ -240,5 +240,5 @@ export const spentToday = Effect.fn("spentToday")(function*() {
     .reduce((sum, c) => sum + (c.cost_usd ?? 0), 0)
 })
 
-/** A rough price for learning from `sessions` sessions: what the eval memories cost to build and revise. */
-export const estimateUsd = (sessions: number): number => 0.1 + 0.05 * sessions
+/** A rough price for learning from `changes` changes: what the eval memories cost to build and revise. */
+export const estimateUsd = (changes: number): number => 0.1 + 0.05 * changes

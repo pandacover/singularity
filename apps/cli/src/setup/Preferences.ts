@@ -4,8 +4,8 @@
  *
  *     { "tenant": "local", "learn": { "auto": true, "every": 3, "max_usd_per_day": 1 } }
  *
- * - `auto`: learn on its own after a session is recorded, once a repo has
- *   `every` new sessions, in the background.
+ * - `auto`: learn on its own after a change is stored, once a repo has
+ *   `every` new changes, in the background.
  * - `max_usd_per_day`: what learning on its own may spend in a day; past it,
  *   learning waits for the next day or for `singularity learn`.
  */

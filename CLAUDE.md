@@ -71,10 +71,19 @@ runs the same hook script, `HermesPlugin.ts`, enabled by an edit of its
 the skill), their hook files
 (`HookFiles.ts`), the skill (`Skill.ts`), the
 `singularity` command on PATH (`Launcher.ts`), learning on its own after a
-recorded session (`AutoLearn.ts`) and the onboarding itself (`Setup.ts`).
-Learning in daily use goes repo by repo (`src/workflows/Learn.ts`), and a
-repo's earlier Claude Code sessions can be recorded after the fact
-(`src/workflows/Backfill.ts`).
+stored change (`AutoLearn.ts`, started in the background by `Background.ts`)
+and the onboarding itself (`Setup.ts`). In daily use memory stores a change
+when it is committed, one record per commit (or per command that made
+several), with the part of the session's log since its previous commit
+(`src/workflows/Commits.ts`, `run.segment` in a record; `records/Segment.ts`
+reads that part back): the tool-call hook starts it after a committing
+command (`src/workflows/StoreTrigger.ts`), and task start and session end
+sweep for commits made outside the agent, which go to the session whose
+edits they hold. Commits left out are logged with the reason
+(`skipped.jsonl`), and status shows them. Which sessions ran in a repo, in
+any of its worktrees, is `src/workflows/Transcripts.ts`; `learn --past` and
+setup store what earlier sessions committed. Learning in daily use goes repo
+by repo (`src/workflows/Learn.ts`).
 
 ## Writing Effect 4 code
 

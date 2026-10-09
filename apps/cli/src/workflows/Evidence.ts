@@ -13,8 +13,9 @@ import { createHash } from "node:crypto"
 import { fileAt, git } from "../local/Git.ts"
 import type { Detour, WorkflowRecord } from "../records/Models.ts"
 import { relativizer } from "../records/Extract.ts"
+import { recordTrace } from "../records/Segment.ts"
 import { classifyKey } from "../records/Shell.ts"
-import { EDIT_TOOLS, parseSession, type ToolCall } from "../traces/index.ts"
+import { EDIT_TOOLS, type ToolCall } from "../traces/index.ts"
 import { editsOfDiff, placeOfEdit } from "./Edits.ts"
 import { type Looking, lookingOf } from "./Lookups.ts"
 import type { Place } from "./Models.ts"
@@ -124,7 +125,7 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
   const spans: Array<ReadSpan & { readonly turn: number }> = []
   const none = { order, readFirst, spans, calls: [] as ReadonlyArray<ToolCall>, cwd: undefined as string | undefined, looking: null as Looking | null }
   if (!(yield* fs.exists(r.run.log).pipe(Effect.orElseSucceed(() => false)))) return none
-  const trace = yield* parseSession(r.run.log).pipe(Effect.option)
+  const trace = yield* recordTrace(r).pipe(Effect.option)
   if (Option.isNone(trace)) return none
   const relative = relativizer(trace.value.cwd)
   const reads: Array<string> = []

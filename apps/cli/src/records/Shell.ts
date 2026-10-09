@@ -176,22 +176,47 @@ const SUBCOMMAND_RUNNERS = new Set([
 const RUN_WORDS = new Set(["run", "run-script", "exec", "dlx", "x"])
 const INTERPRETERS = new Set(["node", "python", "python3", "py", "ruby", "perl", "php", "bash", "sh", "pwsh", "powershell", "tsx", "ts-node"])
 const PREFIXES = new Set(["sudo", "time", "env", "nice", "command", "exec", "nohup", "cmd", "/c"])
+/** Programs that run another for at most a while: `timeout 600 npm test`. */
+const TIME_LIMITS = new Set(["timeout", "gtimeout"])
 
 /** The program's name: no directory, no `.exe`/`.cmd`, lower case. */
 const programName = (word: string): string =>
   win32.basename(posix.basename(word)).replace(/\.(exe|cmd|bat|ps1)$/i, "").toLowerCase()
 
 const isFlag = (word: string) => word.startsWith("-") && word.length > 1
+const isAssignment = (word: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)
+
+/**
+ * Where the command proper starts among a segment's words: after variable
+ * assignments, prefixes (`sudo`, `nice -n 5`), a time limit with its options
+ * and duration (`timeout -k 5 600`), and PowerShell's call operator.
+ */
+const commandStart = (ws: ReadonlyArray<string>): number => {
+  let i = 0
+  while (i < ws.length) {
+    const w = ws[i].toLowerCase()
+    if (isAssignment(ws[i])) i++
+    else if (TIME_LIMITS.has(programName(w))) {
+      i++
+      while (i < ws.length && isFlag(ws[i])) i += /^(-k|-s|--kill-after|--signal)$/.test(ws[i]) ? 2 : 1
+      if (i < ws.length && /^\d+(\.\d+)?[smhd]?$/.test(ws[i])) i++
+    } else if (PREFIXES.has(w)) {
+      i++
+      if (w === "nice") while (i < ws.length && isFlag(ws[i])) i += ws[i] === "-n" ? 2 : 1
+    } else break
+  }
+  // PowerShell's call operator: `& "C:\...\yarn.cmd" test`.
+  if (ws[i] === "&" || ws[i] === ".") i++
+  return i
+}
 
 /**
  * What a segment runs: `yarn test:update`, `npx vitest`, `git diff`,
  * `node -e`, `python3 script.py`, `grep`. Undefined for an empty segment.
+ * A task runner's tasks (`turbo run typecheck test`) are `segmentKeys`.
  */
 export const segmentKey = (segment: Segment): string | undefined => {
-  const ws = [...segment.words]
-  while (ws.length > 0 && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(ws[0]) || PREFIXES.has(ws[0].toLowerCase()))) ws.shift()
-  // PowerShell's call operator: `& "C:\...\yarn.cmd" test`.
-  if (ws[0] === "&" || ws[0] === ".") ws.shift()
+  const ws = segment.words.slice(commandStart(segment.words))
   if (ws.length === 0) return undefined
   const program = programName(ws[0])
   const args = ws.slice(1)
@@ -219,6 +244,70 @@ export const segmentKey = (segment: Segment): string | undefined => {
   return program
 }
 
+/** Task runners whose arguments name the tasks they run: `turbo run typecheck test`, `nx run-many -t test`. */
+const TASK_RUNNERS = new Set(["turbo", "nx"])
+/** Turbo's and Nx's own commands, which run no task of the repo's. */
+const RUNNER_COMMANDS = new Set([
+  "prune", "daemon", "login", "logout", "link", "unlink", "gen", "generate", "g", "ls", "info", "telemetry", "query",
+  "watch", "boundaries", "scan", "bin", "completion", "devtools", "graph", "show", "reset", "migrate", "list", "report",
+  "init", "add", "release", "format", "format:check", "format:write", "connect", "repair", "sync", "view-logs", "exec"
+])
+/** Their flags that take the next word as a value. */
+const RUNNER_VALUE_FLAGS = new Set([
+  "--filter", "-F", "--concurrency", "--cache-dir", "--output-logs", "--log-order", "--env-mode", "--graph", "--summarize",
+  "--projects", "-p", "--exclude", "--configuration", "-c", "--parallel", "--base", "--head", "--files"
+])
+/** Nx's flags that name the targets to run: `-t test lint`, `--targets=test,lint`. */
+const NX_TARGET_FLAGS = new Set(["-t", "--target", "--targets"])
+
+/** The tasks a task runner's arguments name, in order. */
+const runnerTasks = (runner: string, args: ReadonlyArray<string>): Array<string> => {
+  const plain: Array<string> = []
+  const targets: Array<string> = []
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i]
+    // What follows `--` goes to the tasks themselves.
+    if (w === "--") break
+    const [flag, value] = w.split("=", 2)
+    if (runner === "nx" && NX_TARGET_FLAGS.has(flag)) {
+      if (value !== undefined) targets.push(...value.split(","))
+      else while (i + 1 < args.length && !isFlag(args[i + 1])) targets.push(...args[++i].split(","))
+    } else if (isFlag(w)) {
+      if (value === undefined && RUNNER_VALUE_FLAGS.has(w)) i++
+    } else plain.push(w)
+  }
+  const [command, ...rest] = plain
+  if (command === undefined) return targets
+  if (runner === "nx") {
+    if (command === "run") return rest.flatMap((r) => (r.split(":")[1] === undefined ? [] : [r.split(":")[1]]))
+    if (command === "run-many" || command === "affected") return targets
+  }
+  if (command === "run") return rest
+  return RUNNER_COMMANDS.has(command) ? [] : runner === "nx" ? [command] : plain
+}
+
+/**
+ * Every key a segment runs: its key, or for a task runner one key per task
+ * (`npx turbo run typecheck test` runs `npx turbo typecheck` and `npx turbo test`).
+ */
+export const segmentKeys = (segment: Segment): Array<string> => {
+  const key = segmentKey(segment)
+  if (key === undefined) return []
+  const parts = key.split(" ")
+  const runner = parts[parts.length - 1]
+  if (parts.length > 2 || !TASK_RUNNERS.has(runner)) return [key]
+  const ws = segment.words.slice(commandStart(segment.words))
+  const at = ws.findIndex((w, i) => (i === 0 ? programName(w) : w) === runner)
+  const tasks = runnerTasks(runner, ws.slice(at + 1))
+  return tasks.length === 0 ? [key] : [...new Set(tasks.map((t) => `${key} ${t}`))]
+}
+
+/** A key of one task a task runner runs (`npx turbo test`): its arguments name tasks, not test files. */
+const isRunnerTaskKey = (key: string): boolean => {
+  const parts = key.split(" ")
+  return parts.length >= 2 && TASK_RUNNERS.has(parts[parts.length - 2])
+}
+
 /** Programs that only filter or page another command's output. */
 const FILTERS = new Set([
   "tail", "head", "grep", "egrep", "fgrep", "rg", "awk", "sort", "uniq", "wc", "cut", "tr", "less", "more", "cat",
@@ -237,7 +326,7 @@ export const mainSegments = (segments: ReadonlyArray<Segment>): Array<Segment> =
 
 /** Keys of what a command line runs, in order, without repeats. */
 export const commandKeys = (line: string): Array<string> => [
-  ...new Set(mainSegments(splitCommand(line)).map(segmentKey).filter((k): k is string => k !== undefined))
+  ...new Set(mainSegments(splitCommand(line)).flatMap(segmentKeys))
 ]
 
 /** Programs and subcommands that only look around: a failed search isn't a mistake to warn about. */
@@ -269,7 +358,7 @@ export type KeyClass = "test" | "typecheck" | "lint" | "build" | "install" | "ot
 export const classifyKey = (key: string): KeyClass => {
   const k = key.toLowerCase()
   if (/typecheck|type-check|\btsc\b|\bmypy\b|\bpyright\b|\bcargo check\b|\bgo vet\b/.test(k)) return "typecheck"
-  if (/\btest|test:|\bvitest\b|\bjest\b|\bpytest\b|\bmocha\b|\bava\b|\bplaywright\b|\bcypress\b|-m pytest/.test(k)) return "test"
+  if (/\btest|test:|\bvitest\b|\bjest\b|\bpytest\b|\bmocha\b|\bava\b|\bplaywright\b|\bcypress\b|-m pytest|\bunittest\b|\brspec\b|\bphpunit\b|\bnextest\b|\bctest\b|\btox\b/.test(k)) return "test"
   if (/lint|eslint|prettier|\bruff\b|flake8|\bfmt\b|format/.test(k)) return "lint"
   if (/build|compile|bundle/.test(k)) return "build"
   if (/\binstall\b|\bci\b|^(yarn|pnpm|bun|npm) add\b|^pip3? install/.test(k)) return "install"
@@ -282,10 +371,9 @@ export const classifyKey = (key: string): KeyClass => {
  * runs no check.
  */
 export const checksOf = (line: string): string => {
-  const checks = mainSegments(splitCommand(line)).filter((s) => {
-    const key = segmentKey(s)
-    return key !== undefined && ["test", "typecheck", "lint", "build"].includes(classifyKey(key))
-  })
+  const checks = mainSegments(splitCommand(line)).filter((s) =>
+    segmentKeys(s).some((key) => ["test", "typecheck", "lint", "build"].includes(classifyKey(key)))
+  )
   return checks.length === 0 ? line.trim() : checks.map((s) => s.words.join(" ")).join(" && ")
 }
 
@@ -297,7 +385,7 @@ export const keyWord = (key: string): string => {
 
 /** The segment of `line` that runs `key`, if any (the last one, when it runs several times). */
 export const segmentFor = (line: string, key: string): Segment | undefined =>
-  mainSegments(splitCommand(line)).filter((s) => segmentKey(s) === key).pop()
+  mainSegments(splitCommand(line)).filter((s) => segmentKeys(s).includes(key)).pop()
 
 /** Words dropped from and added to a segment, as multisets: what changed between two runs of one command. */
 export const wordChange = (before: Segment, after: Segment): { removed: Array<string>; added: Array<string> } => {
@@ -325,9 +413,10 @@ export const filtersTestNames = (segment: Segment): boolean =>
  * A test command without any runs the whole suite.
  */
 export const positionalArgs = (segment: Segment, key: string): Array<string> => {
+  if (isRunnerTaskKey(key)) return []
   const ws = segment.words
-  let start = ws.findIndex((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) && !PREFIXES.has(w.toLowerCase()) && w !== "&")
-  if (start < 0) return []
+  let start = commandStart(ws)
+  if (start >= ws.length) return []
   const parts = key.split(" ")
   if (parts.length > 1) {
     const at = ws.indexOf(parts[parts.length - 1], start + 1)

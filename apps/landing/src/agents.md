@@ -6,14 +6,14 @@ Source: https://github.com/pandacover/singularity
 
 ## What it does
 
-1. Record: when a Claude Code, Codex or Hermes Agent session ends with its change committed and its tests passing, memory keeps a record of it: what changed, where, which commands ran, what went wrong. Records stay on the machine.
+1. Record: when a Claude Code, Codex or Hermes Agent session commits a change after its checks pass (tests, a typecheck, a build or a lint; docs need none), memory keeps a record of that change: what changed, where, which commands ran, what went wrong. Records stay on the machine.
 2. Learn: after a few records in a repository, memory learns workflows from them: steps with blanks, where each kind of change goes, how it is checked, and the phrases in a task that call for it. Learning calls a model.
 3. Hand over: at task start, workflows whose phrases appear in the task are picked by plain text matching (no model call), their blanks filled from the task, and their places found in the code as it is that day. The agent gets steps, places and warnings, and still writes every line itself.
 4. Catch repeats: during a task, when a known mistake happens again, its fix arrives with the error.
 
 ## Before installing
 
-Ask your user first. Setup changes agent settings, and by default lets memory learn on its own on their Claude account: about $0.25 a round, at most $1 a day. Run without a terminal, or with `--yes`, setup asks nothing and takes these defaults.
+Ask your user first. Setup changes agent settings, and by default lets memory learn on its own on their Claude account: about $0.25 a round, at most $1 a day. Ask them what daily limit they want, and pass it as `--daily-limit <dollars>`. Run without a terminal, or with `--yes`, setup asks nothing and takes these defaults.
 
 Needs git. Needs Node.js 24 or later; without it, the installer fetches its own copy into `~/.singularity/node` and changes nothing else. Learning needs Claude Code.
 

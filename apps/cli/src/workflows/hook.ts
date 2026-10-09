@@ -12,11 +12,14 @@
  * from two hooks (`SINGULARITY_HANDOVER_PARTS` says the same for eval runs).
  * The same script serves Codex, Gemini CLI and Droid, whose hooks speak
  * Claude Code's format, and Hermes Agent, whose plugin (src/setup/HermesPlugin.ts)
- * speaks it for Hermes. Claude Code's, Codex's and Hermes's sessions are
- * recorded at their end (Hermes's plugin names its session in its database).
- * When a recorded session makes it time to learn, and the user turned
+ * speaks it for Hermes. Memory stores a change when it is committed: after a
+ * tool call that ran a committing command, a background run stores the
+ * commit with the steps that led to it (src/workflows/Commits.ts), and every
+ * task start and session end starts one too, for commits made outside the
+ * agent. When a stored change makes it time to learn, and the user turned
  * learning on its own on, a learning round starts in the background
- * (src/setup/AutoLearn.ts).
+ * (src/setup/AutoLearn.ts). Eval runs store nothing: they measure memory as
+ * it was.
  *
  * The event's JSON comes on stdin; what the model should see goes to stdout as
  * `hookSpecificOutput.additionalContext`. Each event loads only its own
@@ -71,7 +74,8 @@ const logError = (event: string, error: unknown) => {
 
 const event = process.argv[2] ?? ""
 const parts = process.argv.find((a) => a.startsWith("--parts="))?.slice("--parts=".length) ?? process.env.SINGULARITY_HANDOVER_PARTS
-if (process.env.SINGULARITY_HOOKS !== "off" || process.argv.includes("--eval-run")) {
+const evalRun = process.argv.includes("--eval-run")
+if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
   try {
     const stdin = await readStdin()
     let out: string | undefined
@@ -80,16 +84,21 @@ if (process.env.SINGULARITY_HOOKS !== "off" || process.argv.includes("--eval-run
       const kind = sessionKind(stdin)
       if (kind === "code") out = await (await import("./HookTool.ts")).postToolUse(stdin)
       else if (kind === "web") out = await (await import("../web/HookStep.ts")).webPostToolUse(stdin)
+      // Most calls end here: no word a committing command has (StoreTrigger's MAY_COMMIT), no module loaded.
+      if (!evalRun && /commit|merge|cherry-pick|revert|\bam\b|pull|rebase/i.test(stdin)) {
+        const trigger = await import("./StoreTrigger.ts")
+        if (trigger.ranCommit(stdin)) trigger.startStoring(stdin)
+      }
     } else if (event === "user-prompt-submit") {
       out = await (await import("../layer/Api.ts")).startFromHook(stdin, 1, parts)
+      if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
     } else if (event === "user-prompt-submit-2") {
       out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2, parts)
     } else if (event === "session-end") {
       if (sessionKind(stdin) === "web") {
         await (await import("../web/HookStep.ts")).webSessionEnd(stdin)
-      } else {
-        const outcome = await (await import("./HookEnd.ts")).sessionEnd(stdin)
-        if (outcome?.reason === "recorded" && outcome.subject !== undefined) await (await import("../setup/AutoLearn.ts")).afterRecord(outcome.subject)
+      } else if (!evalRun) {
+        (await import("./StoreTrigger.ts")).startStoring(stdin)
       }
     } else {
       logError(event, new Error(`unknown hook event ${JSON.stringify(event)}`))

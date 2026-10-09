@@ -38,7 +38,7 @@ The eval harness uses the hooks, like users do. It never takes a shortcut into m
   - What **evidence** a session gives: for code, its diff and where each edit went; for the web, its actions and the part of the page each acted on, and how it went.
   - What a **place** is: for code, the chain of blocks around an edit; for the web, the chain of page regions around an action (`Orders › region "Actions" › button "More actions"`), with the task's own values left as blanks.
   - How a place is **found at use**: for code, in the working tree at task start; for the web, in the page snapshot when the agent opens that page (the `step` call), so pointers arrive mid-task.
-  - What **success** is: for code, committed with passing tests (or the eval's checks); for the web, the task's check and its feedback.
+  - What **success** is: for code, committed after its last check passed (tests, a typecheck, a build or a lint; docs alone need none), or the eval's checks; for the web, the task's check and its feedback.
   - What **warnings watch**: for code, commands, edits and errors; for the web, also what the page shows and which control an action targets.
 
 The core never knows which reader it serves: workflows with blanks, the graph between them, pitfalls, cues for picking without a model, the store and its versions, learning rounds with a gate. One memory per tenant holds every subject, code and web.

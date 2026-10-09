@@ -20,14 +20,15 @@ import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
-import { backfill, type PastSession, pastSessions } from "../workflows/Backfill.ts"
+import { storePast } from "../workflows/Commits.ts"
+import { type PastSession, pastSessions } from "../workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { estimateUsd, learnSubject, type LearnOutcome } from "../workflows/Learn.ts"
 import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
 import { CLI } from "./AutoLearn.ts"
 import { addToPath, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
-import { confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
+import { askDollars, confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
 import { detectAgents, findClaude, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
@@ -45,6 +46,8 @@ export interface SetupOptions {
   /** Whether there is a person at a terminal to ask. */
   readonly interactive: boolean
   readonly color: boolean
+  /** What learning on its own may spend a day, in dollars, when the user said so already (`--daily-limit`): not asked. */
+  readonly dailyLimit?: number | undefined
 }
 
 export const INTRO = [
@@ -58,7 +61,7 @@ export const INTRO = [
 export const WINDOWS_INSTALL = "irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex"
 
 const REACH: Record<Reach, string> = {
-  "learns": "hands over memory at task start, learns from sessions",
+  "learns": "hands over memory at task start, learns from changes",
   "hands-over": "hands over memory at task start",
   "on-request": "memory when you ask for it"
 }
@@ -89,7 +92,7 @@ export const describeOutcome = (s: Style, o: LearnOutcome): ReadonlyArray<string
   if (o.kind === "kept") return [`${s.dim("·")} ${o.reason} (${usd(o.costUsd)})`]
   const what = `${plural(o.workflows.length, "workflow")} and ${plural(o.pitfalls, "known mistake")}`
   return [
-    `${s.green("✓")} ${o.round === "build" ? "Learned" : "Now knows"} ${what} from ${plural(o.sessions, "session")} (${usd(o.costUsd)}):`,
+    `${s.green("✓")} ${o.round === "build" ? "Learned" : "Now knows"} ${what} from ${plural(o.sessions, "change")} (${usd(o.costUsd)}):`,
     ...o.workflows.slice(0, 6).map((name) => `    ${s.dim("·")} ${name}`),
     ...(o.workflows.length > 6 ? [`    ${s.dim(`· and ${o.workflows.length - 6} more`)}`] : [])
   ]
@@ -205,15 +208,20 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     return yield* done(s, o, chosen, bin, newTerminal)
   }
   for (const line of [
-    "Memory learns from Claude Code, Codex and Hermes Agent sessions that end",
-    `with their change committed and the tests passing. After every ${prefs.every} such`,
-    `sessions in a repo it can learn on its own, in the background: about ${usd(ROUND_USD)}`,
-    `a round on your Claude account, at most ${usd(prefs.max_usd_per_day)} a day.`
+    "Memory keeps each change a Claude Code, Codex or Hermes Agent session commits",
+    `with its checks passing, as it is committed. After every ${prefs.every} such changes in a`,
+    `repo it can learn on its own, in the background: about ${usd(ROUND_USD)} a round on`,
+    `your Claude account, up to a daily limit you choose.`
   ]) yield* item(line)
   if (asking) yield* say()
   const auto = yield* ask("Learn on its own?", (yield* learnIsSet(home.root)) ? prefs.auto : true)
-  yield* writeLearn({ ...prefs, auto }, home.root)
-  yield* item(auto ? `${s.green("✓")} learning on its own` : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}`)
+  const limit = o.dailyLimit !== undefined
+    ? Math.max(0, o.dailyLimit)
+    : auto
+    ? yield* askDollars("At most how many dollars a day?", prefs.max_usd_per_day, asking).pipe(Effect.orElseSucceed(() => prefs.max_usd_per_day))
+    : prefs.max_usd_per_day
+  yield* writeLearn({ ...prefs, auto, max_usd_per_day: limit }, home.root)
+  yield* item(auto ? `${s.green("✓")} learning on its own, at most ${usd(limit)} a day` : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}`)
 
   const repo = yield* identifyRepo(o.cwd)
   const homes = sessionHomes(dirs, chosen.map((a) => a.id))
@@ -222,16 +230,16 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     const name = path.basename(repo.root)
     yield* say()
     yield* item(`This repo, ${s.bold(name)}, has ${pastCount(past.map((p) => p.agent))}.`)
-    const read = yield* withSpinner("reading them", backfill(repo.root, homes, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
+    const read = yield* withSpinner("reading them", storePast(repo.root, homes, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
     if (read._tag === "Failure") {
       yield* item(`${s.red("✗")} couldn't read them (${read.failure.message}); ${s.cyan("singularity learn --past")} tries again`)
       return yield* done(s, o, chosen, bin, newTerminal)
     }
-    const n = read.success.recorded.length
+    const n = read.success.stored.length + read.success.existing.length
     if (n === 0) {
-      yield* item(`${s.dim("·")} none of them committed a change with passing tests; memory learns as you work`)
+      yield* item(`${s.dim("·")} they committed no change with passing checks; memory learns as you work`)
     } else {
-      yield* item(`${s.green("✓")} ${n === 1 ? "one of them" : `${n} of them`} committed a change with passing tests`)
+      yield* item(`${s.green("✓")} ${n === 1 ? "one change" : `${n} changes`} they committed with passing checks`)
       const subject = yield* Effect.gen(function*() {
         return yield* (yield* RecordStore).subjectFor(repo)
       }).pipe(Effect.provide(layers))
@@ -278,7 +286,7 @@ const done = Effect.fnUntraced(function*(s: Style, o: SetupOptions, chosen: Read
   const commands: ReadonlyArray<readonly [string, string]> = [
     ["singularity status", "what memory knows, repo by repo"],
     ["singularity recall \"<task>\"", "what a task would be handed"],
-    ["singularity learn", "learn from new sessions now"],
+    ["singularity learn", "learn from new changes now"],
     ["singularity uninstall", "take it all out (memory stays)"]
   ]
   const w = Math.max(...commands.map(([c]) => c.length)) + 3

@@ -239,6 +239,9 @@ describe("setup", () => {
     }
     expect(existsSync(join(memory, "bin", "singularity"))).toBe(true)
     expect((await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).auto).toBe(true)
+    // The daily limit is the user's: given once, it stays until given again.
+    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, dailyLimit: 2.5 })))
+    expect((await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).max_usd_per_day).toBe(2.5)
 
     // Run again: nothing doubles.
     const before = readFileSync(join(home, ".claude", "settings.json"), "utf-8")
