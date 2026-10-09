@@ -1,4 +1,4 @@
-:root {
+:root, [data-view="human"] {
   --paper: #f2eee5;
   --paper-hi: #f8f5ee;
   --tile: #e2dccf;
@@ -10,6 +10,18 @@
   --red: #d33c1d;
   --serif: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+/* the page for agents: the same palette, inverted */
+[data-view="agents"] {
+  --paper: #0d111a;
+  --paper-hi: #070a11;
+  --tile: #1d2330;
+  --ink: #e5e7ea;
+  --ink-2: #b4b9c1;
+  --mid: #707885;
+  --muted: #757c89;
+  --rule: #2a3140;
+  --red: #2cc3e2;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -24,6 +36,8 @@ body::before {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 300; opacity: 0.55; mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+/* on the dark page the grain lightens instead of darkening */
+[data-view="agents"] body::before { mix-blend-mode: screen; opacity: 0.35; }
 ::selection { background: rgba(211, 60, 29, 0.18); }
 a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; text-decoration-color: var(--muted); }
 a:hover { text-decoration-color: var(--red); }
@@ -331,7 +345,9 @@ html { scroll-behavior: smooth; }
 .toc { grid-column: 1; position: sticky; top: 0; align-self: start; height: 100vh; }
 .toc-bar { display: none; }
 .toc-body { display: flex; flex-direction: column; height: 100%; padding: 30px 0 28px; overflow-y: auto; scrollbar-width: none; }
-.toc-home { display: block; color: var(--ink); margin-bottom: 52px; }
+.toc-home { display: block; color: var(--ink); margin-bottom: 22px; }
+.toc-body .vt { margin-bottom: 44px; }
+.toc-top { display: none; }
 .toc-h { margin-bottom: 14px; }
 .toc ol { list-style: none; margin: 0; padding: 0; }
 .toc-body > ol > li { position: relative; }
@@ -392,12 +408,45 @@ html { scroll-behavior: smooth; }
 .refs li::before { content: "[" counter(ref) "]"; font: 12.5px var(--mono); color: var(--muted); }
 .ar-foot { margin-top: 96px; border-top: 1px solid var(--ink); padding: 18px 0 48px; font: 12px/1.75 var(--mono); color: var(--muted); display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
 
+/* who the page is for: people, or agents */
+.vt { display: inline-flex; align-self: flex-start; border: 1px solid var(--rule); background: var(--paper-hi); }
+.vt button { font: 12px var(--mono); padding: 5px 12px; color: var(--muted); }
+.vt button:hover { color: var(--ink); }
+.vt button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+
+/* the page for agents: its markdown, as it is */
+.ar-main.ag > header { max-width: none; }
+.ag-head { padding: 92px 0 28px; }
+.ag-head p { margin-top: 16px; max-width: var(--text); font-size: 17.5px; line-height: 1.6; color: var(--ink-2); }
+.ag-actions { display: flex; align-items: center; gap: 20px; margin-top: 20px; font: 12.5px var(--mono); }
+.md { margin: 0 0 40px; padding: 24px 28px; background: var(--paper-hi); border: 1px solid var(--rule); font: 13.5px/1.7 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; font-variant-ligatures: none; }
+.md .h { color: var(--ink); font-weight: 500; }
+.md .q { color: var(--ink); }
+.md .f { color: var(--muted); }
+.md .c { color: var(--ink); }
+
+/* the Product Hunt badge, under the install command */
+.ph { display: inline-block; margin-top: 22px; }
+.ph img { display: block; }
+
+/* switching who the page is for: a grid over the window, and the other page showing through its turned boxes */
+.flip { position: fixed; inset: 0; z-index: 250; pointer-events: none; }
+.flip-page { position: absolute; inset: 0; overflow: hidden; background: var(--paper); color: var(--ink); }
+.flip-grid { position: absolute; inset: 0; overflow: visible; }
+.flip-grid line { stroke: var(--mid); stroke-width: 1; opacity: 0.55; }
+
 /* ---------- narrow: the contents fold into a bar at the top ---------- */
 @media (max-width: 900px) {
   .ar { grid-template-columns: minmax(0, 1fr); padding: 0 20px; }
   .ar [id] { scroll-margin-top: 64px; }
   .toc { grid-column: 1; height: auto; z-index: 50; margin: 0 -20px; background: var(--paper); border-bottom: 1px solid var(--rule); }
-  .toc-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; height: 48px; padding: 0 20px; text-align: left; }
+  .toc-top { display: flex; align-items: center; gap: 12px; padding-right: 20px; }
+  .toc-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; flex: 1; min-width: 0; height: 48px; padding: 0 0 0 20px; text-align: left; }
+  a.toc-bar { display: flex; color: var(--ink); }
+  .toc-body .vt { display: none; }
+  .toc-top .vt { align-self: center; flex: none; }
+  .ag-head { padding-top: 40px; }
+  .md { padding: 18px 16px; font-size: 12.5px; }
   .toc-bar .cur { font-size: 15.5px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
   .toc-bar .chev { font: 16px var(--mono); color: var(--muted); }
   .toc-body { display: none; position: absolute; left: 0; right: 0; top: 48px; height: auto; max-height: 70vh; padding: 16px 20px 20px; background: var(--paper); border-bottom: 1px solid var(--rule); box-shadow: 0 24px 40px -28px rgba(26, 24, 21, 0.5); }

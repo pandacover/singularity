@@ -1,5 +1,7 @@
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react"
+import AGENTS_MD from "./agents.md?raw"
 import { Collapse } from "./figures/Collapse.tsx"
+import { Flip } from "./Flip.tsx"
 import { Mistake } from "./figures/Mistake.tsx"
 import { Results } from "./figures/Results.tsx"
 import { Stack } from "./figures/Stack.tsx"
@@ -8,6 +10,7 @@ import { Turns } from "./figures/Turns.tsx"
 import { defaultOs, Install, type Os } from "./Install.tsx"
 import { Logo } from "./Logo.tsx"
 import { Steps } from "./Steps.tsx"
+import { reduced } from "./lib.ts"
 import { TipProvider } from "./Tip.tsx"
 
 // The landing page, written as a research article: a centred column of prose, figures wider than it on both
@@ -27,10 +30,11 @@ const IDS = TOC.map((s) => s.id)
 
 /** The section being read: the last one whose heading has passed a line near the top, or the last of all once the
  * page can't scroll further; and how far through the page the reader is. */
-const useReading = () => {
+const useReading = (still: boolean) => {
   const [at, setAt] = useState("")
   const [progress, setProgress] = useState(0)
   useEffect(() => {
+    if (still) return
     let raf = 0
     const read = () => {
       raf = 0
@@ -53,6 +57,70 @@ const useReading = () => {
   return { at, progress }
 }
 
+/** Who the page is written for: people, or coding agents, which get it as plain markdown (also at /llms.txt), in
+ * the inverted theme. Kept in the address as ?for=agents, so a link can open either. */
+type View = "human" | "agents"
+type Go = (v: View) => void
+const viewOf = (): View => (new URLSearchParams(location.search).get("for") === "agents" ? "agents" : "human")
+const keepView = (v: View) => {
+  const url = new URL(location.href)
+  if (v === "agents") url.searchParams.set("for", "agents")
+  else url.searchParams.delete("for")
+  url.hash = ""
+  history.replaceState(null, "", url)
+}
+
+const ViewToggle = ({ view, go }: { readonly view: View; readonly go: Go }) => (
+  <div className="vt" role="group" aria-label="Read as">
+    <button type="button" aria-pressed={view === "human"} onClick={() => go("human")}>Human</button>
+    <button type="button" aria-pressed={view === "agents"} onClick={() => go("agents")}>Agents</button>
+  </div>
+)
+
+/** The markdown, shown as it is, with its headings and code set apart so a person can follow it too. */
+const Markdown = ({ text }: { readonly text: string }) => {
+  let code = false
+  return (
+    <pre className="md">
+      {text.split(/\r?\n/).map((line, i) => {
+        const fence = line.startsWith("```")
+        const cls = fence ? "f" : code ? "c" : line.startsWith("#") ? "h" : line.startsWith(">") ? "q" : undefined
+        if (fence) code = !code
+        return <span key={i} className={cls}>{line}{"\n"}</span>
+      })}
+    </pre>
+  )
+}
+
+const ForAgents = () => {
+  const [done, setDone] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(AGENTS_MD) } catch { return }
+    setDone(true)
+    setTimeout(() => setDone(false), 1600)
+  }
+  return (
+    <article className="ar-main ag">
+      <header className="ag-head">
+        <div className="kicker"><span>For agents</span><span>Plain markdown</span></div>
+        <p>This page for a coding agent to read: what singularity does, how to install it without questions, what it changes, and its results. The same text is at <a href="/llms.txt">/llms.txt</a>.</p>
+        <div className="ag-actions">
+          <button className="copy" type="button" onClick={copy} data-done={done ? "" : undefined}>{done ? "Copied" : "Copy all"}</button>
+          <a href="/llms.txt">Open as text</a>
+        </div>
+      </header>
+      <Markdown text={AGENTS_MD} />
+    </article>
+  )
+}
+
+/** The page's Product Hunt badge, at its own size so it holds its space before it loads. */
+const ProductHunt = () => (
+  <a className="ph" href="https://www.producthunt.com/products/singularity-3?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-singularity-3" target="_blank" rel="noopener noreferrer">
+    <img alt="Singularity - Memory that makes your coding agent cheaper on repeat work | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1274095&theme=neutral&t=1791560343560" />
+  </a>
+)
+
 const H2 = ({ id, children }: { readonly id: string; readonly children: ReactNode }) => {
   const n = TOC.findIndex((s) => s.id === id) + 1
   return <h2 id={id}><a href={`#${id}`}><span className="num">{n}</span>{children}</a></h2>
@@ -67,19 +135,28 @@ const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, warns: boolean, l
   ["Cursor, OpenCode", false, false, false, "through a skill, when asked"]
 ]
 
-const Contents = ({ at, progress }: { readonly at: string; readonly progress: number }) => {
+const Contents = ({ at, progress, view, go }: { readonly at: string; readonly progress: number; readonly view: View; readonly go: Go }) => {
   const [open, setOpen] = useState(false)
   const top = TOC.find((s) => s.id === at)
   return (
     <nav className={`toc${open ? " open" : ""}`} aria-label="Contents">
-      {/* on narrow screens: a bar with the section being read, which opens the contents */}
-      <button className="toc-bar" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="label">Contents</span>
-        <span className="cur">{top ? `${TOC.indexOf(top) + 1}  ${top.title}` : "Abstract"}</span>
-        <span className="chev" aria-hidden="true">{open ? "−" : "+"}</span>
-      </button>
+      {/* on narrow screens: a bar with the section being read, which opens the contents, and the toggle */}
+      <div className="toc-top">
+        {view === "human"
+          ? (
+            <button className="toc-bar" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+              <span className="label">Contents</span>
+              <span className="cur">{top ? `${TOC.indexOf(top) + 1}  ${top.title}` : "Abstract"}</span>
+              <span className="chev" aria-hidden="true">{open ? "−" : "+"}</span>
+            </button>
+          )
+          : <a className="toc-bar" href="#top"><Logo className="logo" /></a>}
+        <ViewToggle view={view} go={(v) => { setOpen(false); go(v) }} />
+      </div>
       <div className="toc-body">
         <a className="toc-home" href="#top"><Logo className="logo" /></a>
+        <ViewToggle view={view} go={go} />
+        {view === "human" && <>
         <div className="label toc-h">Contents</div>
         <ol>
           {TOC.map((s, i) => {
@@ -91,26 +168,28 @@ const Contents = ({ at, progress }: { readonly at: string; readonly progress: nu
             )
           })}
         </ol>
+        </>}
         <div className="toc-foot">
-          <a href="#use">Install</a>
+          {view === "human" && <a href="#use">Install</a>}
           <a href="https://github.com/pandacover/singularity">GitHub</a>
         </div>
       </div>
-      <div className="toc-progress" aria-hidden="true"><i style={{ transform: `scaleX(${progress})` }} /></div>
+      <div className="toc-progress" aria-hidden="true" hidden={view === "agents"}><i style={{ transform: `scaleX(${progress})` }} /></div>
     </nav>
   )
 }
 
-export const App = () => {
+/** The page for one reader; `still` for the copy drawn during a switch, which doesn't follow the scroll. */
+const Page = ({ view, go, still = false }: { readonly view: View; readonly go: Go; readonly still?: boolean }) => {
   const [os, setOs] = useState<Os>(defaultOs)
-  const { at, progress } = useReading()
+  const { at, progress } = useReading(still)
 
   return (
     <TipProvider>
-      <div className="ar" id="top">
-        <Contents at={at} progress={progress} />
+      <div className="ar" id={still ? undefined : "top"}>
+        <Contents at={at} progress={progress} view={view} go={go} />
 
-        <article className="ar-main">
+        {view === "agents" ? <ForAgents /> : <article className="ar-main">
           <header className="ar-head">
             <div className="kicker"><span>Research note</span><span>October 2026</span></div>
             <h1>Procedural memory for coding agents</h1>
@@ -140,6 +219,7 @@ export const App = () => {
 
           <div className="ar-install">
             <Install os={os} setOs={setOs} requirement="Needs Node.js 24 and git. Setup asks before it changes anything." />
+            <ProductHunt />
           </div>
 
           <section>
@@ -289,8 +369,34 @@ export const App = () => {
             <span>singularity</span>
             <span>Every number here comes from real runs · <a href="https://github.com/pandacover/singularity">GitHub</a></span>
           </footer>
-        </article>
+        </article>}
       </div>
     </TipProvider>
+  )
+}
+
+export const App = () => {
+  const [view, setView] = useState<View>(viewOf)
+  const [flip, setFlip] = useState<View | null>(null)
+  const top = useRef(false)
+  // the theme lives on the root, so the whole window, scrollbar and all, takes it; a switched page starts at its top,
+  // once it is drawn
+  useLayoutEffect(() => {
+    document.documentElement.dataset.view = view
+    if (top.current) { top.current = false; scrollTo({ top: 0, behavior: "instant" }) }
+  }, [view])
+
+  const show = (v: View) => { keepView(v); top.current = true; setView(v) }
+  const go: Go = (v) => {
+    if (v === view || flip) return
+    if (reduced) show(v)
+    else setFlip(v)
+  }
+
+  return (
+    <>
+      <Page view={view} go={go} />
+      {flip && <Flip theme={flip} page={<Page view={flip} go={() => {}} still />} onSwap={() => show(flip)} onEnd={() => setFlip(null)} />}
+    </>
   )
 }
