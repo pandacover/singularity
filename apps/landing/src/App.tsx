@@ -132,6 +132,7 @@ const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, warns: boolean, l
   ["Codex", true, true, false],
   ["Gemini CLI", true, true, false],
   ["Droid", true, true, false],
+  ["Hermes Agent", true, true, false, "through a plugin"],
   ["Cursor, OpenCode", false, false, false, "through a skill, when asked"]
 ]
 
@@ -218,7 +219,10 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           </section>
 
           <div className="ar-install">
-            <Install os={os} setOs={setOs} requirement="Needs Node.js 24 and git. Setup asks before it changes anything." />
+            <Install os={os} setOs={setOs} requirement={<>
+              <a href="#use">Works with</a> Claude Code, Codex, Gemini CLI, Droid and Hermes Agent.<br />
+              Needs Node.js 24 and git. Setup asks before it changes anything.
+            </>} />
             <ProductHunt />
           </div>
 

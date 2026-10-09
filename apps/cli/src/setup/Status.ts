@@ -57,8 +57,8 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
   const width = Math.max(0, ...states.map((a) => a.agent.name.length)) + 3
   let missing = 0
   for (const a of states) {
-    const wired = a.hookEvents.length > 0 || (a.agent.hooks === undefined && a.skill)
-    const parts = [...(a.hookEvents.length > 0 ? ["hooks"] : []), ...(a.skill ? ["skill"] : [])].join(" · ")
+    const wired = a.hookEvents.length > 0 || (a.agent.hooks === undefined && a.agent.plugin === undefined && a.skill)
+    const parts = [...(a.hookEvents.length > 0 ? [a.agent.plugin === undefined ? "hooks" : "plugin"] : []), ...(a.skill ? ["skill"] : [])].join(" · ")
     if (!wired) missing++
     yield* say(
       wired

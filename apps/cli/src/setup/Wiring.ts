@@ -1,7 +1,7 @@
 /**
  * Putting memory into an agent and taking it out again: its hooks
- * (HookFiles.ts) and the skill (Skill.ts), with nothing on screen. Setup,
- * status and uninstall use these.
+ * (HookFiles.ts, or Hermes Agent's plugin, HermesPlugin.ts) and the skill
+ * (Skill.ts), with nothing on screen. Setup, status and uninstall use these.
  */
 import { Effect, FileSystem, Path } from "effect"
 import { delimiter } from "node:path"
@@ -18,6 +18,7 @@ import {
   type Launch,
   sharedSkillsDir
 } from "./Agents.ts"
+import { installPlugin, PLUGIN_EVENTS, pluginState, removePlugin } from "./HermesPlugin.ts"
 import { hasOtherHooks, hooksIn, installHooks, removeHooks } from "./HookFiles.ts"
 import { installSkill, removeSkill, type SkillState, skillState } from "./Skill.ts"
 
@@ -118,14 +119,25 @@ export const skillDirsFor = (chosen: ReadonlyArray<Agent>, dirs: AgentDirs): Rea
 
 export interface Wired {
   readonly agent: Agent
-  /** The file its hooks went in. */
+  /** The file its hooks went in (for Hermes Agent, its plugin's folder). */
   readonly hooks: string | undefined
   /** Why its hooks couldn't go in, if they couldn't. */
   readonly problem: string | undefined
 }
 
-/** Add memory's hooks to an agent; the file, or the problem. */
+/**
+ * Add memory's hooks to an agent; the file, or the problem. Hermes Agent's
+ * plugin starts node with its full path, the way Claude Code's hooks do: it
+ * runs no shell.
+ */
 export const wireHooks = Effect.fn("wireHooks")(function*(agent: Agent, launches: { readonly claude: Launch; readonly other: Launch }) {
+  if (agent.plugin !== undefined) {
+    const home = agent.plugin
+    return yield* installPlugin(home, launches.claude).pipe(
+      Effect.as({ agent, hooks: home.dir, problem: undefined } satisfies Wired),
+      Effect.catch((e) => Effect.succeed({ agent, hooks: undefined, problem: `${e._tag === "PluginError" ? e.file : home.dir} ${e.message}` } satisfies Wired))
+    )
+  }
   const target = yield* hookTarget(agent)
   if (target === undefined) return { agent, hooks: undefined, problem: undefined } satisfies Wired
   // Memory's hooks from an earlier setup (another checkout, or v0) may sit in the other file Droid can use.
@@ -170,6 +182,13 @@ export const agentStates = Effect.fn("agentStates")(function*(found: ReadonlyArr
         break
       }
     }
+    if (agent.plugin !== undefined) {
+      const plugin = yield* pluginState(agent.plugin)
+      if (plugin.ours && plugin.enabled) {
+        events = PLUGIN_EVENTS
+        file = agent.plugin.dir
+      }
+    }
     let skill = false
     for (const dir of [...agent.skillDirs, ...(agent.sharedSkills ? [sharedSkillsDir(dirs)] : [])]) {
       const state = yield* skillState(dir).pipe(Effect.orElseSucceed((): SkillState => "missing"))
@@ -180,14 +199,25 @@ export const agentStates = Effect.fn("agentStates")(function*(found: ReadonlyArr
   return out
 })
 
-/** Take memory out of every agent: hooks from every file they may be in, the skill from every directory. */
+/** Take memory's hooks out of an agent: from every file they may be in, and its plugin; the files and the plugin's folder. */
+export const unwireHooks = Effect.fn("unwireHooks")(function*(agent: Agent) {
+  const files: Array<string> = []
+  for (const f of hookFiles(agent)) if (yield* removeHooks(f).pipe(Effect.orElseSucceed(() => false))) files.push(f.file)
+  const plugin = agent.plugin !== undefined && (yield* removePlugin(agent.plugin).pipe(Effect.orElseSucceed(() => false)))
+  return { files, plugin: plugin ? agent.plugin?.dir : undefined }
+})
+
+/** Take memory out of every agent: hooks from every file they may be in, plugins, the skill from every directory. */
 export const unwireAll = Effect.fn("unwireAll")(function*(dirs: AgentDirs) {
   const hookFilesChanged: Array<string> = []
+  const plugins: Array<string> = []
   const skillDirs: Array<string> = []
   const all = agents(dirs)
   for (const agent of all) {
-    for (const f of hookFiles(agent)) if (yield* removeHooks(f).pipe(Effect.orElseSucceed(() => false))) hookFilesChanged.push(f.file)
+    const removed = yield* unwireHooks(agent)
+    hookFilesChanged.push(...removed.files)
+    if (removed.plugin !== undefined) plugins.push(removed.plugin)
   }
   for (const dir of skillDirsFor(all, dirs)) if (yield* removeSkill(dir).pipe(Effect.orElseSucceed(() => false))) skillDirs.push(dir)
-  return { hookFiles: hookFilesChanged, skillDirs }
+  return { hookFiles: hookFilesChanged, plugins, skillDirs }
 })

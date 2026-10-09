@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | 
 
 The installer clones the code into `~/.singularity/app`, then runs `singularity setup`. WSL keeps its own agents: for agents that run on Windows, use the PowerShell command on Windows.
 
-Setup flags: `--yes` (`-y`) takes every default and asks nothing; `--agent <claude|codex|gemini|droid|cursor|opencode>` sets up only that agent (repeatable); `--no-path` leaves the `singularity` command off PATH.
+Setup flags: `--yes` (`-y`) takes every default and asks nothing; `--agent <claude|codex|gemini|droid|hermes|cursor|opencode>` sets up only that agent (repeatable); `--no-path` leaves the `singularity` command off PATH.
 
 ## What setup changes
 
@@ -49,6 +49,7 @@ Setup flags: `--yes` (`-y`) takes every default and asks nothing; `--agent <clau
 | Codex | hands over, warns (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
 | Gemini CLI | hands over, warns | hooks in `~/.gemini/settings.json`, skill |
 | Droid | hands over, warns | hooks in `~/.factory/hooks.json`, skill |
+| Hermes Agent | hands over, warns | plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), enabled in its `config.yaml`; skill |
 | Cursor, OpenCode, agents that read `~/.agents/skills` | when asked | skill |
 
 It never touches the rest of an agent's settings, and keeps a copy of each file it changes (`<file>.before-singularity`). Hooks never break a session: errors go to `~/.singularity/hook-errors.log`.

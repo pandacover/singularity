@@ -1,4 +1,4 @@
-import { type CSSProperties, useState } from "react"
+import { type CSSProperties, type ReactNode, useState } from "react"
 
 export type Os = "sh" | "ps"
 
@@ -13,7 +13,7 @@ export const defaultOs = (): Os => (/Windows/.test(navigator.userAgent) ? "ps" :
 export const Install = ({ os, setOs, requirement, style }: {
   readonly os: Os
   readonly setOs: (os: Os) => void
-  readonly requirement?: string
+  readonly requirement?: ReactNode
   readonly style?: CSSProperties
 }) => {
   const [done, setDone] = useState(false)

@@ -5,12 +5,12 @@
  * or a model.
  *
  * Other agents' hooks send their own tool names (Gemini CLI's
- * `run_shell_command`, Droid's `Execute`); they are read as Claude Code's,
- * which triggers are written against.
+ * `run_shell_command`, Droid's `Execute`, Hermes Agent's `terminal`); they
+ * are read as Claude Code's, which triggers are written against.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as NodePath from "@effect/platform-node/NodePath"
-import { DateTime, Effect, Layer } from "effect"
+import { DateTime, Effect, Layer, Option, Predicate, Schema } from "effect"
 import { decodeHookInput, eventOfHook, type HookInput } from "../handover/HookInput.ts"
 import { loadHome } from "../local/Home.ts"
 import { matchTrigger, type ToolEvent } from "../records/Triggers.ts"
@@ -24,24 +24,62 @@ const CLAUDE_NAMES: Readonly<Record<string, string>> = {
   run_shell_command: "Bash",
   Execute: "Bash",
   exec_command: "Bash",
+  terminal: "Bash",
   replace: "Edit",
+  patch: "Edit",
   write_file: "Write",
   Create: "Write"
 }
 
-/** A tool call another agent reports, as Claude Code would: its name, a command as one line, an edit's new text. */
+/** What Hermes Agent's tools return, as JSON: the terminal's output and exit code, or an error. */
+const HermesResult = Schema.fromJsonString(Schema.Struct({
+  output: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  exit_code: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  error: Schema.optionalKey(Schema.NullOr(Schema.String))
+}))
+
+/** The lines a patch adds, without their `+`. */
+const addedLines = (patch: string): string =>
+  patch.split(/\r?\n/).filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1)).join("\n")
+
+/**
+ * A Hermes Agent result as Claude Code reports one: the terminal's output as
+ * a shell's, and a failure (a nonzero exit code, an edit's error) as an error.
+ */
+const hermesResult = (tool: string, response: unknown): Pick<HookInput, "tool_response" | "error"> => {
+  if (!Predicate.isString(response)) return {}
+  const result = Option.getOrUndefined(Schema.decodeUnknownOption(HermesResult)(response))
+  if (result === undefined) return {}
+  if (tool === "terminal") {
+    const out = { stdout: result.output ?? "", stderr: result.error ?? "" }
+    const failed = result.exit_code !== undefined && result.exit_code !== null && result.exit_code !== 0
+    return { tool_response: out, ...(failed ? { error: [out.stdout, out.stderr].filter((s) => s !== "").join("\n") } : {}) }
+  }
+  return result.error === undefined || result.error === null || result.error === "" ? {} : { error: result.error }
+}
+
+/**
+ * A tool call another agent reports, as Claude Code would: its name, a
+ * command as one line, an edit's file and new text, and for Hermes Agent's
+ * tools, their result.
+ */
 export const asClaudeCall = (input: HookInput): HookInput => {
-  const name = input.tool_name === undefined ? undefined : CLAUDE_NAMES[input.tool_name] ?? input.tool_name
+  const tool = input.tool_name
+  const name = tool === undefined ? undefined : CLAUDE_NAMES[tool] ?? tool
   const args = input.tool_input
-  if (name === undefined || args === undefined) return input
+  if (tool === undefined || name === undefined || args === undefined) return input
   const command = args.command ?? args.cmd
+  const edit = name === "Edit" || name === "Write"
+  const newString = args.new_string ?? args.new_str ?? (name === "Edit" && Predicate.isString(args.patch) ? addedLines(args.patch) : undefined)
   return {
     ...input,
+    ...(tool === "terminal" || tool === "patch" || tool === "write_file" ? hermesResult(tool, input.tool_response) : {}),
     tool_name: name,
     tool_input: {
       ...args,
       ...(command === undefined ? {} : { command: Array.isArray(command) ? command.join(" ") : command }),
-      ...(args.new_string === undefined && args.new_str !== undefined ? { new_string: args.new_str } : {})
+      ...(edit && args.file_path === undefined && args.path !== undefined ? { file_path: args.path } : {}),
+      ...(args.new_string === undefined && newString !== undefined ? { new_string: newString } : {})
     }
   }
 }

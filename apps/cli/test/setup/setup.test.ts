@@ -3,13 +3,13 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { agents, hookEvents, isMemoryHookCommand, type Launch } from "../../src/setup/Agents.ts"
+import { agents, hookEvents, isMemoryHookCommand, type Launch, slashes } from "../../src/setup/Agents.ts"
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
 import { cmdLauncher, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine } from "../../src/setup/Launcher.ts"
 import { readLearn } from "../../src/setup/Preferences.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
-import { agentStates, detectAgents, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
+import { agentStates, detectAgents, HOOK_SCRIPT, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
 import { asClaudeCall } from "../../src/workflows/HookTool.ts"
 import { run, tempDir, withEnv } from "../eval/helpers.ts"
@@ -266,6 +266,58 @@ describe("setup", () => {
     await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup(options)))
     expect(existsSync(join(home, ".factory", "hooks.json"))).toBe(false)
     expect(Object.keys(json(join(home, ".factory", "settings.json")).hooks)).toEqual(["Stop", "UserPromptSubmit", "PostToolUse"])
+  })
+
+  it("sets Hermes Agent up with a plugin its config enables, and takes it out leaving the config as it was", async () => {
+    const { home, memory, options } = sandbox([".hermes"])
+    const hermes = join(home, ".hermes")
+    const env = { ...options.env, HERMES_HOME: hermes }
+    const config = "model:\n  default: x  # mine\nplugins:\n  enabled:\n    - image_gen/openai\n"
+    writeFileSync(join(hermes, "config.yaml"), config)
+    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, env })))
+
+    const after = readFileSync(join(hermes, "config.yaml"), "utf-8")
+    expect(after).toBe(`${config}    - singularity\n`)
+    expect(readFileSync(join(hermes, "config.yaml.before-singularity"), "utf-8")).toBe(config)
+    const code = readFileSync(join(hermes, "plugins", "singularity", "__init__.py"), "utf-8")
+    expect(code).toContain(`NODE = ${JSON.stringify(slashes(process.execPath))}`)
+    expect(code).toContain(`SCRIPT = ${JSON.stringify(slashes(HOOK_SCRIPT))}`)
+    expect(readFileSync(join(hermes, "plugins", "singularity", "plugin.yaml"), "utf-8")).toContain("name: singularity")
+    expect(readFileSync(join(hermes, "skills", "singularity", "SKILL.md"), "utf-8")).toBe(SKILL_TEXT)
+    // Hermes reads its own skills folder, not the shared one.
+    expect(existsSync(join(home, ".agents", "skills", "singularity"))).toBe(false)
+
+    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, env })))
+    expect(readFileSync(join(hermes, "config.yaml"), "utf-8")).toBe(after)
+
+    const dirs = { home, env }
+    const states = await run(Effect.gen(function*() {
+      return yield* agentStates(yield* detectAgents(dirs, () => Effect.succeed(false)), dirs)
+    }))
+    expect(states.find((s) => s.agent.id === "hermes")).toMatchObject({ found: true, hookEvents: ["pre_llm_call", "transform_tool_result"], skill: true })
+    const removed = await run(unwireAll(dirs))
+    expect(removed.plugins).toEqual([slashes(join(hermes, "plugins", "singularity"))])
+    expect(existsSync(join(hermes, "plugins", "singularity"))).toBe(false)
+    expect(readFileSync(join(hermes, "config.yaml"), "utf-8")).toBe(config)
+    expect(await run(skillState(join(hermes, "skills")))).toBe("missing")
+  })
+
+  it("leaves Hermes Agent's config alone when it can't be edited safely, and a plugin of the user's own alone", async () => {
+    const { home, memory, options } = sandbox([".hermes/plugins/singularity"])
+    const hermes = join(home, ".hermes")
+    const env = { ...options.env, HERMES_HOME: hermes }
+    writeFileSync(join(hermes, "plugins", "singularity", "__init__.py"), "def register(ctx):\n    pass\n")
+    writeFileSync(join(hermes, "config.yaml"), "plugins:\n  enabled: [singularity]\n")
+    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, env })))
+    expect(readFileSync(join(hermes, "plugins", "singularity", "__init__.py"), "utf-8")).toBe("def register(ctx):\n    pass\n")
+    expect(await run(unwireAll({ home, env }))).toMatchObject({ plugins: [] })
+    expect(readFileSync(join(hermes, "config.yaml"), "utf-8")).toBe("plugins:\n  enabled: [singularity]\n")
+
+    const other = sandbox([".hermes"])
+    const otherEnv = { ...other.options.env, HERMES_HOME: join(other.home, ".hermes") }
+    writeFileSync(join(other.home, ".hermes", "config.yaml"), "plugins:\n  enabled: some-plugin\n")
+    await withEnv({ SINGULARITY_HOME: other.memory }, () => run(runSetup({ ...other.options, env: otherEnv })))
+    expect(readFileSync(join(other.home, ".hermes", "config.yaml"), "utf-8")).toBe("plugins:\n  enabled: some-plugin\n")
   })
 
   it("never removes a skill of the user's own that has the same name", async () => {

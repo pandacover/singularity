@@ -24,7 +24,7 @@ Code, computer use and any future agent use these same four calls.
 
 All of them reach the same four calls (`src/layer/Api.ts`):
 
-- **Hooks**, for agents that have them: Claude Code, Codex, Gemini CLI, Droid. `src/workflows/hook.ts` now routes every event through the API.
+- **Hooks**, for agents that have them: Claude Code, Codex, Gemini CLI, Droid, and Hermes Agent through a plugin that runs the same script. `src/workflows/hook.ts` now routes every event through the API.
 - **The CLI**, for anything that can run a command: `singularity memory start|step|end|learn`, a JSON request on stdin and a JSON answer on stdout. A harness or an agent without hooks uses this.
 - **MCP**, for agents that call tools: the same calls as tools. Designed here, not built tonight (the hosted service's door, see the storage plan).
 

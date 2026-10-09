@@ -8,6 +8,9 @@
  * - Codex, Gemini CLI and Droid have hooks in Claude Code's format: memory is
  *   handed over at task start and warnings arrive during the task. Their
  *   transcripts aren't Claude Code's, so their sessions aren't recorded.
+ * - Hermes Agent gets the same through a plugin of memory's own, which runs
+ *   the same hook script (HermesPlugin.ts): its shell hooks can add text to a
+ *   prompt but not to a tool's result, where warnings go.
  * - Cursor and OpenCode have no hook that can add text to a prompt: the skill
  *   lets the agent look memory up when the user asks for it.
  *
@@ -24,7 +27,7 @@
 /** Paths with forward slashes, as hook commands and messages use them on every platform. */
 export const slashes = (p: string): string => p.replace(/\\/g, "/")
 
-export const AGENT_IDS = ["claude", "codex", "gemini", "droid", "cursor", "opencode"] as const
+export const AGENT_IDS = ["claude", "codex", "gemini", "droid", "hermes", "cursor", "opencode"] as const
 export type AgentId = (typeof AGENT_IDS)[number]
 
 /** What memory does in an agent: hands over and learns from its sessions, hands over, or is there when asked. */
@@ -60,6 +63,17 @@ export interface AgentDirs {
   readonly home: string
   /** Environment overrides of agents' own directories. */
   readonly env: Readonly<Record<string, string | undefined>>
+  /** The system whose defaults agents' directories follow (default: this one). */
+  readonly platform?: NodeJS.Platform
+}
+
+/**
+ * Where an agent loads memory's plugin from: a folder of the plugin's own, and
+ * the config file whose list of enabled plugins has to name it.
+ */
+export interface PluginHome {
+  readonly dir: string
+  readonly config: string
 }
 
 export interface Agent {
@@ -72,6 +86,8 @@ export interface Agent {
   readonly commands: ReadonlyArray<string>
   /** Where its hooks go; undefined for agents without hooks memory can use. */
   readonly hooks: HookFile | undefined
+  /** Hermes Agent: memory's hooks come as a plugin instead. */
+  readonly plugin?: PluginHome
   /** Skill directories it reads that memory's skill goes in (besides the shared one, if it reads that). */
   readonly skillDirs: ReadonlyArray<string>
   /** Whether it reads `~/.agents/skills`. */
@@ -91,11 +107,26 @@ export const sharedSkillsDir = (dirs: AgentDirs) => join(dirs.home, ".agents", "
 
 export const claudeDir = (dirs: AgentDirs) => slashes(nonEmpty(dirs.env.CLAUDE_CONFIG_DIR) ?? join(dirs.home, ".claude"))
 
+/**
+ * Hermes Agent's home, as its `get_hermes_home` finds it: `HERMES_HOME`, else
+ * `%LOCALAPPDATA%\hermes` on Windows and `~/.hermes` elsewhere (with
+ * `HERMES_DATA_DIR_SUFFIX` after either).
+ */
+export const hermesHome = (dirs: AgentDirs) => {
+  const set = nonEmpty(dirs.env.HERMES_HOME)
+  if (set !== undefined) return slashes(set.replace(/^~(?=$|[\\/])/, dirs.home))
+  const name = `hermes${dirs.env.HERMES_DATA_DIR_SUFFIX ?? ""}`
+  return (dirs.platform ?? process.platform) === "win32"
+    ? join(nonEmpty(dirs.env.LOCALAPPDATA) ?? join(dirs.home, "AppData", "Local"), name)
+    : join(dirs.home, `.${name}`)
+}
+
 export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
   const claude = claudeDir(dirs)
   const codex = slashes(nonEmpty(dirs.env.CODEX_HOME) ?? join(dirs.home, ".codex"))
   const gemini = join(dirs.home, ".gemini")
   const factory = join(dirs.home, ".factory")
+  const hermes = hermesHome(dirs)
   const xdg = slashes(nonEmpty(dirs.env.XDG_CONFIG_HOME) ?? join(dirs.home, ".config"))
   return [
     {
@@ -138,6 +169,19 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
       // Or its settings.json (droidHookFiles).
       hooks: { file: join(factory, "hooks.json"), layout: "events" },
       skillDirs: [join(factory, "skills")],
+      sharedSkills: false
+    },
+    {
+      id: "hermes",
+      name: "Hermes Agent",
+      reach: "hands-over",
+      dir: hermes,
+      // Only its home says it is here: a `hermes` on PATH may be the JavaScript engine of that name.
+      commands: [],
+      hooks: undefined,
+      plugin: { dir: join(hermes, "plugins", "singularity"), config: join(hermes, "config.yaml") },
+      // It reads its own skills folder, not the shared one.
+      skillDirs: [join(hermes, "skills")],
       sharedSkills: false
     },
     {
@@ -253,6 +297,7 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
         UserPromptSubmit: [{ hooks: [{ type: "command", command: o("user-prompt-submit"), timeout: START_TIMEOUT_S }] }],
         PostToolUse: [{ matcher: "Execute|Edit|Create|ApplyPatch", hooks: [{ type: "command", command: o("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }]
       }
+    case "hermes":
     case "cursor":
     case "opencode":
       return {}

@@ -63,8 +63,11 @@ uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
 the code into `~/.singularity/app` and run setup, which lives in
 `src/setup/`: the agents memory can be set up in and what each gets
 (`Agents.ts`: Claude Code learns and hands over; Codex, Gemini CLI and Droid
-hand over through hooks in Claude Code's format; Cursor and OpenCode get the
-skill), their hook files (`HookFiles.ts`), the skill (`Skill.ts`), the
+hand over through hooks in Claude Code's format; Hermes Agent hands over
+through a plugin of memory's own that runs the same hook script,
+`HermesPlugin.ts`, enabled by an edit of its `config.yaml` that touches only
+`plugins.enabled`; Cursor and OpenCode get the skill), their hook files
+(`HookFiles.ts`), the skill (`Skill.ts`), the
 `singularity` command on PATH (`Launcher.ts`), learning on its own after a
 recorded session (`AutoLearn.ts`) and the onboarding itself (`Setup.ts`).
 Learning in daily use goes repo by repo (`src/workflows/Learn.ts`), and a

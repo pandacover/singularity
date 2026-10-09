@@ -36,6 +36,7 @@ network can't reach, instead of waiting minutes.)
 | Codex | hands over at task start, warns during the task (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
 | Gemini CLI | hands over at task start, warns during the task | hooks in `~/.gemini/settings.json`, skill |
 | Droid | hands over at task start, warns during the task | hooks in `~/.factory/hooks.json`, skill |
+| Hermes Agent | hands over at task start, warns during the task | a plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), named in `plugins.enabled` of its `config.yaml`; skill |
 | Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | skill |
 
 Setup also puts the `singularity` command on your PATH and asks whether
