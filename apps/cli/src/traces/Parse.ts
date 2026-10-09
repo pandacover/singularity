@@ -1,5 +1,6 @@
 /**
- * Parse Claude Code session transcripts.
+ * Parse Claude Code session transcripts (and, through parseSession, Codex's
+ * and Hermes Agent's sessions, read as Claude Code's).
  *
  * Claude Code writes one JSONL file per session to
  * `<config dir>/projects/<project slug>/<session id>.jsonl`, and each subagent's
@@ -18,10 +19,11 @@
  */
 import { Config, DateTime, Effect, FileSystem, Option, Path, Predicate, Schema } from "effect"
 import { homedir } from "node:os"
+import { isCodexRollout, parseCodexRollout } from "./Codex.ts"
+import { hermesRef, readHermesSession } from "./Hermes.ts"
+import { type Json, obj, sortByTime, str, timestamp } from "./Json.ts"
 import type { Prompt, Response, ToolCall, Trace, Usage } from "./Models.ts"
 import { emptyUsage, maxUsage } from "./Models.ts"
-
-type Json = Readonly<Record<string, unknown>>
 
 /** A response's `usage` from the API (snake_case keys). */
 const ApiUsage = Schema.Struct({
@@ -98,11 +100,19 @@ export const subagentTranscripts = Effect.fn("subagentTranscripts")(function*(tr
     .sort()
 })
 
+/**
+ * A session's transcript, whichever agent wrote it: Claude Code's, a Codex
+ * rollout (Codex.ts) or a Hermes Agent session (Hermes.ts), told apart by
+ * the transcript's name and first line.
+ */
 export const parseSession = Effect.fn("parseSession")(function*(transcript: string, includeSubagents = true) {
+  if (hermesRef(transcript) !== undefined) return yield* readHermesSession(transcript)
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
+  const text = yield* fs.readFileString(transcript)
+  if (isCodexRollout(text.split("\n", 1)[0])) return parseCodexRollout(text, transcript)
   const parser = new Parser(path.basename(transcript).replace(/\.jsonl$/, ""), transcript)
-  parser.feed(yield* fs.readFileString(transcript), undefined)
+  parser.feed(text, undefined)
   if (includeSubagents) {
     for (const sub of yield* subagentTranscripts(transcript)) {
       parser.feed(yield* fs.readFileString(sub), path.basename(sub).replace(/^agent-/, "").replace(/\.jsonl$/, ""))
@@ -237,11 +247,6 @@ class Parser {
   }
 }
 
-const obj = (value: unknown): Json => (Predicate.isObject(value) ? (value as Json) : {})
-
-/** A non-empty string, or undefined (like Python's `x or default` on a string field). */
-const str = (value: unknown): string | undefined => (Predicate.isString(value) && value !== "" ? value : undefined)
-
 const truthy = (value: unknown): boolean => Predicate.isTruthy(value)
 
 const blocks = (content: unknown): Array<Json> => {
@@ -259,19 +264,3 @@ const resultText = (content: unknown): string => {
   }
   return parts.join("\n")
 }
-
-/** An ISO timestamp; one without a zone is taken as UTC. */
-const timestamp = (value: unknown): DateTime.Utc | undefined => {
-  if (!Predicate.isString(value)) return undefined
-  const withZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`
-  return Option.getOrUndefined(DateTime.make(withZone).pipe(Option.map(DateTime.toUtc)))
-}
-
-/** Stable sort by time, entries without a time last. */
-const sortByTime = <A>(items: Array<A>, time: (a: A) => DateTime.Utc | undefined): Array<A> =>
-  items.sort((a, b) => {
-    const ta = time(a)
-    const tb = time(b)
-    if (ta === undefined || tb === undefined) return (ta === undefined ? 1 : 0) - (tb === undefined ? 1 : 0)
-    return DateTime.toEpochMillis(ta) - DateTime.toEpochMillis(tb)
-  })

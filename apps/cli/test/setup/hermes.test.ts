@@ -29,7 +29,7 @@ describe("Hermes Agent's home", () => {
     expect(hermes.plugin).toEqual({ dir: "/home/a/.hermes/plugins/singularity", config: "/home/a/.hermes/config.yaml" })
     expect(hermes.skillDirs).toEqual(["/home/a/.hermes/skills"])
     expect(hermes.commands).toEqual([])
-    expect(hermes.reach).toBe("hands-over")
+    expect(hermes.reach).toBe("learns")
   })
 })
 
@@ -109,6 +109,7 @@ describe("the plugin's code", () => {
     expect(code).toContain(`SCRIPT = "C:/Users/a b/.singularity/app/apps/cli/src/workflows/hook.ts"`)
     expect(code).toContain(`ctx.register_hook("pre_llm_call", on_pre_llm_call)`)
     expect(code).toContain(`ctx.register_hook("transform_tool_result", on_transform_tool_result)`)
+    expect(code).toContain(`ctx.register_hook("on_session_finalize", on_session_finalize)`)
     // Python's escapes reach the file as written.
     expect(code).toContain(`return f"{result}\\n\\n{text}" if text else None`)
   })

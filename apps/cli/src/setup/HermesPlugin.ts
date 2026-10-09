@@ -12,6 +12,10 @@
  *   mistake's warning, appended to the tool's result (as Hermes's own
  *   security-guidance plugin appends its warnings). It starts the script only
  *   in sessions memory handed something over to, checked as hook.ts checks.
+ * - `on_session_finalize`, Hermes's SessionEnd (when the CLI, the TUI or the
+ *   gateway closes a session): the session is recorded if it committed a
+ *   change with passing tests. Its transcript is the session in Hermes's
+ *   database (traces/Hermes.ts), where the script also finds where it ran.
  *
  * Hermes loads a plugin of the user's only once its name is in
  * `plugins.enabled` in its config.yaml. Setup puts it there with an edit of
@@ -27,18 +31,19 @@ import { type Launch, type PluginHome, slashes } from "./Agents.ts"
 export const PLUGIN_NAME = "singularity"
 
 /** The events the plugin hooks, as status shows them. */
-export const PLUGIN_EVENTS = ["pre_llm_call", "transform_tool_result"] as const
+export const PLUGIN_EVENTS = ["pre_llm_call", "transform_tool_result", "on_session_finalize"] as const
 
 /** The line that marks the plugin as setup's, so uninstalling never removes a plugin of the user's own. */
 const MARKER = "# Installed by `singularity setup`; `singularity uninstall` removes it."
 
 const MANIFEST = `${MARKER}
 name: ${PLUGIN_NAME}
-description: "Memory from singularity: hands over what earlier sessions learned in a repository when a task starts there, and warns when a mistake made before is about to happen again."
+description: "Memory from singularity: hands over what earlier sessions learned in a repository when a task starts there, warns when a mistake made before is about to happen again, and learns from sessions that end with their change committed."
 author: singularity
 provides_hooks:
   - pre_llm_call
   - transform_tool_result
+  - on_session_finalize
 `
 
 /** The plugin's code, with the node and the hook script it runs (JSON strings are Python strings too). */
@@ -48,10 +53,11 @@ export const pluginCode = (launch: Launch): string =>
 
 When a task starts, hands over what earlier sessions learned in its repository
 (pre_llm_call); after a shell command or an edit, warns when a mistake made
-there before is about to happen again (transform_tool_result). Both run
-singularity's hook script in Claude Code's hook format. A hook must never
-break the session it serves: errors go to hook-errors.log in singularity's
-home, and the agent carries on.
+there before is about to happen again (transform_tool_result); when a session
+closes, records it for memory to learn from if it committed a change with
+passing tests (on_session_finalize). All run singularity's hook script in
+Claude Code's hook format. A hook must never break the session it serves:
+errors go to hook-errors.log in singularity's home, and the agent carries on.
 """
 
 from __future__ import annotations
@@ -70,6 +76,7 @@ SCRIPT = ${JSON.stringify(slashes(launch.script))}
 # Hermes stops waiting for a plugin's hook after plugins.hook_callback_timeout, 30 s unless set.
 START_TIMEOUT_S = 25
 TOOL_TIMEOUT_S = 15
+END_TIMEOUT_S = 25
 # Hermes's tools that can trip a known mistake: shell commands and edits.
 TOOLS = frozenset({"terminal", "patch", "write_file"})
 # Sessions memory had nothing for, by the directory it looked in: a chat's later messages from
@@ -123,12 +130,24 @@ def _in_repo(path: str) -> bool:
     return True
 
 
+def _transcript(session_id: str) -> str:
+    """The session as singularity names a Hermes transcript: Hermes's database, then the session's id."""
+    try:
+        from hermes_constants import get_hermes_home
+        home = str(get_hermes_home())
+    except Exception:
+        # This file is <hermes home>/plugins/singularity/__init__.py.
+        home = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(home, "state.db") + "#" + session_id
+
+
 def _hook(event: str, payload: dict, timeout: float) -> Optional[str]:
     """Run the hook script for an event; the text it has for the model, if any."""
     node = NODE if os.path.exists(NODE) else (shutil.which("node") or NODE)
+    cwd = payload.get("cwd")
     done = subprocess.run(
         [node, SCRIPT, event], input=json.dumps(payload, default=str), capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=timeout, cwd=payload["cwd"] if os.path.isdir(payload["cwd"]) else None,
+        encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd if isinstance(cwd, str) and os.path.isdir(cwd) else None,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     out = done.stdout.strip()
@@ -185,9 +204,23 @@ def on_transform_tool_result(tool_name: str = "", args: Any = None, result: Any 
         return None
 
 
+def on_session_finalize(session_id: Optional[str] = None, **_: Any) -> None:
+    """Records the session that closed, if it committed a change with passing tests."""
+    try:
+        if _off() or not session_id:
+            return None
+        # No cwd: a gateway's isn't the session's; the script reads the session's own from Hermes's database.
+        payload = {"session_id": session_id, "hook_event_name": "SessionEnd", "transcript_path": _transcript(session_id)}
+        _hook("session-end", payload, END_TIMEOUT_S)
+    except Exception as error:
+        _log("on_session_finalize", error)
+    return None
+
+
 def register(ctx) -> None:
     ctx.register_hook("pre_llm_call", on_pre_llm_call)
     ctx.register_hook("transform_tool_result", on_transform_tool_result)
+    ctx.register_hook("on_session_finalize", on_session_finalize)
 `
 
 // --- plugins.enabled in config.yaml ---

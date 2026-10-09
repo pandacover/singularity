@@ -5,12 +5,17 @@
  *   starts (in two parts, as `workflows-split` was measured), warn when a
  *   known mistake's trigger appears, and record a session that ends with its
  *   change committed and its tests passing, which memory learns from.
- * - Codex, Gemini CLI and Droid have hooks in Claude Code's format: memory is
- *   handed over at task start and warnings arrive during the task. Their
- *   transcripts aren't Claude Code's, so their sessions aren't recorded.
- * - Hermes Agent gets the same through a plugin of memory's own, which runs
+ * - Codex has hooks in Claude Code's format: memory is handed over at task
+ *   start (in one part), warnings arrive during the task, and a session is
+ *   recorded at its end like Claude Code's, its log read as Claude Code's
+ *   (traces/Codex.ts).
+ * - Hermes Agent gets what Codex gets through a plugin of memory's own, which runs
  *   the same hook script (HermesPlugin.ts): its shell hooks can add text to a
- *   prompt but not to a tool's result, where warnings go.
+ *   prompt but not to a tool's result, where warnings go. Its sessions are
+ *   read from its database (traces/Hermes.ts).
+ * - Gemini CLI and Droid have hooks in Claude Code's format: memory is
+ *   handed over at task start and warnings arrive during the task. Their
+ *   transcripts aren't read, so their sessions aren't recorded.
  * - Cursor and OpenCode have no hook that can add text to a prompt: the skill
  *   lets the agent look memory up when the user asks for it.
  *
@@ -107,6 +112,9 @@ export const sharedSkillsDir = (dirs: AgentDirs) => join(dirs.home, ".agents", "
 
 export const claudeDir = (dirs: AgentDirs) => slashes(nonEmpty(dirs.env.CLAUDE_CONFIG_DIR) ?? join(dirs.home, ".claude"))
 
+/** Codex's home: `CODEX_HOME`, else `~/.codex`. */
+export const codexHome = (dirs: AgentDirs) => slashes(nonEmpty(dirs.env.CODEX_HOME) ?? join(dirs.home, ".codex"))
+
 /**
  * Hermes Agent's home, as its `get_hermes_home` finds it: `HERMES_HOME`, else
  * `%LOCALAPPDATA%\hermes` on Windows and `~/.hermes` elsewhere (with
@@ -123,7 +131,7 @@ export const hermesHome = (dirs: AgentDirs) => {
 
 export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
   const claude = claudeDir(dirs)
-  const codex = slashes(nonEmpty(dirs.env.CODEX_HOME) ?? join(dirs.home, ".codex"))
+  const codex = codexHome(dirs)
   const gemini = join(dirs.home, ".gemini")
   const factory = join(dirs.home, ".factory")
   const hermes = hermesHome(dirs)
@@ -142,7 +150,7 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
     {
       id: "codex",
       name: "Codex",
-      reach: "hands-over",
+      reach: "learns",
       dir: codex,
       commands: ["codex"],
       hooks: { file: join(codex, "hooks.json"), layout: "wrapped" },
@@ -174,7 +182,7 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
     {
       id: "hermes",
       name: "Hermes Agent",
-      reach: "hands-over",
+      reach: "learns",
       dir: hermes,
       // Only its home says it is here: a `hermes` on PATH may be the JavaScript engine of that name.
       commands: [],
@@ -206,6 +214,16 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
     }
   ]
 }
+
+/** The agents memory learns from: those whose sessions it can read. */
+export const LEARNS_FROM = ["claude", "codex", "hermes"] as const
+
+/** Where the agents memory learns from keep their sessions: those of `ids`, or all of them. */
+export const sessionHomes = (dirs: AgentDirs, ids: ReadonlyArray<AgentId> = LEARNS_FROM) => ({
+  claude: ids.includes("claude") ? claudeDir(dirs) : undefined,
+  codex: ids.includes("codex") ? codexHome(dirs) : undefined,
+  hermes: ids.includes("hermes") ? hermesHome(dirs) : undefined
+})
 
 /**
  * Droid's hook files, in the order to use them: its hooks.json when there is
@@ -267,7 +285,8 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
             additionalContextLimit: 4000
           }]
         }],
-        PostToolUse: [{ matcher: "Bash|apply_patch", hooks: [{ type: "command", command: o("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }]
+        PostToolUse: [{ matcher: "Bash|apply_patch", hooks: [{ type: "command", command: o("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }],
+        SessionEnd: [{ hooks: [{ type: "command", command: o("session-end"), timeout: END_TIMEOUT_S }] }]
       }
     case "gemini":
       // Gemini CLI counts hook timeouts in milliseconds.

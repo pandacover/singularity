@@ -129,10 +129,10 @@ const H2 = ({ id, children }: { readonly id: string; readonly children: ReactNod
 const Dot = ({ yes }: { readonly yes: boolean }) => <span className={yes ? "dot-y" : "dot-n"} role="img" aria-label={yes ? "yes" : "no"} />
 const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, warns: boolean, learns: boolean, note?: string]> = [
   ["Claude Code", true, true, true],
-  ["Codex", true, true, false],
+  ["Codex", true, true, true],
   ["Gemini CLI", true, true, false],
   ["Droid", true, true, false],
-  ["Hermes Agent", true, true, false, "through a plugin"],
+  ["Hermes Agent", true, true, true, "through a plugin"],
   ["Cursor, OpenCode", false, false, false, "through a skill, when asked"]
 ]
 
@@ -205,7 +205,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <h2 id="abs" className="label">Abstract</h2>
             <p>
               An agent asked for the same kind of change twice starts from zero both times, and most of its turns go to
-              finding places it has found before. We keep, from past Claude Code sessions, the way through a kind of task
+              finding places it has found before. We keep, from past sessions in Claude Code, Codex and Hermes Agent, the way through a kind of task
               as a <em>workflow</em>: steps with blanks, and the phrases that call for it. At the next task, workflows are
               picked by plain text matching, with no model call, filled in from the task, and pointed at today’s code. On a
               four-change task in excalidraw whose kinds memory had learned, the median run took 9.5 turns instead of 28.5

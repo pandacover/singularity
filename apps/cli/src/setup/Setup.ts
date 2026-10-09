@@ -20,10 +20,10 @@ import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
-import { backfill, pastSessions } from "../workflows/Backfill.ts"
+import { backfill, type PastSession, pastSessions } from "../workflows/Backfill.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { estimateUsd, learnSubject, type LearnOutcome } from "../workflows/Learn.ts"
-import { type Agent, type AgentDirs, type AgentId, claudeDir, type Reach } from "./Agents.ts"
+import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
 import { CLI } from "./AutoLearn.ts"
 import { addToPath, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
@@ -61,6 +61,15 @@ const REACH: Record<Reach, string> = {
   "learns": "hands over memory at task start, learns from sessions",
   "hands-over": "hands over memory at task start",
   "on-request": "memory when you ask for it"
+}
+
+const SESSION_OF: Record<PastSession["agent"], string> = { claude: "Claude Code", codex: "Codex", hermes: "Hermes Agent" }
+
+/** "3 past Claude Code sessions", or "4 past sessions (Claude Code 3, Codex 1)" when they ran in several agents. */
+export const pastCount = (agents: ReadonlyArray<PastSession["agent"]>): string => {
+  const counts = [...new Set(agents)].map((a) => [SESSION_OF[a], agents.filter((b) => b === a).length] as const)
+  if (counts.length === 1) return plural(agents.length, `past ${counts[0][0]} session`)
+  return `${plural(agents.length, "past session")} (${counts.map(([name, n]) => `${name} ${n}`).join(", ")})`
 }
 
 /** What learning on its own costs a round, for the user deciding. */
@@ -196,10 +205,10 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     return yield* done(s, o, chosen, bin, newTerminal)
   }
   for (const line of [
-    "Memory learns from Claude Code sessions that end with their change",
-    `committed and the tests passing. After every ${prefs.every} such sessions in a repo`,
-    `it can learn on its own, in the background: about ${usd(ROUND_USD)} a round on`,
-    `your Claude account, at most ${usd(prefs.max_usd_per_day)} a day.`
+    "Memory learns from Claude Code, Codex and Hermes Agent sessions that end",
+    `with their change committed and the tests passing. After every ${prefs.every} such`,
+    `sessions in a repo it can learn on its own, in the background: about ${usd(ROUND_USD)}`,
+    `a round on your Claude account, at most ${usd(prefs.max_usd_per_day)} a day.`
   ]) yield* item(line)
   if (asking) yield* say()
   const auto = yield* ask("Learn on its own?", (yield* learnIsSet(home.root)) ? prefs.auto : true)
@@ -207,13 +216,13 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   yield* item(auto ? `${s.green("✓")} learning on its own` : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}`)
 
   const repo = yield* identifyRepo(o.cwd)
-  const claudeHomeDir = claudeDir(dirs)
-  const past = repo === undefined ? [] : yield* pastSessions(repo.root, claudeHomeDir).pipe(Effect.orElseSucceed(() => []))
+  const homes = sessionHomes(dirs, chosen.map((a) => a.id))
+  const past = repo === undefined ? [] : yield* pastSessions(repo.root, homes).pipe(Effect.orElseSucceed(() => []))
   if (repo !== undefined && past.length > 0) {
     const name = path.basename(repo.root)
     yield* say()
-    yield* item(`This repo, ${s.bold(name)}, has ${plural(past.length, "past Claude Code session")}.`)
-    const read = yield* withSpinner("reading them", backfill(repo.root, claudeHomeDir, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
+    yield* item(`This repo, ${s.bold(name)}, has ${pastCount(past.map((p) => p.agent))}.`)
+    const read = yield* withSpinner("reading them", backfill(repo.root, homes, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
     if (read._tag === "Failure") {
       yield* item(`${s.red("✗")} couldn't read them (${read.failure.message}); ${s.cyan("singularity learn --past")} tries again`)
       return yield* done(s, o, chosen, bin, newTerminal)

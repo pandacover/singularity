@@ -42,7 +42,7 @@ export const webSessionEnd = (stdin: string): Promise<void> =>
   Effect.runPromise(
     Effect.gen(function*() {
       const input = decodeHookInput(stdin)
-      if (input === undefined || input.transcript_path === undefined) return
+      if (input === undefined || input.transcript_path === undefined || input.transcript_path === null) return
       const home = yield* loadHome()
       yield* webEnd({ sessionId: input.session_id, transcript: input.transcript_path, outcome: { success: null, feedback: null } }, home.tenantDir, home.tenant)
     }).pipe(Effect.provide(NodeServices.layer))

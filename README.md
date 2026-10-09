@@ -24,8 +24,9 @@ irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | 
 
 You need git. Without Node.js 24 or later on your PATH, the installer
 fetches its own copy into `~/.singularity/node` (checked against nodejs.org's
-checksums) and changes nothing else. Memory learns from Claude Code sessions,
-and with Claude Code's model calls, so have Claude Code too. WSL keeps its own
+checksums) and changes nothing else. Memory learns from Claude Code, Codex
+and Hermes Agent sessions, with Claude Code's model calls, so have Claude Code
+too. WSL keeps its own
 agents: for agents you run on Windows, run the PowerShell command on Windows.
 (`--connect-timeout` makes curl move on quickly from a GitHub address your
 network can't reach, instead of waiting minutes.)
@@ -33,10 +34,10 @@ network can't reach, instead of waiting minutes.)
 | Agent | What memory does there | What setup adds |
 |---|---|---|
 | Claude Code | hands over at task start, warns during the task, learns from sessions | hooks in `~/.claude/settings.json`, skill |
-| Codex | hands over at task start, warns during the task (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
+| Codex | hands over at task start, warns during the task, learns from sessions (trust the hooks once with `/hooks`) | hooks in `~/.codex/hooks.json`, skill |
 | Gemini CLI | hands over at task start, warns during the task | hooks in `~/.gemini/settings.json`, skill |
 | Droid | hands over at task start, warns during the task | hooks in `~/.factory/hooks.json`, skill |
-| Hermes Agent | hands over at task start, warns during the task | a plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), named in `plugins.enabled` of its `config.yaml`; skill |
+| Hermes Agent | hands over at task start, warns during the task, learns from sessions | a plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), named in `plugins.enabled` of its `config.yaml`; skill |
 | Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | skill |
 
 Setup also puts the `singularity` command on your PATH and asks whether
@@ -44,13 +45,13 @@ memory may learn on its own (about $0.25 a round on your Claude account, at
 most $1 a day). It never touches the rest of an agent's settings, and keeps a
 copy of each file it changes (`<file>.before-singularity`).
 
-How memory gets to know a repo: a Claude Code session that ends with its
-change committed and its tests passing becomes a record. After a few records
+How memory gets to know a repo: a Claude Code, Codex or Hermes Agent session
+that ends with its change committed and its tests passing becomes a record. After a few records
 in a repo, memory learns workflows from them (where each kind of change goes,
 how it is checked, the mistakes made on the way). From then on, a task that
 needs them gets them with its first prompt, found in the code as it is that
-day. In a repo with earlier Claude Code sessions, setup offers to start from
-those.
+day. In a repo with earlier sessions in any of those three, setup offers to
+start from them.
 
 ```
 singularity status              # which agents have memory, and what it knows per repo

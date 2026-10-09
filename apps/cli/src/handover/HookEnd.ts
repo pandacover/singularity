@@ -14,7 +14,7 @@ export const sessionEnd = (stdin: string): Promise<SessionOutcome | undefined> =
   Effect.runPromise(
     Effect.gen(function*() {
       const input = decodeHookInput(stdin)
-      if (input === undefined || input.transcript_path === undefined) return undefined
+      if (input === undefined || input.transcript_path === undefined || input.transcript_path === null) return undefined
       const home = yield* loadHome()
       const path = yield* Path.Path
       return yield* recordSession(

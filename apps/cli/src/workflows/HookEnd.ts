@@ -2,7 +2,9 @@
  * The SessionEnd hook for memory v1: record the session if it counts as
  * successful (its change is committed and its last test run passed, the rule
  * outside evals), with what became of the memory it was handed (Feedback.ts).
- * Prints nothing: the session is over.
+ * Prints nothing: the session is over. Claude Code and Codex send their
+ * transcript's path; Hermes Agent's plugin names its session in its database
+ * (parseSession reads all three).
  */
 import { NodeServices } from "@effect/platform-node"
 import { DateTime, Effect, Layer, Path } from "effect"
@@ -43,7 +45,8 @@ export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function
   input: {
     readonly sessionId: string
     readonly transcript: string
-    readonly cwd: string
+    /** Where the session ran; else where its transcript says it did (Hermes Agent's end says nothing). */
+    readonly cwd?: string | undefined
     /** The session's commits, for a session that ended long ago (Backfill.ts); else those since it started, up to HEAD. */
     readonly range?: { readonly base: string; readonly head: string } | undefined
   },
@@ -52,7 +55,7 @@ export const recordWorkflowSession = Effect.fn("recordWorkflowSession")(function
   const store = yield* RecordStore
   const state = yield* readSession(tenantDir, input.sessionId)
   const trace = yield* parseSession(input.transcript)
-  const repo = yield* identifyRepo(state?.repo ?? input.cwd)
+  const repo = yield* identifyRepo(state?.repo ?? input.cwd ?? trace.cwd ?? process.cwd())
   if (repo === undefined || repo.head === undefined) return { record: undefined, reason: "not in a git repo with commits" } satisfies SessionOutcome
   const subject = yield* store.subjectFor(repo, { create: true })
   if (subject === undefined) return { record: undefined, reason: "no subject" } satisfies SessionOutcome
@@ -132,11 +135,11 @@ export const sessionEnd = (stdin: string): Promise<SessionOutcome | undefined> =
   Effect.runPromise(
     Effect.gen(function*() {
       const input = decodeHookInput(stdin)
-      if (input === undefined || input.transcript_path === undefined) return undefined
+      if (input === undefined || input.transcript_path === undefined || input.transcript_path === null) return undefined
       const home = yield* loadHome()
       const path = yield* Path.Path
       return yield* recordWorkflowSession(
-        { sessionId: input.session_id, transcript: input.transcript_path, cwd: input.cwd ?? process.cwd() },
+        { sessionId: input.session_id, transcript: input.transcript_path, cwd: input.cwd },
         home.tenantDir
       ).pipe(Effect.provide(Layer.merge(
         JsonRecordStore.layer(home.tenantDir, home.tenant),
