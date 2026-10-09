@@ -227,6 +227,7 @@ const uninstall = Command.make(
     const user = homedir()
     const removed = yield* unwireAll(dirsOf())
     for (const f of removed.hookFiles) yield* say(`${s.green("✓")} hooks taken out of ${tilde(f, user)}`)
+    for (const d of removed.plugins) yield* say(`${s.green("✓")} plugin ${tilde(d, user)} removed`)
     for (const d of removed.skillDirs) yield* say(`${s.green("✓")} skill taken out of ${tilde(d, user)}`)
     const bin = binDir(home.root)
     if (yield* removeFromPath(bin, { home: user, platform: process.platform })) yield* say(`${s.green("✓")} ${tilde(bin, user)} taken off your PATH`)

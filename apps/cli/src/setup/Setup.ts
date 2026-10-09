@@ -25,11 +25,10 @@ import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { estimateUsd, learnSubject, type LearnOutcome } from "../workflows/Learn.ts"
 import { type Agent, type AgentDirs, type AgentId, claudeDir, type Reach } from "./Agents.ts"
 import { CLI } from "./AutoLearn.ts"
-import { removeHooks } from "./HookFiles.ts"
 import { addToPath, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
 import { confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
-import { detectAgents, findClaude, findExecutable, HOOK_SCRIPT, hookFiles, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
+import { detectAgents, findClaude, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
   /** Take every default and ask nothing. */
@@ -146,9 +145,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     }
     yield* say()
     // Memory's hooks stay out of agents left out, including hooks an earlier setup put there.
-    for (const a of found.filter((a) => !chosen.includes(a))) {
-      for (const f of hookFiles(a)) yield* removeHooks(f).pipe(Effect.ignore)
-    }
+    for (const a of found.filter((a) => !chosen.includes(a))) yield* unwireHooks(a)
     const launches = {
       claude: { node: process.execPath, script: HOOK_SCRIPT },
       other: { node: yield* nodeForHooks(), script: HOOK_SCRIPT }
@@ -157,7 +154,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     for (const a of chosen) {
       const wired = yield* wireHooks(a, launches)
       if (wired.problem !== undefined) yield* item(`${s.red("✗")} ${a.name.padEnd(width2)}${wired.problem}`)
-      else yield* item(`${s.green("✓")} ${a.name.padEnd(width2)}${wired.hooks === undefined ? "skill only" : `hooks in ${tilde(wired.hooks, o.home)}`}`)
+      else yield* item(`${s.green("✓")} ${a.name.padEnd(width2)}${wired.hooks === undefined ? "skill only" : `${a.plugin === undefined ? "hooks" : "plugin"} in ${tilde(wired.hooks, o.home)}`}`)
       if (a.note !== undefined) yield* item(`  ${" ".repeat(width2)}${s.yellow(a.note)}`)
     }
     if (chosen.length > 0) {

@@ -2,7 +2,7 @@
  * The skill that tells an agent what singularity's memory is and how to use
  * its command: `<skills dir>/singularity/SKILL.md`, in the format of the
  * Agent Skills standard, which Claude Code, Codex, Gemini CLI, Cursor,
- * OpenCode and Droid all read.
+ * OpenCode, Droid and Hermes Agent all read.
  *
  * Only the skill's description stays in an agent's context; the rest loads
  * when the agent uses it. It is for when the user asks about memory: at task
