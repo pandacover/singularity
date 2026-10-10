@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why the memory took 14 turns, and the idea</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --accent-wash: rgba(42, 120, 214, 0.12);
+    --neutral: #898781;
+    --neutral-wash: rgba(137, 135, 129, 0.14);
+    --good: #006300;
+    --bad: #d03b3b;
+    --added: rgba(12, 163, 12, 0.10);
+    --pair: rgba(42, 120, 214, 0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5;
+      --accent-wash: rgba(57, 135, 229, 0.18);
+      --neutral: #898781;
+      --neutral-wash: rgba(137, 135, 129, 0.18);
+      --good: #0ca30c;
+      --bad: #d03b3b;
+      --added: rgba(12, 163, 12, 0.16);
+      --pair: rgba(57, 135, 229, 0.24);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root {
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 64px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; font-weight: 650; }
+  h2 { font-size: 20px; margin: 0 0 4px; font-weight: 650; }
+  .lede { color: var(--ink-2); margin: 0 0 22px; }
+  .sub { color: var(--ink-2); margin: 0 0 14px; }
+  section { margin: 0 0 30px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+
+  /* Step 1: the rule of thumb */
+  .rule { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .rule .big { font-size: 40px; font-weight: 650; line-height: 1; }
+  .rule .big small { font-size: 18px; font-weight: 500; color: var(--ink-2); }
+  .rule p { margin: 0; color: var(--ink-2); max-width: 520px; }
+  .rule p b { color: var(--ink); }
+
+  /* Controls and legend */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 12px; }
+  button {
+    font: inherit; font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-wash); }
+  button:focus-visible, .hit:focus-visible, .code-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); background: var(--accent); }
+  .turn-now { color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 70px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; color: var(--ink-2); font-size: 14px; margin: 0 0 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  .sw.look { background: var(--accent); }
+  .sw.work { background: var(--neutral); }
+  .sw.guess { background: transparent; border: 1.5px dashed var(--ink-2); }
+
+  /* The three runs */
+  .row { display: grid; grid-template-columns: 210px minmax(0, 1fr) 150px; gap: 14px; align-items: center; margin: 0 0 12px; }
+  .row .who b { display: block; font-size: 17px; }
+  .row .who .given { color: var(--ink-2); font-size: 14px; display: block; margin-top: 2px; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; margin-top: 6px; color: var(--ink-2); }
+  .badge .ico { font-weight: 700; }
+  .badge.no .ico { color: var(--bad); }
+  .badge.guess .ico { color: var(--ink-2); }
+  .row svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .total { text-align: right; }
+  .total .n { font-size: 28px; font-weight: 650; line-height: 1.05; white-space: nowrap; }
+  .total .t { color: var(--ink-2); font-size: 14px; }
+  .col { transform-box: fill-box; transform-origin: 50% 100%; transition: transform 260ms ease-out, opacity 200ms; }
+  .col.hidden { transform: scaleY(0); opacity: 0; }
+  .hit { fill: transparent; cursor: default; }
+  .hit:hover + .col, .hit:focus + .col { filter: brightness(1.15); }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--axis); stroke-width: 1; }
+  .ylab { fill: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .note { fill: var(--ink-2); font-size: 14px; }
+  .leader { stroke: var(--ink-2); stroke-width: 1; }
+  .toggle-row { margin-top: 6px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { color: var(--ink-2); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* Where the how comes from */
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  .code-card { min-width: 0; }
+  .code-card h3 { margin: 0 0 2px; font-size: 16px; }
+  .code-card .from { color: var(--ink-2); font-size: 14px; margin: 0 0 10px; }
+  .code {
+    font: 12.5px/1.6 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 0;
+    overflow-x: auto;
+    background: var(--page);
+  }
+  .code-line { display: flex; gap: 10px; padding: 1px 10px; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 4px; }
+  .file-label { color: var(--muted); padding: 6px 10px 0; font-size: 11.5px; }
+  .file-label:first-child { padding-top: 0; }
+  .code-line.added { background: var(--added); }
+  .code-line.lit { background: var(--pair); outline: 1px solid var(--accent); }
+  .verdict { margin: 10px 0 0; font-size: 14px; color: var(--ink-2); display: flex; gap: 7px; align-items: baseline; }
+  .verdict .ico { font-weight: 700; }
+  .verdict.no .ico { color: var(--bad); }
+  .verdict.yes .ico { color: var(--good); }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+  .route { margin-top: 14px; }
+  .route .code-line.new { background: var(--accent-wash); }
+  .route .code-line .tag { color: var(--accent); font-weight: 700; }
+  .bottom { border-left: 4px solid var(--accent); }
+  .bottom p { margin: 0; }
+  .bottom p + p { margin-top: 6px; color: var(--ink-2); }
+
+  #tip {
+    position: fixed; z-index: 10; pointer-events: none;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+    padding: 8px 10px; font-size: 13px; max-width: 290px;
+    opacity: 0; transition: opacity 120ms;
+  }
+  #tip.on { opacity: 1; }
+  #tip .v { font-size: 15px; font-weight: 650; }
+  #tip .k { color: var(--ink-2); }
+  [hidden] { display: none !important; }
+
+  @media (max-width: 760px) {
+    .row { grid-template-columns: 1fr; }
+    .total { text-align: left; }
+    .two { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .col { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+
+  <h1>Why the memory took 14 turns, and the idea to fix it</h1>
+  <p class="lede">The same task in every run: add a “Rulers” on/off setting to excalidraw.</p>
+
+  <!-- 1 -->
+  <section>
+    <h2>1. Turns are what cost</h2>
+    <div class="card rule">
+      <div class="big">≈ 40k <small>tokens per turn</small></div>
+      <p>Each turn, the agent rereads everything so far. <b>So fewer turns means fewer tokens.</b></p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <h2>2. Same task, three kinds of memory</h2>
+    <p class="sub">Each bar is one turn. Hover a bar to see what the agent did.</p>
+    <div class="controls">
+      <button class="primary" id="play" type="button">▶ Play the three runs</button>
+      <span class="turn-now" id="turnNow" aria-live="polite"></span>
+      <button id="tableBtn" type="button" aria-expanded="false">Show as a table</button>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="sw look"></i>Looking around (searching, reading files)</span>
+      <span><i class="sw work"></i>Doing the work (editing, testing, wrapping up)</span>
+      <span><i class="sw guess"></i>A guess, not measured</span>
+    </div>
+    <div class="card" id="rows"></div>
+    <div class="card" id="tableWrap" hidden></div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <h2>3. Where the “how” comes from</h2>
+    <p class="sub">Point at a line: its twin lights up on the other side. They are the same pattern.</p>
+    <div class="two">
+      <div class="card code-card">
+        <h3>A past task's code</h3>
+        <p class="from">What “copy a past solution” hands over: the minimap task's diff</p>
+        <div class="code" id="pastCode"></div>
+        <p class="verdict no"><span class="ico">✗</span><span>One old solution, copied and renamed. You ruled this out.</span></p>
+      </div>
+      <div class="card code-card">
+        <h3>Code already in the repo</h3>
+        <p class="from">The grid-mode setting, there before any of our tasks</p>
+        <div class="code" id="repoCode"></div>
+        <p class="verdict yes"><span class="ico">✓</span><span>The pattern every toggle already follows. True for every future toggle.</span></p>
+      </div>
+    </div>
+
+    <div class="card route">
+      <button id="noteBtn" type="button" aria-expanded="false">Show the memory note with the idea</button>
+      <div id="note" hidden>
+        <p class="hint" style="margin:10px 0 8px">Today's note, with the new lines (marked “+”) the idea would add:</p>
+        <div class="code" id="noteCode"></div>
+        <p class="hint">The agent found grid mode by itself in today's run, in turn 3, after searching for it. The note would hand it over at the start.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <div class="card bottom">
+      <p><b>The idea in one line:</b> point the agent to the pattern the code already has, not to a past task's code.</p>
+      <p>Whether it gets close to 5 turns is a guess until it's measured.</p>
+    </div>
+  </section>
+
+</div>
+<div id="tip" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+const K = 1000;
+const RUNS = [
+  {
+    name: "Copy a past solution",
+    given: "Gets: the minimap task's whole diff",
+    badge: { cls: "no", ico: "✗", text: "you ruled this out" },
+    guess: false,
+    turns: [
+      ["look", 30237, "Searched twice and read the key table"],
+      ["work", 36843, "Made all 19 edits at once, copying the minimap diff"],
+      ["work", 38398, "Ran the typecheck and tests; the tests failed (a doubled flag)"],
+      ["work", 39461, "Ran the tests again: they passed"],
+      ["work", 42079, "Wrote its summary"]
+    ]
+  },
+  {
+    name: "Today's memory",
+    given: "Gets: 8 steps and which files they touch, no code",
+    badge: null,
+    guess: false,
+    note: { turn: 2, text: "found grid mode here" },
+    turns: [
+      ["look", 25877, "Searched for an existing setting to learn from, and for the key codes"],
+      ["look", 27487, "Read the snap-mode toggle and the key table"],
+      ["look", 32253, "Read the grid-mode toggle, the shortcut list, the help dialog and the Preferences menu"],
+      ["look", 37129, "Read the Preferences menu again, and App.tsx"],
+      ["look", 40453, "Read the app state and its types, and the Preferences menu once more"],
+      ["work", 44308, "Made 11 edits"],
+      ["work", 46854, "Made 7 more edits; one failed: its text matched twice in App.tsx"],
+      ["work", 47705, "Tried that edit again; it failed again"],
+      ["look", 47949, "Searched App.tsx for the right lines"],
+      ["work", 48699, "Fixed the edit"],
+      ["work", 49132, "Updated the context-menu test"],
+      ["work", 49528, "Ran the formatter and the typecheck"],
+      ["work", 49991, "Ran the tests: they passed"],
+      ["work", 53159, "Wrote its summary"]
+    ]
+  },
+  {
+    name: "The idea",
+    given: "Gets: the same 8 steps, plus “do it like grid mode”",
+    badge: { cls: "guess", ico: "?", text: "a guess, not measured" },
+    guess: true,
+    turns: [
+      ["look", 26000, "Reads the grid-mode toggle it was pointed to"],
+      ["look", 34000, "Opens the files it has to change"],
+      ["work", 40000, "Makes the edits, following grid mode"],
+      ["work", 44000, "Makes the rest of the edits"],
+      ["work", 46000, "Fixes one edit"],
+      ["work", 48000, "Runs the tests"],
+      ["work", 51000, "Writes its summary"]
+    ]
+  }
+];
+const KIND = { look: "Looking around", work: "Doing the work" };
+const MAX_TURNS = 14;
+const Y_MAX = 55 * K;
+const W = 660, AXIS = 34, TOP = 22, PLOT = 110, H = TOP + PLOT + 6;
+const SLOT = (W - AXIS) / MAX_TURNS, COL = Math.min(24, SLOT * 0.56);
+const NS = "http://www.w3.org/2000/svg";
+const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const el = (tag, attrs = {}, text) => {
+  const n = tag.startsWith("svg:") ? document.createElementNS(NS, tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const kTok = (n, guess) => `${guess ? "≈ " : ""}${Math.round(n / K)}k`;
+
+// A column: square at the baseline, 4px rounded at its data end.
+const colPath = (x, y, w, h, r = 4) => {
+  const rr = Math.min(r, h, w / 2);
+  return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
+};
+
+const tip = document.getElementById("tip");
+const showTip = (run, i, box) => {
+  const [kind, tokens, what] = run.turns[i];
+  tip.replaceChildren(
+    el("div", { class: "v" }, `${kTok(tokens, run.guess)} tokens${run.guess ? " (guess)" : ""}`),
+    el("div", { class: "k" }, `Turn ${i + 1} · ${KIND[kind]}`),
+    el("div", {}, what)
+  );
+  tip.classList.add("on");
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = box.left + box.width / 2 - tw / 2;
+  x = Math.max(8, Math.min(window.innerWidth - tw - 8, x));
+  let y = box.top - th - 8;
+  if (y < 8) y = box.bottom + 8;
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+};
+const hideTip = () => tip.classList.remove("on");
+
+const rowsEl = document.getElementById("rows");
+const totals = [];
+RUNS.forEach((run, r) => {
+  const row = el("div", { class: "row" });
+  const who = el("div", { class: "who" });
+  who.append(el("b", {}, run.name), el("span", { class: "given" }, run.given));
+  if (run.badge) {
+    const b = el("span", { class: `badge ${run.badge.cls}` });
+    b.append(el("span", { class: "ico", "aria-hidden": "true" }, run.badge.ico), el("span", {}, run.badge.text));
+    who.append(b);
+  }
+
+  const svg = el("svg:svg", { viewBox: `0 0 ${W} ${H}`, role: "group", "aria-label": `${run.name}: one bar per turn` });
+  for (const v of [25 * K, 50 * K]) {
+    const y = TOP + PLOT - (v / Y_MAX) * PLOT;
+    svg.append(el("svg:line", { class: "gridline", x1: AXIS, x2: W, y1: y, y2: y }));
+    svg.append(el("svg:text", { class: "ylab", x: AXIS - 6, y: y + 4, "text-anchor": "end" }, `${v / K}k`));
+  }
+  svg.append(el("svg:line", { class: "baseline", x1: AXIS, x2: W, y1: TOP + PLOT, y2: TOP + PLOT }));
+
+  run.turns.forEach(([kind, tokens], i) => {
+    const h = (tokens / Y_MAX) * PLOT;
+    const x = AXIS + i * SLOT + (SLOT - COL) / 2;
+    const y = TOP + PLOT - h;
+    const hit = el("svg:rect", {
+      class: "hit", x: AXIS + i * SLOT, y: TOP, width: SLOT, height: PLOT, tabindex: "0",
+      "aria-label": `Turn ${i + 1}, ${KIND[kind]}, ${kTok(tokens, run.guess)} tokens${run.guess ? ", a guess" : ""}: ${run.turns[i][2]}`
+    });
+    const color = kind === "look" ? "var(--accent)" : "var(--neutral)";
+    const wash = kind === "look" ? "var(--accent-wash)" : "var(--neutral-wash)";
+    const col = el("svg:path", run.guess
+      ? { class: "col", "data-turn": i, d: colPath(x, y, COL, h), fill: wash, stroke: color, "stroke-width": 1.5, "stroke-dasharray": "4 3" }
+      : { class: "col", "data-turn": i, d: colPath(x, y, COL, h), fill: color });
+    hit.addEventListener("pointerenter", () => showTip(run, i, hit.getBoundingClientRect()));
+    hit.addEventListener("pointerleave", hideTip);
+    hit.addEventListener("focus", () => showTip(run, i, hit.getBoundingClientRect()));
+    hit.addEventListener("blur", hideTip);
+    svg.append(hit, col);
+  });
+
+  if (run.note) {
+    const i = run.note.turn;
+    const x = AXIS + i * SLOT + SLOT / 2;
+    const top = TOP + PLOT - (run.turns[i][1] / Y_MAX) * PLOT;
+    svg.append(el("svg:line", { class: "leader", x1: x, x2: x, y1: top - 4, y2: 12 }));
+    svg.append(el("svg:text", { class: "note", x: x + 5, y: 12 }, run.note.text));
+  }
+
+  const total = el("div", { class: "total" });
+  const n = el("div", { class: "n" });
+  const t = el("div", { class: "t" });
+  total.append(n, t);
+  totals.push({ run, n, t, svg });
+  row.append(who, svg, total);
+  rowsEl.append(row);
+});
+
+const setTotals = (upTo) => {
+  for (const { run, n, t } of totals) {
+    const shown = run.turns.slice(0, upTo);
+    const sum = shown.reduce((a, x) => a + x[1], 0);
+    n.textContent = `${run.guess ? "≈ " : ""}${shown.length} turns`;
+    t.textContent = `${kTok(sum, run.guess)} tokens${run.guess ? ", guess" : ""}`;
+  }
+};
+setTotals(MAX_TURNS);
+
+// Play: the three runs side by side, one turn at a time.
+const playBtn = document.getElementById("play");
+const turnNow = document.getElementById("turnNow");
+let timer = null;
+const cols = () => document.querySelectorAll("#rows .col");
+playBtn.addEventListener("click", () => {
+  clearInterval(timer);
+  if (reduced) { cols().forEach((c) => c.classList.remove("hidden")); setTotals(MAX_TURNS); return; }
+  cols().forEach((c) => c.classList.add("hidden"));
+  setTotals(0);
+  let i = 0;
+  playBtn.disabled = true;
+  timer = setInterval(() => {
+    document.querySelectorAll(`#rows .col[data-turn="${i}"]`).forEach((c) => c.classList.remove("hidden"));
+    i++;
+    setTotals(i);
+    turnNow.textContent = `Turn ${i}`;
+    if (i >= MAX_TURNS) {
+      clearInterval(timer);
+      playBtn.disabled = false;
+      playBtn.textContent = "▶ Play again";
+      turnNow.textContent = "";
+    }
+  }, 480);
+});
+
+// The same numbers as a table.
+const tableBtn = document.getElementById("tableBtn");
+const tableWrap = document.getElementById("tableWrap");
+const table = el("table");
+const head = el("tr");
+head.append(el("th", {}, "Turn"), ...RUNS.map((r) => el("th", {}, r.name + (r.guess ? " (guess)" : ""))));
+table.append(head);
+for (let i = 0; i < MAX_TURNS; i++) {
+  const tr = el("tr");
+  tr.append(el("td", { class: "num" }, String(i + 1)));
+  for (const r of RUNS) {
+    const x = r.turns[i];
+    tr.append(el("td", {}, x ? `${kTok(x[1], r.guess)} · ${KIND[x[0]]}: ${x[2]}` : ""));
+  }
+  table.append(tr);
+}
+const sumRow = el("tr");
+sumRow.append(el("th", {}, "All"), ...RUNS.map((r) => el("th", {}, `${r.turns.length} turns, ${kTok(r.turns.reduce((a, x) => a + x[1], 0), r.guess)} tokens`)));
+table.append(sumRow);
+tableWrap.append(table);
+tableBtn.addEventListener("click", () => {
+  const open = tableWrap.hidden;
+  tableWrap.hidden = !open;
+  tableBtn.setAttribute("aria-expanded", String(open));
+  tableBtn.textContent = open ? "Hide the table" : "Show as a table";
+});
+
+// Section 3: the same pattern, twice. Lines with the same pair id light up together.
+const PAST = [
+  ["a", "+export const actionToggleMinimap = register({", "actionToggleMinimap.tsx"],
+  ["b", "+  name: \"minimap\",", ""],
+  ["c", "+  label: \"labels.minimap\",", ""],
+  ["d", "+  minimapEnabled: { browser: true, export: false, server: false },", "appState.ts"],
+  ["e", "+export const PreferencesToggleMinimapItem = () => {", "DefaultItems.tsx"]
+];
+const REPO = [
+  ["a", "export const actionToggleGridMode = register({", "actionToggleGridMode.tsx"],
+  ["b", "  name: \"gridMode\",", ""],
+  ["c", "  label: \"labels.toggleGrid\",", ""],
+  ["d", "  gridModeEnabled: { browser: true, export: true, server: true },", "appState.ts"],
+  ["e", "export const PreferencesToggleGridModeItem = () => {", "DefaultItems.tsx"]
+];
+const lines = (host, rows, added) => {
+  for (const [pair, code, file] of rows) {
+    if (file) host.append(el("div", { class: "file-label" }, file));
+    const line = el("div", { class: `code-line${added ? " added" : ""}`, "data-pair": pair, tabindex: "0" });
+    line.append(el("span", {}, code));
+    const light = (on) => document.querySelectorAll(`[data-pair="${pair}"]`).forEach((l) => l.classList.toggle("lit", on));
+    line.addEventListener("pointerenter", () => light(true));
+    line.addEventListener("pointerleave", () => light(false));
+    line.addEventListener("focus", () => light(true));
+    line.addEventListener("blur", () => light(false));
+    host.append(line);
+  }
+};
+lines(document.getElementById("pastCode"), PAST, true);
+lines(document.getElementById("repoCode"), REPO, false);
+
+const NOTE = [
+  [false, "1. add appState field and storage config"],
+  [false, "   Usually edits appState.ts, types.ts"],
+  [true, "   Like gridModeEnabled in APP_STATE_STORAGE_CONF (appState.ts)"],
+  [false, "3. create toggle action and register it"],
+  [false, "   Usually edits actions/index.ts, actions/types.ts"],
+  [true, "   Do it like grid mode: actions/actionToggleGridMode.tsx"],
+  [false, "6. add action to context menus and Preferences menu"],
+  [false, "   Usually edits App.tsx, DefaultItems.tsx"],
+  [true, "   Like PreferencesToggleGridModeItem, and actionToggleGridMode in App.tsx's menus"]
+];
+const noteCode = document.getElementById("noteCode");
+for (const [isNew, text] of NOTE) {
+  const line = el("div", { class: `code-line${isNew ? " new" : ""}` });
+  line.append(el("span", { class: "tag", "aria-label": isNew ? "new line" : "" }, isNew ? "+" : " "), el("span", {}, text));
+  noteCode.append(line);
+}
+const noteBtn = document.getElementById("noteBtn");
+const note = document.getElementById("note");
+noteBtn.addEventListener("click", () => {
+  const open = note.hidden;
+  note.hidden = !open;
+  noteBtn.setAttribute("aria-expanded", String(open));
+  noteBtn.textContent = open ? "Hide the note" : "Show the memory note with the idea";
+});
+</script>
+</body>
+</html>
