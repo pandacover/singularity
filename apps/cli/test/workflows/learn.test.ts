@@ -13,6 +13,8 @@ import { branchCommits, storePast } from "../../src/workflows/Commits.ts"
 import { pastSessions, projectDirName } from "../../src/workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, learnSubject, mergeSubject, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
+import { CLI, learningQueue, lockHeld, markLock, queueLearning, releaseLock, takeLock } from "../../src/setup/Background.ts"
+import { writeLearn } from "../../src/setup/Preferences.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { emptyMemory, type WorkflowMemory } from "../../src/workflows/Models.ts"
 import { forSubject, startTask } from "../../src/workflows/Start.ts"
@@ -209,6 +211,10 @@ describe("learning repo by repo", () => {
     expect(waitReason(state(2, 0, 0), 3, false)).toBe("nothing new since the last try")
     expect(waitReason(state(5, 2, 1), 3, false)).toBe("2 of 3 new changes stored")
     expect(waitReason(state(5, 1, 1), 3, true)).toBeUndefined()
+    // A first build that kept nothing reads every change again: not for one new change, unless asked by hand.
+    expect(waitReason(state(40, 1, 0), 3, false)).toBe("1 of 3 new changes since the last try")
+    expect(waitReason(state(42, 3, 0), 3, false)).toBeUndefined()
+    expect(waitReason(state(40, 1, 0), 3, true)).toBeUndefined()
   })
 
   it("starts a round on its own only when what the day's limit leaves covers its estimate", () => {
@@ -280,6 +286,75 @@ describe("learning repo by repo", () => {
     expect(out.hookEventName).toBe("BeforeAgent")
     expect(out.additionalContext).toContain("run once: `npm test`")
   }, 60_000)
+})
+
+describe("learning one round at a time", () => {
+  it("takes the queue in order, each repo once, skips what the round before read, and waits for a round running", async () => {
+    const root = tempDir()
+    const claudeHome = join(root, "claude")
+    const homeDir = join(root, "home")
+    const home = await run(loadHome(homeDir))
+    await run(writeLearn({ auto: true, every: 3, max_usd_per_day: 5 }, homeDir))
+    // Each round: the workflows, then their cues twice (the fake answers say no task's needs). Each call costs $0.01.
+    const answers = join(root, "answers.json")
+    writeFileSync(answers, JSON.stringify([workflowAnswer, cuesAnswer, cuesAnswer, workflowAnswer, cuesAnswer, cuesAnswer]))
+    const env = {
+      ...process.env,
+      SINGULARITY_HOME: homeDir,
+      SINGULARITY_HOOKS: "on",
+      SINGULARITY_AUTOLEARN: "on",
+      SINGULARITY_CLAUDE: JSON.stringify(FAKE_CLAUDE),
+      SINGULARITY_WORKSPACES: join(root, "workspaces"),
+      FAKE_CLAUDE_ANSWERS: answers,
+      CLAUDE_CONFIG_DIR: claudeHome,
+      CODEX_HOME: join(root, "no-codex"),
+      HERMES_HOME: join(root, "no-hermes")
+    }
+    const cli = (...args: Array<string>) => {
+      const out = spawnSync(process.execPath, [CLI, ...args], { encoding: "utf-8", env })
+      expect(out.status, out.stderr).toBe(0)
+      // Without the time each background line starts with.
+      return out.stdout.trim().split(/\r?\n/).filter((l) => l !== "").map((l) => l.replace(/^\d{4}-\S+ /, ""))
+    }
+    const changes = (name: string) => {
+      const repo = makeRepo(root, name, [5, 3605])
+      writeTranscript(claudeHome, repo, `${name.padEnd(7, "x")}1-0000-0000-0000-000000000001`, 0, "Add blue to the colors", "pass")
+      writeTranscript(claudeHome, repo, `${name.padEnd(7, "x")}2-0000-0000-0000-000000000002`, 3600, "Add green to the colors", "pass")
+      return repo
+    }
+    const alpha = changes("alpha")
+    await run(storePast(alpha, { claude: claudeHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
+
+    // Asked for twice while another round ran, and a repo memory doesn't know: one round each, in order.
+    queueLearning(homeDir, "alpha")
+    queueLearning(homeDir, "ghost")
+    queueLearning(homeDir, "alpha")
+    expect(learningQueue(homeDir)).toEqual(["alpha", "ghost"])
+    expect(cli("learn", "--auto")).toEqual([
+      "alpha: ✓ Learned 1 workflow and 0 known mistakes from 2 changes ($0.03):",
+      "alpha: · Change the app's colors",
+      "ghost: no such repo in memory"
+    ])
+    expect([learningQueue(homeDir), lockHeld(homeDir)]).toEqual([[], false])
+    // Asked for again with nothing new: the round before read it all.
+    queueLearning(homeDir, "alpha")
+    expect(cli("learn", "--auto")).toEqual(["alpha: skipped: 0 of 3 new changes stored"])
+
+    // While a round runs, a change stored elsewhere queues its repo's round, and a round by hand waits its turn.
+    expect(takeLock(homeDir)).toBe(true)
+    markLock(homeDir, "alpha")
+    const beta = changes("beta")
+    expect(cli("record", "commits", "--background", "--all", "--cwd", beta)).toContain("beta: a learning round is queued after the one running")
+    expect(cli("learn", "--auto")).toEqual([])
+    expect(cli("learn", "--repo", beta, "--yes")).toEqual(["A learning round of alpha is running now; try again when it's done (singularity status shows it)."])
+    expect(learningQueue(homeDir)).toEqual(["beta"])
+    // When it's done, the queue goes on.
+    releaseLock(homeDir)
+    expect(cli("learn", "--auto")).toEqual([
+      "beta: ✓ Learned 1 workflow and 0 known mistakes from 2 changes ($0.03):",
+      "beta: · Change the app's colors"
+    ])
+  }, 120_000)
 })
 
 /** A Codex rollout of a session in `cwd` from `start` (seconds): a patch to app.ts, then `npm test` unless tests is "none". */

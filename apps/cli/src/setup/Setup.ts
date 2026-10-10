@@ -26,6 +26,7 @@ import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { estimateUsd, learnSubject, type LearnOutcome } from "../workflows/Learn.ts"
 import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
 import { CLI } from "./AutoLearn.ts"
+import { markLock, releaseLearning, takeLock } from "./Background.ts"
 import { addToPath, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
 import { askDollars, confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
@@ -245,7 +246,10 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       }).pipe(Effect.provide(layers))
       if (subject !== undefined && !o.yes) {
         const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now? About ${usd(estimateUsd(n))}.`, true)
-        if (go) {
+        if (go && !takeLock(home.root)) {
+          yield* item(`${s.dim("·")} a learning round is running now; run ${s.cyan("singularity learn")} when it's done`)
+        } else if (go) {
+          markLock(home.root, subject.id)
           const learned = yield* withSpinner(
             "learning (a minute or two)",
             learnSubject(subject, {
@@ -255,7 +259,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
               effort: DEFAULT_INDUCE_EFFORT,
               every: prefs.every,
               now: true
-            }).pipe(Effect.provide(layers), Effect.result),
+            }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
             o.interactive
           )
           if (learned._tag === "Success") for (const line of describeOutcome(s, learned.success)) yield* item(line)

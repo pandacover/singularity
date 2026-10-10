@@ -7,13 +7,14 @@
  *     singularity learn [--past] [--all] [--dry-run]           learn from the changes stored now
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
- * `learn --auto --subject ID` is the background round storing a change
- * starts (src/setup/AutoLearn.ts).
+ * `learn --auto` is the background rounds storing changes asks for, one
+ * repo at a time from a queue (src/setup/AutoLearn.ts).
  */
 import { Console, DateTime, Effect, FileSystem, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { homedir } from "node:os"
 import { defaultClaude } from "../eval/Agent.ts"
+import { lowerPriority } from "../eval/Proc.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"
 import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
@@ -21,7 +22,7 @@ import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import type { Subject } from "../records/Subjects.ts"
 import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
-import { releaseLock, takeLock } from "../setup/AutoLearn.ts"
+import { learningQueue, lockInfo, markLock, queueLearning, releaseLearning, releaseLock, takeLock, unqueueLearning } from "../setup/Background.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
 import { readLearn } from "../setup/Preferences.ts"
 import { describeOutcome, runSetup } from "../setup/Setup.ts"
@@ -102,17 +103,23 @@ const recall = Command.make(
   })
 ).pipe(Command.withDescription("print what memory would hand a task in this repo (no model call)"))
 
-/** The background round storing a change starts: one subject, within the lock, when what the day's limit leaves covers it. */
-const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string) {
+/**
+ * One queued round, in the background: checked again when its turn comes, so
+ * that changes the round before it read aren't read twice, and started only
+ * when what the day's limit leaves covers it.
+ */
+const learnQueued = Effect.fn("learnQueued")(function*(home: Home, subjectId: string) {
   const path = yield* Path.Path
   const stamp = DateTime.formatIso(yield* DateTime.now)
   const log = (line: string) => Console.log(`${stamp} ${subjectId}: ${line}`)
-  if (!takeLock(home.root)) return yield* log("another round is running")
   yield* Effect.gen(function*() {
     const prefs = yield* readLearn(home.root)
     const subject = (yield* (yield* RecordStore).subjects()).find((x) => x.id === subjectId)
     if (subject === undefined) return yield* log("no such repo in memory")
-    const short = budgetReason(roundUsd(yield* learnState(subjectId)), yield* spentToday(), prefs.max_usd_per_day)
+    const state = yield* learnState(subjectId)
+    const waiting = waitReason(state, prefs.every, false)
+    if (waiting !== undefined) return yield* log(`skipped: ${waiting}`)
+    const short = budgetReason(roundUsd(state), yield* spentToday(), prefs.max_usd_per_day)
     if (short !== undefined) return yield* log(`waits: ${short}`)
     const outcome = yield* learnSubject(subject, {
       claude: yield* defaultClaude(),
@@ -125,9 +132,26 @@ const learnAuto = Effect.fn("learnAuto")(function*(home: Home, subjectId: string
     for (const line of describeOutcome(s, outcome)) yield* log(line.trim())
   }).pipe(
     Effect.provide(storesOf(home, path)),
-    Effect.catch((e) => log(`failed: ${"message" in e ? e.message : String(e)}`)),
-    Effect.ensuring(Effect.sync(() => releaseLock(home.root)))
+    Effect.catch((e) => log(`failed: ${"message" in e ? e.message : String(e)}`))
   )
+})
+
+/**
+ * The background rounds storing changes asks for: the queue, one repo at a
+ * time, by whichever run holds the lock. A round asked for just as the run
+ * lets go starts here too.
+ */
+const learnAuto = Effect.fn("learnAuto")(function*(home: Home) {
+  yield* lowerPriority
+  while (learningQueue(home.root).length > 0 && takeLock(home.root)) {
+    yield* Effect.gen(function*() {
+      for (let next = learningQueue(home.root)[0]; next !== undefined; next = learningQueue(home.root)[0]) {
+        unqueueLearning(home.root, next)
+        markLock(home.root, next)
+        yield* learnQueued(home, next)
+      }
+    }).pipe(Effect.ensuring(Effect.sync(() => releaseLock(home.root))))
+  }
 })
 
 const learn = Command.make(
@@ -138,8 +162,8 @@ const learn = Command.make(
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo (default: here)")),
     dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false), Flag.withDescription("say what would be learned, and what it would cost, and stop")),
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("don't ask before spending")),
-    auto: Flag.Boolean("auto").pipe(Flag.withDefault(false), Flag.withDescription("the background round after a change is stored (with --subject)")),
-    subject: Flag.String("subject").pipe(Flag.optional, Flag.withDescription("with --auto: the repo's subject id")),
+    auto: Flag.Boolean("auto").pipe(Flag.withDefault(false), Flag.withDescription("the background rounds stored changes ask for: the queue, one repo at a time")),
+    subject: Flag.String("subject").pipe(Flag.optional, Flag.withDescription("with --auto: queue this repo's subject id first")),
     claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
     home: homeFlag
   },
@@ -147,8 +171,8 @@ const learn = Command.make(
     const path = yield* Path.Path
     const home = yield* loadHome(Option.getOrUndefined(args.home))
     if (args.auto) {
-      if (Option.isNone(args.subject)) return yield* Console.error("learn --auto needs --subject")
-      return yield* learnAuto(home, args.subject.value)
+      if (Option.isSome(args.subject)) queueLearning(home.root, args.subject.value)
+      return yield* learnAuto(home)
     }
     const s = makeStyle(wantsColor())
     const say = (line: string) => Console.log(`  ${line}`)
@@ -177,40 +201,48 @@ const learn = Command.make(
         : "No changes stored here yet. Memory keeps the changes Claude Code, Codex and Hermes Agent sessions commit with their checks passing; --past looks through earlier sessions.")
     }
     const prefs = yield* readLearn(home.root)
-    let spent = 0
-    for (const subject of subjects) {
-      const state = yield* learnState(subject.id).pipe(Effect.provide(stores))
-      const waiting = waitReason(state, prefs.every, true)
-      if (waiting !== undefined) {
-        yield* say(`${s.dim("·")} ${subject.name}: not yet, ${waiting}`)
-        continue
-      }
-      const changes = state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length
-      const estimate = roundUsd(state)
-      const what = state.memory.workflows.length === 0 ? "a first memory" : "a learning round"
-      if (args.dryRun) {
-        yield* say(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}`)
-        continue
-      }
-      const go = yield* confirm(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}. Go ahead?`, true, interactive() && !args.yes).pipe(Effect.orElseSucceed(() => false))
-      if (!go) continue
-      const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-      const outcome = yield* withSpinner(
-        `learning ${subject.name} (a minute or two)`,
-        learnSubject(subject, {
-          claude,
-          cwd: path.join(defaultWorkspaces(), "_learner"),
-          model: DEFAULT_INDUCE_MODEL,
-          effort: DEFAULT_INDUCE_EFFORT,
-          every: prefs.every,
-          now: true
-        }).pipe(Effect.provide(stores)),
-        interactive()
-      )
-      spent += outcome.costUsd
-      yield* say(`${s.bold(subject.name)}`)
-      for (const line of describeOutcome(s, outcome)) yield* say(`  ${line}`)
+    // A round by hand holds the lock too: one round at a time, whoever starts it.
+    if (!args.dryRun && !takeLock(home.root)) {
+      const held = lockInfo(home.root)
+      return yield* say(`A learning round${held?.subject === undefined ? "" : ` of ${held.subject}`} is running now; try again when it's done (${s.cyan("singularity status")} shows it).`)
     }
+    let spent = 0
+    yield* Effect.gen(function*() {
+      for (const subject of subjects) {
+        const state = yield* learnState(subject.id).pipe(Effect.provide(stores))
+        const waiting = waitReason(state, prefs.every, true)
+        if (waiting !== undefined) {
+          yield* say(`${s.dim("·")} ${subject.name}: not yet, ${waiting}`)
+          continue
+        }
+        const changes = state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length
+        const estimate = roundUsd(state)
+        const what = state.memory.workflows.length === 0 ? "a first memory" : "a learning round"
+        if (args.dryRun) {
+          yield* say(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}`)
+          continue
+        }
+        const go = yield* confirm(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}. Go ahead?`, true, interactive() && !args.yes).pipe(Effect.orElseSucceed(() => false))
+        if (!go) continue
+        const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
+        markLock(home.root, subject.id)
+        const outcome = yield* withSpinner(
+          `learning ${subject.name} (a minute or two)`,
+          learnSubject(subject, {
+            claude,
+            cwd: path.join(defaultWorkspaces(), "_learner"),
+            model: DEFAULT_INDUCE_MODEL,
+            effort: DEFAULT_INDUCE_EFFORT,
+            every: prefs.every,
+            now: true
+          }).pipe(Effect.provide(stores)),
+          interactive()
+        )
+        spent += outcome.costUsd
+        yield* say(`${s.bold(subject.name)}`)
+        for (const line of describeOutcome(s, outcome)) yield* say(`  ${line}`)
+      }
+    }).pipe(Effect.ensuring(Effect.sync(() => args.dryRun || releaseLearning(home.root))))
     if (spent > 0) yield* say(s.dim(`spent ${usd(spent)} in all`))
   })
 ).pipe(Command.withDescription("learn from the changes stored now: a first memory for a repo, or a learning round"))

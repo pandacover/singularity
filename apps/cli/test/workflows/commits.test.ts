@@ -186,6 +186,32 @@ describe("storing commits", () => {
     expect((await store(t, { session: { sessionId: s1, transcript: "" } })).stored).toEqual([])
   }, 60_000)
 
+  it("keeps a name a change brought in as its task's own only while files the change didn't touch don't use it", async () => {
+    const t = setup()
+    const first = commitColors(t.repo, 5, ["red", "blue", "teal"])
+    // The later change adds gold and a note that writes Blue.
+    writeFileSync(join(t.repo, "notes.md"), "Blue is the default.\n")
+    gitAt(t.repo, undefined, "add", "notes.md")
+    const second = commitColors(t.repo, 15, ["red", "blue", "teal", "gold"])
+    writeTranscript(t.claudeHome, t.repo, "ddddddd1-0000-0000-0000-000000000001", [
+      { prompt: "Add blue and teal to the colors", at: 0 },
+      { edit: ["red", "blue", "teal"], from: ["red"], at: 1 },
+      { bash: "npm test", at: 3 },
+      { bash: "git commit -am 'Add blue and teal'", at: 5 },
+      { prompt: "Add gold, and note that blue is the default", at: 10 },
+      { edit: ["red", "blue", "teal", "gold"], from: ["red", "blue", "teal"], at: 11 },
+      { bash: "npm test", at: 13 },
+      { bash: "git add notes.md && git commit -am 'Add gold'", at: 15 }
+    ])
+    expect((await store(t)).stored).toEqual([commitRecordId("app", first), commitRecordId("app", second)])
+    const [one, two] = await records(t)
+    // Read alone, both new names are the first change's own.
+    expect((await run(gatherEvidence([one]))).runs[0].values).toEqual(["blue", "teal"])
+    // The later change writes Blue in a file the first didn't touch: blue is now a word of the repo, which memory may write.
+    const both = await run(gatherEvidence([one, two]))
+    expect(both.runs.map((r) => [r.record, r.values])).toEqual([[one.id, ["teal"]], [two.id, ["gold", "notes"]]])
+  }, 60_000)
+
   it("stores a commit made outside the session with the session whose edits it holds", async () => {
     const t = setup()
     writeTranscript(t.claudeHome, t.repo, "bbbbbbb1-0000-0000-0000-000000000001", [
