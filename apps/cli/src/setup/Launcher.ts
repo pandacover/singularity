@@ -47,16 +47,25 @@ export const cmdLauncher = (node: string, cli: string) =>
     ""
   ].join("\r\n")
 
-/** Write the launchers; their directory. */
+/**
+ * Write the launchers; their directory. A launcher that says this already is
+ * left as it is: cmd reads a batch file as it runs it, so rewriting the one
+ * running `singularity setup` or `update` would garble its end.
+ */
 export const writeLaunchers = Effect.fn("writeLaunchers")(function*(memoryHome: string, node: string, cli: string, platform: NodeJS.Platform) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const bin = binDir(memoryHome)
   yield* fs.makeDirectory(bin, { recursive: true })
+  const write = (file: string, text: string) =>
+    fs.readFileString(file).pipe(
+      Effect.orElseSucceed(() => undefined),
+      Effect.flatMap((was) => (was === text ? Effect.void : fs.writeFileString(file, text)))
+    )
   const sh = path.join(bin, "singularity")
-  yield* fs.writeFileString(sh, shLauncher(node, cli))
+  yield* write(sh, shLauncher(node, cli))
   yield* fs.chmod(sh, 0o755).pipe(Effect.ignore)
-  if (platform === "win32") yield* fs.writeFileString(path.join(bin, "singularity.cmd"), cmdLauncher(node, cli))
+  if (platform === "win32") yield* write(path.join(bin, "singularity.cmd"), cmdLauncher(node, cli))
   return bin
 })
 

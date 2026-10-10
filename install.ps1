@@ -7,7 +7,8 @@
 # checksums; nothing else on the machine changes). Then it puts the code in
 # ~\.singularity\app (a git clone, updated when this runs again), installs its
 # dependencies, and starts `singularity setup`, which sets memory up in your
-# coding agents.
+# coding agents. Where memory is set up already, it brings that up to date
+# with the new code instead (`singularity update` does all of this too).
 #
 # $env:SINGULARITY_REF picks a branch or tag (default: main);
 # $env:SINGULARITY_OWN_NODE = '1' fetches its own Node.js even when one is on PATH.
@@ -87,7 +88,10 @@
   Done 'dependencies'
   Write-Host ''
 
-  & $node (Join-Path $app 'apps\cli\src\singularity.ts') setup @args
+  # Set up already (setup writes the command): the new code brings it up to date
+  # and asks nothing setup asked. Flags for setup run setup.
+  $cli = Join-Path $app 'apps\cli\src\singularity.ts'
+  if ($args.Count -eq 0 -and (Test-Path (Join-Path $root 'bin\singularity'))) { & $node $cli update --no-fetch } else { & $node $cli setup @args }
 
   # The command works in this window too, not only in new ones.
   $bin = Join-Path $root 'bin'

@@ -377,8 +377,8 @@ const pickModel = Effect.fnUntraced(function*(
  * aren't trusted yet, and trusts them as Codex's `/hooks` would; the line to
  * show under Codex, or undefined when there is nothing to say.
  */
-const codexTrust = Effect.fnUntraced(function*(
-  o: SetupOptions,
+export const codexTrust = Effect.fnUntraced(function*(
+  o: Pick<SetupOptions, "home" | "env">,
   asking: boolean
 ) {
   const codex = yield* findCommand("codex", o.env)
@@ -406,6 +406,7 @@ const done = Effect.fnUntraced(function*(s: Style, o: SetupOptions, chosen: Read
     ["singularity status", "what memory knows, repo by repo"],
     ["singularity recall \"<task>\"", "what a task would be handed"],
     ["singularity learn", "learn from new changes now"],
+    ["singularity update", "get the latest version"],
     ["singularity uninstall", "take it all out (memory stays)"]
   ]
   const w = Math.max(...commands.map(([c]) => c.length)) + 3

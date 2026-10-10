@@ -5,6 +5,7 @@
  *     singularity status                                       what memory knows, and where it is set up
  *     singularity recall TASK...                               what a task here would be handed
  *     singularity learn [--past] [--all] [--with ID] [--dry-run]   learn from the changes stored now
+ *     singularity update [--no-fetch]                          the latest code, and setup brought up to date with it
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
  * `learn --auto` is the background rounds storing changes asks for, one
@@ -28,6 +29,7 @@ import { LEARNER_NAMES, learnerConfig, LearnerError, resolveLearner, withModelHi
 import { modelFor, readLearn } from "../setup/Preferences.ts"
 import { describeOutcome, runSetup } from "../setup/Setup.ts"
 import { runStatus } from "../setup/Status.ts"
+import { runRefresh, runUpdate } from "../setup/Update.ts"
 import { confirm, makeStyle, plural, tilde, usd, wantsColor, withSpinner } from "../setup/Ui.ts"
 import { unwireAll } from "../setup/Wiring.ts"
 import { storePast } from "../workflows/Commits.ts"
@@ -251,6 +253,18 @@ const learn = Command.make(
   })
 ).pipe(Command.withDescription("learn from the changes stored now: a first memory for a repo, or a learning round"))
 
+const update = Command.make(
+  "update",
+  {
+    noFetch: Flag.Boolean("no-fetch").pipe(Flag.withDefault(false), Flag.withDescription("don't fetch: bring what setup put in place up to date with the code installed now"))
+  },
+  Effect.fn(function*(args) {
+    const options = { home: homedir(), env: process.env, interactive: interactive(), color: wantsColor() }
+    const ok = yield* (args.noFetch ? runRefresh(options) : runUpdate(options))
+    if (!ok) process.exitCode = 1
+  })
+).pipe(Command.withDescription("update singularity to the latest code and bring its hooks, skill and command up to date, asking nothing setup asked"))
+
 const uninstall = Command.make(
   "uninstall",
   {
@@ -281,4 +295,4 @@ const uninstall = Command.make(
   })
 ).pipe(Command.withDescription("take memory out of every agent and remove the singularity command (memory stays unless --purge)"))
 
-export const setupCommands = [setup, status, recall, learn, uninstall] as const
+export const setupCommands = [setup, status, recall, learn, update, uninstall] as const

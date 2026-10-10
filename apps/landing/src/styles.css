@@ -64,6 +64,7 @@ h1, h2, h3 { font-weight: 400; margin: 0; text-wrap: balance; }
 .copy:hover { background: var(--ink); color: var(--paper); }
 .copy[data-done] { border-color: var(--red); color: var(--red); background: none; }
 .install .req { font: 12px/1.6 var(--mono); color: var(--muted); margin-top: 8px; }
+.install .req.blocked { color: var(--ink); }
 
 /* ---------- figures ---------- */
 figure { margin: 0; }
