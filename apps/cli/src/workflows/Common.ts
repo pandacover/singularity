@@ -19,7 +19,7 @@
  * kind replaces them.
  */
 import { Effect } from "effect"
-import { callStructured } from "../eval/Llm.ts"
+import { callModel } from "../eval/ModelCall.ts"
 import type { Evidence, RunEvidence } from "./Evidence.ts"
 import { type Checked, checkAnswer, describeDetour, describePlace, type InduceConfig, InductionAnswer } from "./Induce.ts"
 import { type Edge, END, isReadPlace, type Place, START, type WorkflowMemory } from "./Models.ts"
@@ -235,8 +235,8 @@ export const learnCommon = Effect.fn("learnCommon")(function*(
   let result: Checked | undefined
   let rationale = ""
   for (let attempt = 0; attempt < 2; attempt++) {
-    const answer = yield* callStructured({
-      claude: config.claude,
+    const answer = yield* callModel({
+      cli: config.cli,
       system: COMMON_PROMPT,
       prompt: commonPrompt(evidence, kind, current, notes, previous),
       schema: InductionAnswer,

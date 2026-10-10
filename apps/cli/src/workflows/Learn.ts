@@ -190,7 +190,15 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
 
   // What the checks dropped or flagged goes with the candidate: why a round kept little is there to read, without paying again.
   const propose = (memory: WorkflowMemory, records: ReadonlyArray<string>, rationale: string, costUsd: number, problems: ReadonlyArray<string>) =>
-    store.propose(mergeSubject(full, subject.id, memory), { baseVersion, rationale, records, model: config.model, costUsd, report: { problems: [...problems], replay: null } })
+    store.propose(mergeSubject(full, subject.id, memory), {
+      baseVersion,
+      rationale,
+      records,
+      // The agent's own model, when it chose: which agent learned.
+      model: config.model ?? config.cli.agent,
+      costUsd,
+      report: { problems: [...problems], replay: null }
+    })
 
   if (first) {
     const evidence = yield* gatherEvidence(state.records, {})

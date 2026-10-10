@@ -38,9 +38,10 @@ Run these in the repository:
   use memory and nothing was handed over.
 - \`singularity status\` shows the agents memory is set up in and what it has
   learned for each repository.
-- \`singularity learn\` turns recorded sessions into workflows. It calls a
-  model on the user's Claude account, a few cents a round: run it only when
-  the user asks.
+- \`singularity learn\` turns the changes memory stored into workflows. It
+  calls the model of the agent the user chose to learn with (Claude Code,
+  Codex or Hermes Agent), on their account with it, cents to dimes a round:
+  run it only when the user asks.
 `
 
 export type SkillState = "missing" | "current" | "outdated" | "foreign"

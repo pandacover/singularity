@@ -14,9 +14,22 @@ import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
 import { agentStates, detectAgents, HOOK_SCRIPT, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
 import { asClaudeCall } from "../../src/workflows/HookTool.ts"
-import { run, tempDir, withEnv } from "../eval/helpers.ts"
+import { FAKE_CODEX, fakeCommand, run, tempDir, withEnv } from "../eval/helpers.ts"
 
 const json = (file: string) => JSON.parse(readFileSync(file, "utf-8"))
+
+/** What `f` says with console.log (Effect's Console logs there), in one string. */
+const captureLog = async (f: () => Promise<unknown>): Promise<string> => {
+  const lines: Array<string> = []
+  const log = console.log
+  console.log = (...args: Array<unknown>) => void lines.push(args.map(String).join(" "))
+  try {
+    await f()
+  } finally {
+    console.log = log
+  }
+  return lines.join("\n")
+}
 
 const nodeLayer = NodeServices.layer
 
@@ -211,12 +224,17 @@ const fakeClaude = (bin: string) => {
   chmodSync(join(bin, "claude"), 0o755)
 }
 
-/** A home with agents' directories, and the options setup runs with there (only Claude Code on PATH, so directories decide the rest). */
-const sandbox = (agentDirs: ReadonlyArray<string>) => {
+/**
+ * A home with agents' directories, and the options setup runs with there
+ * (only Claude Code on PATH, unless said, so directories decide the rest).
+ */
+const sandbox = (agentDirs: ReadonlyArray<string>, onPath: { readonly claude?: boolean; readonly codex?: boolean } = { claude: true }) => {
   const root = tempDir()
   const home = join(root, "home")
   for (const d of agentDirs) mkdirSync(join(home, d), { recursive: true })
-  fakeClaude(join(root, "bin"))
+  mkdirSync(join(root, "bin"), { recursive: true })
+  if (onPath.claude === true) fakeClaude(join(root, "bin"))
+  if (onPath.codex === true) fakeCommand(join(root, "bin"), "codex", FAKE_CODEX)
   const options: SetupOptions = {
     yes: true,
     only: [],
@@ -249,7 +267,8 @@ describe("setup", () => {
     }
     // The command on PATH is the one for daily use, not the whole command line.
     expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
-    expect((await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).auto).toBe(true)
+    // Claude Code is the only agent here that can learn: learning goes through it.
+    expect(await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).toMatchObject({ auto: true, with: "claude" })
     // The daily limit is the user's: given once, it stays until given again.
     await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, dailyLimit: 2.5 })))
     expect((await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).max_usd_per_day).toBe(2.5)
@@ -273,6 +292,29 @@ describe("setup", () => {
     expect(existsSync(join(home, ".codex", "hooks.json"))).toBe(false)
     expect(existsSync(join(home, ".gemini", "settings.json"))).toBe(false)
     expect(await run(skillState(join(home, ".agents", "skills")))).toBe("missing")
+  }, 60_000)
+
+  it("learns with Codex where Codex is the only agent that can, and with the one asked for where there are several", async () => {
+    const codexOnly = sandbox([".codex"], { codex: true })
+    const said = await captureLog(() => withEnv({ SINGULARITY_HOME: codexOnly.memory }, () => run(runSetup(codexOnly.options))))
+    expect(await run(readLearn(codexOnly.memory))).toMatchObject({ auto: true, with: "codex" })
+    expect(said).toContain("learning on its own with Codex (the model Codex is set to use, on your Codex account)")
+    expect(said).not.toContain("Claude Code isn't")
+
+    const both = sandbox([".claude", ".codex"], { claude: true, codex: true })
+    await withEnv({ SINGULARITY_HOME: both.memory }, () => run(runSetup(both.options)))
+    expect((await run(readLearn(both.memory))).with).toBe("claude")
+    await withEnv({ SINGULARITY_HOME: both.memory }, () => run(runSetup({ ...both.options, learnWith: "codex" })))
+    expect((await run(readLearn(both.memory))).with).toBe("codex")
+    // Asked again, the answer given before is the default.
+    await withEnv({ SINGULARITY_HOME: both.memory }, () => run(runSetup(both.options)))
+    expect((await run(readLearn(both.memory))).with).toBe("codex")
+
+    // No agent here can learn: setup says so and sets the rest up.
+    const none = sandbox([".gemini"], {})
+    const told = await captureLog(() => withEnv({ SINGULARITY_HOME: none.memory }, () => run(runSetup(none.options))))
+    expect(told).toContain("Memory learns with the model of Claude Code, Codex or Hermes Agent, and none of them is here.")
+    expect(existsSync(join(none.home, ".gemini", "settings.json"))).toBe(true)
   }, 60_000)
 
   it("puts Droid's hooks in its settings.json when the user keeps theirs there", async () => {

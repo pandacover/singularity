@@ -22,6 +22,7 @@
 import { Console, Effect, FileSystem, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { defaultClaude } from "../eval/Agent.ts"
+import { claudeCli } from "../eval/Llm.ts"
 import { lowerPriority } from "../eval/Proc.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"
 import { loadHome } from "../local/Home.ts"
@@ -83,7 +84,7 @@ const build = Command.make(
     const cwd = path.join(defaultWorkspaces(), "_learner")
     yield* fs.makeDirectory(cwd, { recursive: true })
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-    const result = yield* induce({ claude, cwd, model: args.model, effort: args.effort }, evidence, store.tenant, current)
+    const result = yield* induce({ cli: claudeCli(claude), cwd, model: args.model, effort: args.effort }, evidence, store.tenant, current)
     const m = withSnapshots(result.memory, evidence.runs)
     yield* Console.log(`${m.workflows.length} workflows, ${m.places.length} places, ${m.pitfalls.length} pitfalls, ${m.edges.length} edges; ` +
       `${result.calls} model call${result.calls === 1 ? "" : "s"}, $${result.costUsd.toFixed(3)}`)
@@ -248,7 +249,7 @@ ${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(new
     const local = hasCues(current)
     const selector = local ? "cues" as const : { claude, cwd, model: "sonnet" }
     const refined = yield* refine(
-      { claude, cwd, model: args.model, effort: args.effort },
+      { cli: claudeCli(claude), cwd, model: args.model, effort: args.effort },
       selector,
       current,
       evidence,
@@ -262,7 +263,7 @@ ${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(new
     let cueCost = 0
     if (local) {
       // The tasks memory learned from, old and new, are the examples the cues must pick right.
-      const written = yield* writeCues({ claude, cwd, model: args.model, effort: args.effort }, revision, runs)
+      const written = yield* writeCues({ cli: claudeCli(claude), cwd, model: args.model, effort: args.effort }, revision, runs)
       for (const p of written.problems) yield* Console.log(`  cues: ${p}`)
       revision = written.memory
       cueCost = written.costUsd
@@ -319,7 +320,7 @@ const cues = Command.make(
     const cwd = path.join(defaultWorkspaces(), "_learner")
     yield* fs.makeDirectory(cwd, { recursive: true })
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-    const result = yield* writeCues({ claude, cwd, model: args.model, effort: args.effort }, memory, evidence.runs)
+    const result = yield* writeCues({ cli: claudeCli(claude), cwd, model: args.model, effort: args.effort }, memory, evidence.runs)
     const withCues = result.memory.workflows.filter((w) => (w.cues?.any.length ?? 0) > 0).length
     yield* Console.log(`cues for ${withCues} of ${result.memory.workflows.length} workflows; ${result.calls} model call${result.calls === 1 ? "" : "s"}, $${result.costUsd.toFixed(3)}`)
     for (const p of result.problems) yield* Console.log(`  ${p}`)
@@ -372,7 +373,7 @@ const common = Command.make(
     const cwd = path.join(defaultWorkspaces(), "_learner")
     yield* fs.makeDirectory(cwd, { recursive: true })
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-    const result = yield* learnCommon({ claude, cwd, model: args.model, effort: args.effort }, evidence, store.tenant, args.kind, current)
+    const result = yield* learnCommon({ cli: claudeCli(claude), cwd, model: args.model, effort: args.effort }, evidence, store.tenant, args.kind, current)
     // What the kind's checks rewrite, from its own runs; the other workflows keep theirs.
     const m = withKind(current, withSnapshots(result.memory, evidence.runs), args.kind)
     yield* Console.log(`${result.memory.workflows.length} workflows for ${JSON.stringify(args.kind)}, ${result.memory.places.length} places, ${result.memory.pitfalls.length} pitfalls; ` +

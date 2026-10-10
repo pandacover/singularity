@@ -2,19 +2,20 @@
  * `singularity setup`: everything local memory needs, in one go, saying what
  * each step means as it happens.
  *
- *   1. The machine: node, git, and Claude Code, which memory learns from and
- *      learns with.
+ *   1. The machine: node and git.
  *   2. The coding agents found here: memory's hooks where the agent has
  *      them, the skill everywhere (Agents.ts says what each agent gets).
  *   3. The `singularity` command, on PATH for new terminals.
- *   4. Learning: on its own after sessions, within a daily limit; and in a
- *      repo with past Claude Code sessions, a first memory from them.
+ *   4. Learning: the agent whose model learns (Claude Code, Codex or Hermes
+ *      Agent, asked when there are several, Learner.ts); on its own after
+ *      changes, within a daily limit; and in a repo with past sessions, a
+ *      first memory from them.
  *
  * Running it again updates everything in place. `--yes` takes every default
  * and asks nothing; it never spends on learning right away.
  */
 import { Console, Effect, Layer, Path } from "effect"
-import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL } from "../workflows/Induce.ts"
+import type { ModelAgent, ModelCli } from "../eval/Llm.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"
 import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
@@ -26,10 +27,11 @@ import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { learnState, learnSubject, type LearnOutcome, roundUsd } from "../workflows/Learn.ts"
 import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
 import { markLock, releaseLearning, takeLock } from "./Background.ts"
+import { LEARNER_ACCOUNTS, LEARNER_MODELS, LEARNER_NAMES, learnerConfig, learnersHere } from "./Learner.ts"
 import { addToPath, COMMAND, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
-import { askDollars, confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
-import { detectAgents, findClaude, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
+import { askChoice, askDollars, confirm, listWords, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
+import { detectAgents, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
   /** Take every default and ask nothing. */
@@ -48,6 +50,8 @@ export interface SetupOptions {
   readonly color: boolean
   /** What learning on its own may spend a day, in dollars, when the user said so already (`--daily-limit`): not asked. */
   readonly dailyLimit?: number | undefined
+  /** The agent whose model learns, when the user said so already (`--learn-with`): not asked. */
+  readonly learnWith?: ModelAgent | undefined
 }
 
 export const INTRO = [
@@ -116,21 +120,14 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   yield* say(heading(s, 1, "Your machine"))
   const nodeMajor = Number(process.versions.node.split(".")[0])
   const git = yield* versionOf("git")
-  const claudeCommand = yield* findClaude(o.env)
-  const claude = claudeCommand === undefined ? undefined : yield* versionOf(claudeCommand[0], [...claudeCommand.slice(1), "--version"])
   const mark = (ok: boolean) => (ok ? s.green("✓") : s.red("✗"))
   yield* item([
     `${mark(nodeMajor >= MIN_NODE_MAJOR)} node ${process.versions.node}`,
-    `${mark(git !== undefined)} ${git?.replace(/^git version\s*/, "git ") ?? "git"}`,
-    `${mark(claude !== undefined)} Claude Code${claude === undefined ? "" : ` ${claude.replace(/\s*\(Claude Code\)\s*$/, "")}`}`
+    `${mark(git !== undefined)} ${git?.replace(/^git version\s*/, "git ") ?? "git"}`
   ].join("   "))
   if (git === undefined) {
     yield* item(`${s.red("git isn't on your PATH.")} Memory knows your repos through git: install it, then run ${s.cyan("singularity setup")} again.`)
     return false
-  }
-  if (claude === undefined) {
-    yield* item(s.yellow("Claude Code isn't on your PATH. Memory learns from its sessions, with its model calls:"))
-    yield* item(s.yellow("install it from https://claude.com/claude-code. Other agents still get what memory has."))
   }
   const home = yield* loadHome()
   const layers = stores(home, path)
@@ -202,26 +199,38 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   // 4. Learning.
   yield* say(heading(s, 4, "Learning"))
   const prefs = yield* readLearn(home.root)
-  if (claudeCommand === undefined) {
-    yield* item("Memory learns from Claude Code sessions, with Claude Code's model calls.")
-    yield* item(`Install Claude Code, then run ${s.cyan("singularity setup")} again to turn learning on.`)
+  const learners = yield* learnersHere(dirs)
+  if (learners.length === 0) {
+    yield* item("Memory learns with the model of Claude Code, Codex or Hermes Agent, and none of them is here.")
+    yield* item(`Install one, then run ${s.cyan("singularity setup")} again to turn learning on.`)
     return yield* done(s, o, chosen, bin, newTerminal)
   }
   for (const line of [
     "Memory keeps each change a Claude Code, Codex or Hermes Agent session commits",
     `with its checks passing, as it is committed. After every ${prefs.every} such changes in a`,
-    `repo it can learn on its own, in the background: about ${usd(ROUND_USD)} a round on`,
-    `your Claude account, up to a daily limit you choose.`
+    "repo it can learn on its own, in the background: a model reads them and writes",
+    `workflows, about ${usd(ROUND_USD)} a round, up to a daily limit you choose.`
   ]) yield* item(line)
+  if (o.learnWith !== undefined && !learners.some((l) => l.agent === o.learnWith)) {
+    yield* item(s.yellow(`${LEARNER_NAMES[o.learnWith]} isn't here, so learning can't go through it.`))
+  }
   if (asking) yield* say()
+  const learner = yield* pickLearner(learners, o, prefs.with, chosen, asking)
   const auto = yield* ask("Learn on its own?", (yield* learnIsSet(home.root)) ? prefs.auto : true)
   const limit = o.dailyLimit !== undefined
     ? Math.max(0, o.dailyLimit)
     : auto
     ? yield* askDollars("At most how many dollars a day?", prefs.max_usd_per_day, asking).pipe(Effect.orElseSucceed(() => prefs.max_usd_per_day))
     : prefs.max_usd_per_day
-  yield* writeLearn({ ...prefs, auto, max_usd_per_day: limit }, home.root)
-  yield* item(auto ? `${s.green("✓")} learning on its own, at most ${usd(limit)} a day` : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}`)
+  yield* writeLearn({ ...prefs, auto, max_usd_per_day: limit, with: learner.agent }, home.root)
+  const through = `with ${LEARNER_NAMES[learner.agent]} (${LEARNER_MODELS[learner.agent]}, on ${LEARNER_ACCOUNTS[learner.agent]})`
+  yield* item(auto
+    ? `${s.green("✓")} learning on its own ${through}, at most ${usd(limit)} a day`
+    : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}, ${through}`)
+  const others = learners.filter((l) => l.agent !== learner.agent)
+  if (!asking && o.learnWith === undefined && others.length > 0) {
+    yield* item(s.dim(`  to learn with ${listWords(others.map((l) => LEARNER_NAMES[l.agent]))} instead: singularity setup --learn-with ${others.map((l) => l.agent).join("|")}`))
+  }
 
   const repo = yield* identifyRepo(o.cwd)
   const homes = sessionHomes(dirs, chosen.map((a) => a.id))
@@ -245,7 +254,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
         return { subject, price: subject === undefined ? 0 : roundUsd(yield* learnState(subject.id)) }
       }).pipe(Effect.provide(layers))
       if (subject !== undefined && !o.yes) {
-        const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now? About ${usd(price)}.`, true)
+        const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now, with ${LEARNER_NAMES[learner.agent]}? About ${usd(price)}.`, true)
         if (go && !takeLock(home.root)) {
           yield* item(`${s.dim("·")} a learning round is running now; run ${s.cyan("singularity learn")} when it's done`)
         } else if (go) {
@@ -253,10 +262,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
           const learned = yield* withSpinner(
             "learning (a minute or two)",
             learnSubject(subject, {
-              claude: claudeCommand,
-              cwd: path.join(defaultWorkspaces(), "_learner"),
-              model: DEFAULT_INDUCE_MODEL,
-              effort: DEFAULT_INDUCE_EFFORT,
+              ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner")),
               every: prefs.every,
               now: true
             }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
@@ -271,10 +277,36 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     }
   } else if (repo === undefined) {
     yield* say()
-    yield* item(s.dim(`In a repo with past Claude Code sessions, ${"`singularity learn --past`"} starts memory from them.`))
+    yield* item(s.dim(`In a repo with past Claude Code, Codex or Hermes Agent sessions, ${"`singularity learn --past`"} starts memory from them.`))
   }
 
   return yield* done(s, o, chosen, bin, newTerminal)
+})
+
+/**
+ * The agent learning goes through, of those here: the one `--learn-with`
+ * names; else, asked when there are several, the one chosen before, or the
+ * first of those memory was just set up in, or the first here.
+ */
+const pickLearner = Effect.fnUntraced(function*(
+  learners: ReadonlyArray<ModelCli>,
+  o: SetupOptions,
+  before: ModelAgent | undefined,
+  chosen: ReadonlyArray<Agent>,
+  asking: boolean
+) {
+  const named = learners.find((l) => l.agent === o.learnWith)
+  if (named !== undefined || learners.length === 1) return named ?? learners[0]
+  const initial = learners.find((l) => l.agent === before)
+    ?? learners.find((l) => chosen.some((a) => a.id === l.agent))
+    ?? learners[0]
+  const agent = yield* askChoice(
+    "Learn with which agent's model?",
+    learners.map((l) => ({ title: LEARNER_NAMES[l.agent], description: `${LEARNER_MODELS[l.agent]}, on ${LEARNER_ACCOUNTS[l.agent]}`, value: l.agent })),
+    initial.agent,
+    asking
+  ).pipe(Effect.orElseSucceed(() => initial.agent))
+  return learners.find((l) => l.agent === agent) ?? initial
 })
 
 /** The end of setup: what happens now, and the commands to know. */

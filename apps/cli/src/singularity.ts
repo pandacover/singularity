@@ -31,12 +31,13 @@ Command.make("singularity").pipe(
   Command.withSubcommands(setupCommands),
   Command.run({ version: VERSION }),
   Effect.catchTags({
-    AgentError: reportError,
     PlatformError: reportError,
     StoreError: reportError,
     CandidateNotFound: reportError,
     Conflict: reportError,
-    HomeError: reportError
+    HomeError: reportError,
+    // A learning round's model call: Codex out of its plan's limit, Hermes without a provider.
+    LlmError: reportError
   }),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain

@@ -13,7 +13,8 @@
  * to the model once; whatever still fails is dropped and reported.
  */
 import { Effect, Schema } from "effect"
-import { callStructured } from "../eval/Llm.ts"
+import type { ModelCli } from "../eval/Llm.ts"
+import { callModel } from "../eval/ModelCall.ts"
 import { triggerMismatch, triggerValue } from "../records/Annotate.ts"
 import { relativizer } from "../records/Extract.ts"
 import { describeTrigger, eventOfCall, Trigger, triggerProblem } from "../records/Triggers.ts"
@@ -459,10 +460,12 @@ const mismatch = (trigger: Trigger, run: RunEvidence, failedAt: number, fixedAt:
 }
 
 export interface InduceConfig {
-  readonly claude: ReadonlyArray<string>
+  /** The agent whose model learns: Claude Code in the eval harness, the user's choice in daily use. */
+  readonly cli: ModelCli
   /** Where the model runs: a directory with no CLAUDE.md above it. */
   readonly cwd: string
-  readonly model: string
+  /** undefined: the model the agent is set to use (Claude Code's: Sonnet). */
+  readonly model?: string | undefined
   readonly effort?: string | undefined
 }
 
@@ -494,8 +497,8 @@ export const induce = Effect.fn("induce")(function*(
   let result: Checked | undefined
   let rationale = ""
   for (let attempt = 0; attempt < 2; attempt++) {
-    const answer = yield* callStructured({
-      claude: config.claude,
+    const answer = yield* callModel({
+      cli: config.cli,
       system: INDUCE_PROMPT,
       prompt: inductionPrompt(evidence, current, notes, previous, extra),
       schema: InductionAnswer,

@@ -14,7 +14,8 @@
  * again after it.
  */
 import { Effect, Schema } from "effect"
-import { callStructured } from "../eval/Llm.ts"
+import type { ModelCli } from "../eval/Llm.ts"
+import { callModel } from "../eval/ModelCall.ts"
 import { cueChoice, fillValue } from "./Cues.ts"
 import type { RunEvidence } from "./Evidence.ts"
 import { namedValue } from "./Induce.ts"
@@ -178,10 +179,11 @@ export const checkCues = (answer: CuesAnswer, memory: WorkflowMemory, seeds: Rea
 }
 
 export interface CuesConfig {
-  readonly claude: ReadonlyArray<string>
+  /** The agent whose model writes the cues (Induce.ts's InduceConfig). */
+  readonly cli: ModelCli
   /** Where the model runs: a directory with no CLAUDE.md above it. */
   readonly cwd: string
-  readonly model: string
+  readonly model?: string | undefined
   readonly effort?: string | undefined
 }
 
@@ -200,8 +202,8 @@ export const writeCues = Effect.fn("writeCues")(function*(config: CuesConfig, me
   let result: CheckedCues | undefined
   let rationale = ""
   for (let attempt = 0; attempt < 2; attempt++) {
-    const answer = yield* callStructured({
-      claude: config.claude,
+    const answer = yield* callModel({
+      cli: config.cli,
       system: CUES_PROMPT,
       prompt: cuesPrompt(memory, seeds, notes, previous),
       schema: CuesAnswer,

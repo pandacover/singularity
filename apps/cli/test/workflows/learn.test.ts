@@ -1,8 +1,9 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Path } from "effect"
 import { execFileSync, spawnSync } from "node:child_process"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { claudeCli } from "../../src/eval/Llm.ts"
 import { loadHome } from "../../src/local/Home.ts"
 import { identifyRepo } from "../../src/local/Git.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
@@ -14,12 +15,13 @@ import { pastSessions, projectDirName } from "../../src/workflows/Transcripts.ts
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, learnSubject, mergeSubject, type PastRound, pastRounds, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
 import { CLI, learningQueue, lockHeld, markLock, queueLearning, releaseLock, takeLock } from "../../src/setup/Background.ts"
+import { learnerConfig } from "../../src/setup/Learner.ts"
 import { writeLearn } from "../../src/setup/Preferences.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { emptyMemory, type WorkflowMemory } from "../../src/workflows/Models.ts"
 import { forSubject, startTask } from "../../src/workflows/Start.ts"
 import { WorkflowStore } from "../../src/workflows/WorkflowStore.ts"
-import { FAKE_CLAUDE, run, tempDir, withEnv } from "../eval/helpers.ts"
+import { FAKE_CLAUDE, FAKE_CODEX, run, tempDir, withEnv } from "../eval/helpers.ts"
 
 /** Times in these tests: seconds after 2026-09-01 10:00 UTC. */
 const T0 = Date.UTC(2026, 8, 1, 10, 0, 0)
@@ -276,7 +278,7 @@ describe("learning repo by repo", () => {
     const root = tempDir()
     const claudeHome = join(root, "claude")
     const homeDir = join(root, "home")
-    const config = { claude: FAKE_CLAUDE, cwd: join(root, "not-yet", "_learner"), model: "sonnet", effort: "high", every: 3 }
+    const config = { cli: claudeCli(FAKE_CLAUDE), cwd: join(root, "not-yet", "_learner"), model: "sonnet", effort: "high", every: 3 }
     const home = await run(loadHome(homeDir))
 
     const learnRepo = async (name: string) => {
@@ -324,6 +326,37 @@ describe("learning repo by repo", () => {
     const out = JSON.parse(hook.stdout).hookSpecificOutput
     expect(out.hookEventName).toBe("BeforeAgent")
     expect(out.additionalContext).toContain("run once: `npm test`")
+  }, 60_000)
+
+  it("learns the same through Codex, with Codex's model, its cost counted from the tokens", async () => {
+    const root = tempDir()
+    const claudeHome = join(root, "claude")
+    const homeDir = join(root, "home")
+    const codexHome = join(root, "codex")
+    mkdirSync(codexHome)
+    writeFileSync(join(codexHome, "config.toml"), 'model = "gpt-5.4"\n')
+    const home = await run(loadHome(homeDir))
+    const answers = join(root, "answers.json")
+    writeFileSync(answers, JSON.stringify([workflowAnswer, cuesAnswer]))
+    const repo = makeRepo(root, "alpha", [5, 3605])
+    writeTranscript(claudeHome, repo, "alphaxx1-0000-0000-0000-000000000001", 0, "Add blue to the colors", "pass")
+    writeTranscript(claudeHome, repo, "alphaxx2-0000-0000-0000-000000000002", 3600, "Add green to the colors", "pass")
+    const config = { ...learnerConfig({ agent: "codex", command: FAKE_CODEX }, join(root, "_learner")), every: 3 }
+    const { outcome, candidates } = await withEnv({ FAKE_CODEX_ANSWERS: answers, CODEX_HOME: codexHome, SINGULARITY_HOME: homeDir }, () =>
+      run(Effect.gen(function*() {
+        yield* storePast(repo, { claude: claudeHome }, home.tenantDir)
+        const subject = (yield* (yield* RecordStore).subjectFor((yield* identifyRepo(repo))!))!
+        const outcome = yield* learnSubject(subject, config)
+        return { outcome, candidates: yield* (yield* WorkflowStore).candidates() }
+      }).pipe(Effect.provide(storesFor(homeDir)))))
+    expect(outcome).toMatchObject({ kind: "learned", round: "build", workflows: ["Change the app's colors"], sessions: 2 })
+    // The workflows, then their cues (twice: the fake's cues leave a task's needs out), each call 600 new,
+    // 400 cached and 200 output tokens at gpt-5.4's price.
+    const calls = Number(readFileSync(`${answers}.calls`, "utf-8"))
+    expect(calls).toBe(3)
+    expect(outcome.costUsd).toBeCloseTo(calls * (600 * 2.5 + 400 * 0.25 + 200 * 15) / 1e6, 10)
+    expect(candidates.map((c) => c.model)).toEqual(["codex"])
+    expect(JSON.parse(readFileSync(`${answers}.call0.json`, "utf-8")).system).toContain("You build procedural memory")
   }, 60_000)
 })
 

@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "description": "Procedural memory graphs for coding agents",
+  "license": "MIT",
   "type": "module",
   "packageManager": "npm@11.12.1",
   "workspaces": [

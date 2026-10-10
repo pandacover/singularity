@@ -143,7 +143,7 @@ export const learnWebSubject = Effect.fn("learnWebSubject")(function*(subject: s
   }
   let candidate: WorkflowMemory = { ...induced.memory, pitfalls: [...rules, ...presets] }
   if (candidate.workflows.length > 0) {
-    const cuesConfig: CuesConfig = { claude: config.claude, cwd: config.cwd, model: config.model, effort: config.effort }
+    const cuesConfig: CuesConfig = { cli: config.cli, cwd: config.cwd, model: config.model, effort: config.effort }
     const cues = yield* writeCues(cuesConfig, candidate, seedsOf(records))
     costUsd += cues.costUsd
     problems = [...problems, ...cues.problems.map((p) => `cues: ${p}`)]

@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { claudeCli } from "../../src/eval/Llm.ts"
 import { loadHome } from "../../src/local/Home.ts"
 import type { ToolCall } from "../../src/traces/index.ts"
 import { readWebSession } from "../../src/web/Extract.ts"
@@ -110,7 +111,7 @@ describe("a learning round whose workflows the replay turns down", () => {
         const proposed = yield* store.propose(current, { rationale: "as it was", records: ["r1", "r2"], model: "sonnet", costUsd: 0, report: { problems: [], replay: null } })
         yield* store.commit(proposed.id)
         for (const r of records) yield* putWebRecord(home.tenantDir, r)
-        const outcome = yield* learnWebSubject("web-x", { claude: FAKE_CLAUDE, cwd: learner, model: "sonnet" }, home.tenantDir)
+        const outcome = yield* learnWebSubject("web-x", { cli: claudeCli(FAKE_CLAUDE), cwd: learner, model: "sonnet" }, home.tenantDir)
         return { outcome, memory: yield* store.memory() }
       }).pipe(Effect.provide(stores))))
     expect(out.outcome).toMatchObject({ kind: "rules-only" })
