@@ -2,7 +2,7 @@
  * The `singularity` command that setup puts on PATH: daily use only.
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
- *     singularity status | recall TASK... | learn [--past] [--all] | uninstall [--purge]
+ *     singularity status | recall TASK... | learn [--past] [--all] | update | uninstall [--purge]
  *
  * The commands for building and measuring memory (eval, records, workflows,
  * ...) are in src/cli.ts, which has these too: run it from the repo. Memory's
@@ -36,7 +36,9 @@ Command.make("singularity").pipe(
     CandidateNotFound: reportError,
     HomeError: reportError,
     // A learning round that failed: Codex out of its plan's limit, Hermes without a provider, a model refused.
-    LearnerError: reportError
+    LearnerError: reportError,
+    // An update that couldn't fetch the code or install its dependencies.
+    UpdateError: reportError
   }),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain

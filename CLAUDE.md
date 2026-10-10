@@ -33,7 +33,7 @@ Layout of `apps/cli` (paths from here to the end are relative to it, except
 procedural graph store of the first graph setup), `src/eval/` (the eval
 harness and memory setups), `src/cli.ts` (the whole command line, run from
 the repo), `src/singularity.ts` (the `singularity` command setup installs:
-the five daily commands only, so nothing user-facing may point users or
+the six daily commands only, so nothing user-facing may point users or
 agents at another one). The local memory
 from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
 `src/records/` (workflow records: extraction, where edits went, the model's
@@ -65,7 +65,7 @@ well as edited (`src/workflows/Reads.ts`), shown as outlines. Keep v0 and v1 apa
 records and the plumbing, never v0's memory. Tests mirror it under `test/`.
 
 Daily use, for anyone (`singularity setup | status | recall | learn |
-uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
+update | uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
 the code into `~/.singularity/app` and run setup, which lives in
 `src/setup/`: the agents memory can be set up in and what each gets
 (`Agents.ts`: Claude Code, Codex and Hermes Agent learn and hand over, their
@@ -81,7 +81,11 @@ offers and status checks through `codex app-server`, `CodexHooks.ts`), the skill
 stored change (`AutoLearn.ts`, started in the background by `Background.ts`;
 rounds run one at a time, by hand or not, under `learn.lock`, and one asked
 for meanwhile waits in `learn-queue/`, each repo once)
-and the onboarding itself (`Setup.ts`). In daily use memory stores a change
+the onboarding itself (`Setup.ts`), and updating (`Update.ts`: the clone
+fetched and its dependencies installed, then the new code, as `update
+--no-fetch`, rewrites hooks, plugin, skill and command where setup put them,
+asking nothing again; the installer, run again where memory is set up, does
+that second step instead of setup). In daily use memory stores a change
 when it is committed, one record per commit (or per command that made
 several), with the part of the session's log since its previous commit
 (`src/workflows/Commits.ts`, `run.segment` in a record; `records/Segment.ts`

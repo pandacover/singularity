@@ -8,7 +8,8 @@
 # checksums; nothing else on the machine changes). Then it puts the code in
 # ~/.singularity/app (a git clone, updated when this runs again), installs its
 # dependencies, and starts `singularity setup`, which sets memory up in your
-# coding agents.
+# coding agents. Where memory is set up already, it brings that up to date
+# with the new code instead (`singularity update` does all of this too).
 #
 # SINGULARITY_REF picks a branch or tag (default: main); SINGULARITY_OWN_NODE=1
 # fetches its own Node.js even when one is on PATH. Flags for setup go after
@@ -111,9 +112,17 @@ done_ "code ${D}($REF, $(git -C "$APP" rev-parse --short HEAD))${X}"
 done_ "dependencies"
 printf '\n'
 
-# Setup asks a few questions; curl's pipe is stdin, so they go through the terminal.
-if [ -t 1 ] && (: </dev/tty) 2>/dev/null; then
-  exec "$NODE" "$APP/apps/cli/src/singularity.ts" setup "$@" </dev/tty
+# Questions go through the terminal: curl's pipe is stdin.
+CLI="$APP/apps/cli/src/singularity.ts"
+tty=""
+if [ -t 1 ] && (: </dev/tty) 2>/dev/null; then tty=1; fi
+# Set up already (setup writes the command): the new code brings it up to date
+# and asks nothing setup asked. Flags for setup run setup.
+if [ $# -eq 0 ] && [ -f "$ROOT/bin/singularity" ]; then
+  if [ -n "$tty" ]; then exec "$NODE" "$CLI" update --no-fetch </dev/tty; else exec "$NODE" "$CLI" update --no-fetch; fi
+fi
+if [ -n "$tty" ]; then
+  exec "$NODE" "$CLI" setup "$@" </dev/tty
 else
-  exec "$NODE" "$APP/apps/cli/src/singularity.ts" setup --yes "$@"
+  exec "$NODE" "$CLI" setup --yes "$@"
 fi

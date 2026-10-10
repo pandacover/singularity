@@ -2,8 +2,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { CLI } from "../../src/setup/Background.ts"
 import { agents, hookEvents, isMemoryHookCommand, type Launch, slashes } from "../../src/setup/Agents.ts"
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
@@ -11,10 +12,11 @@ import { cmdLauncher, COMMAND, onPath, rcFile, rcLine, RC_MARKER, shLauncher, wi
 import { readLearn } from "../../src/setup/Preferences.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
+import { runRefresh, runUpdate, updateCode } from "../../src/setup/Update.ts"
 import { agentStates, detectAgents, HOOK_SCRIPT, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
 import { asClaudeCall } from "../../src/workflows/HookTool.ts"
-import { FAKE_CODEX, fakeCommand, run, tempDir, withEnv } from "../eval/helpers.ts"
+import { FAKE_CODEX, fakeCommand, git, run, tempDir, withEnv } from "../eval/helpers.ts"
 
 const json = (file: string) => JSON.parse(readFileSync(file, "utf-8"))
 
@@ -178,7 +180,7 @@ describe("the singularity command", () => {
     const help = (cli: string) => spawnSync(process.execPath, [cli, "--help"], { encoding: "utf-8" }).stdout
     const subcommands = (text: string) => [...text.split("SUBCOMMANDS")[1].matchAll(/^ {2}(\S+)/gm)].map((m) => m[1])
     expect(slashes(COMMAND)).toMatch(/\/src\/singularity\.ts$/)
-    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "recall", "learn", "uninstall"])
+    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "recall", "learn", "update", "uninstall"])
     expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["learn", "record"]))
   })
 
@@ -413,4 +415,71 @@ describe("setup", () => {
     await run(unwireAll({ home, env: options.env }))
     expect(existsSync(join(home, ".claude", "skills", "singularity", "SKILL.md"))).toBe(true)
   })
+})
+
+describe("update", () => {
+  it("brings what setup put in place up to date with the code, asks nothing, and leaves out what setup left out", async () => {
+    const { home, memory, options } = sandbox([".claude", ".factory"])
+    const env = { SINGULARITY_HOME: memory }
+    const refresh = () => captureLog(() => withEnv(env, () => run(runRefresh({ home, env: options.env, interactive: false, color: false }))))
+    // Nothing to bring up to date before setup.
+    expect(await refresh()).toContain("isn't set up here yet")
+    expect(existsSync(join(home, ".claude", "settings.json"))).toBe(false)
+
+    await withEnv(env, () => run(runSetup({ ...options, only: ["claude"] })))
+    const config = readFileSync(join(memory, "config.json"), "utf-8")
+    // As an older version left them: hooks run from the code's old place, an older skill, a command for the old CLI.
+    const settings = join(home, ".claude", "settings.json")
+    writeFileSync(settings, readFileSync(settings, "utf-8").replaceAll(slashes(HOOK_SCRIPT), "/old/app/src/workflows/hook.ts"))
+    const skill = join(home, ".claude", "skills", "singularity", "SKILL.md")
+    writeFileSync(skill, SKILL_TEXT.replace("singularity learn", "singularity learn (old)"))
+    writeFileSync(join(memory, "bin", "singularity"), shLauncher(process.execPath, "/old/app/src/singularity.ts"))
+
+    const said = await refresh()
+    const hooks = readFileSync(settings, "utf-8")
+    expect(hooks).toContain(slashes(HOOK_SCRIPT))
+    expect(hooks).not.toContain("/old/app")
+    expect(Object.keys(json(settings).hooks)).toEqual(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionEnd"])
+    expect(readFileSync(skill, "utf-8")).toBe(SKILL_TEXT)
+    expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
+    // Droid was left out at setup, and stays out; the choices stay as they were.
+    expect(existsSync(join(home, ".factory", "hooks.json"))).toBe(false)
+    expect(existsSync(join(home, ".factory", "skills", "singularity"))).toBe(false)
+    expect(said).toContain("Droid is here without memory")
+    expect(readFileSync(join(memory, "config.json"), "utf-8")).toBe(config)
+  }, 60_000)
+
+  it("moves the installed code to its branch's latest commit, hands over to it, and leaves it when it is the latest", async () => {
+    // The memory home, with the installer's clone in app/.
+    const root = tempDir()
+    const origin = join(root, "origin")
+    mkdirSync(join(origin, "apps", "cli", "src"), { recursive: true })
+    git(origin, "init", "-q", "-b", "main")
+    writeFileSync(join(origin, "README.md"), "v1\n")
+    writeFileSync(join(origin, "package-lock.json"), "{}\n")
+    // The new code's CLI says what it was asked to do.
+    const handed = join(root, "handed.json")
+    writeFileSync(join(origin, "apps", "cli", "src", "singularity.ts"), `require("node:fs").writeFileSync(${JSON.stringify(handed)}, JSON.stringify(process.argv.slice(2)))\n`)
+    git(origin, "add", "-A")
+    git(origin, "commit", "-q", "-m", "First")
+    const app = join(root, "app")
+    execFileSync("git", ["clone", "-q", "--depth", "1", pathToFileURL(origin).href, app])
+    // Its dependencies were installed, and the new commit doesn't change them: npm doesn't run.
+    mkdirSync(join(app, "node_modules"))
+    writeFileSync(join(app, "node_modules", ".package-lock.json"), "{}\n")
+    expect(await run(updateCode(app, false))).toMatchObject({ kind: "current" })
+
+    writeFileSync(join(origin, "README.md"), "v2\n")
+    git(origin, "commit", "-q", "-am", "Say v2")
+    expect(await run(updateCode(app, false))).toMatchObject({ kind: "updated", ref: "main", subject: "Say v2", dependencies: false })
+    expect(readFileSync(join(app, "README.md"), "utf-8").trim()).toBe("v2")
+    expect(await run(updateCode(app, false))).toMatchObject({ kind: "current" })
+
+    // `singularity update`: the new code brings setup up to date, not this process.
+    writeFileSync(join(origin, "README.md"), "v3\n")
+    git(origin, "commit", "-q", "-am", "Say v3")
+    const said = await captureLog(() => withEnv({ SINGULARITY_HOME: root }, () => run(runUpdate({ home: root, env: {}, interactive: false, color: false }))))
+    expect(said).toContain("Say v3")
+    expect(json(handed)).toEqual(["update", "--no-fetch"])
+  }, 60_000)
 })

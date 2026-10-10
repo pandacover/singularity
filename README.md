@@ -42,7 +42,10 @@ The installer puts singularity in `~/.singularity` and runs
 2. which agent's model does the learning, if you have more than one that can;
 3. whether memory may learn on its own, and how much it may spend a day.
 
-Run `singularity setup` again any time to change your answers. On WSL, run
+Run `singularity setup` again any time to change your answers, and
+`singularity update` to get the latest version: it keeps your answers and
+brings memory's hooks, skill and command up to date, asking nothing again.
+Running the installer again does the same. On WSL, run
 the PowerShell command on Windows too if you also use agents there. From a
 clone of this repo instead: `npm install`, then
 `node apps/cli/src/singularity.ts setup`.
@@ -128,10 +131,11 @@ singularity learn               # learn from new changes now (asks before spendi
 singularity learn --past        # first store what this repo's earlier sessions committed
 singularity learn --dry-run     # what a round would learn and roughly cost
 singularity setup               # set up again, or change your answers
+singularity update              # get the latest version (keeps your answers)
 singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
 ```
 
-These five are all the installed command has. The commands that build and
+These six are all the installed command has. The commands that build and
 measure memory by hand run from a clone of this repo
 ([`docs/development.md`](docs/development.md)).
 

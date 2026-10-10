@@ -103,7 +103,7 @@ const ForAgents = () => {
     <article className="ar-main ag">
       <header className="ag-head">
         <div className="kicker"><span>For agents</span><span>Plain markdown</span></div>
-        <p>This page for a coding agent to read: what singularity does, how to install it without questions, what it changes, and its results. The same text is at <a href="/llms.txt">/llms.txt</a>.</p>
+        <p>This page is for a coding agent to read: what singularity does, how to install, update and uninstall it without questions, what it changes and where, and its results. The same text is at <a href="/llms.txt">/llms.txt</a>.</p>
         <div className="ag-actions">
           <button className="copy" type="button" onClick={copy} data-done={done ? "" : undefined}>{done ? "Copied" : "Copy all"}</button>
           <a href="/llms.txt">Open as text</a>
@@ -355,6 +355,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
                   <dt>singularity status</dt><dd>What memory knows, per repo.</dd>
                   <dt>singularity recall "…"</dt><dd>What a task would be handed.</dd>
                   <dt>singularity learn</dt><dd>Learn now.</dd>
+                  <dt>singularity update</dt><dd>Get the latest version.</dd>
                   <dt>singularity uninstall</dt><dd>Take it out again.</dd>
                 </dl>
               </div>
