@@ -8,3 +8,5 @@ runs/
 node_modules/
 *.tmp.ts
 .turbo/
+.vercel
+paxel-upload.sh
