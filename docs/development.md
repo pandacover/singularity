@@ -38,7 +38,7 @@ Under `apps/cli/src`:
 
 | Directory | What it holds |
 |---|---|
-| `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the `singularity` command, learning on its own, which agent learns (`Learner.ts`) |
+| `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the `singularity` command, learning on its own, which agent learns (`Learner.ts`) and with which model (`LearnerModel.ts`), Codex hook trust (`CodexHooks.ts`) |
 | `workflows/` | memory v1, the memory daily use runs: inducing workflows, cues, the hand-over at task start, learning from results, storing commits, learning repo by repo |
 | `records/` | workflow records: what a finished change shows, read from its session and its diff |
 | `traces/` | reading session logs: Claude Code's, and Codex's and Hermes Agent's as Claude Code's |

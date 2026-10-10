@@ -129,6 +129,9 @@ export const hermesHome = (dirs: AgentDirs) => {
     : join(dirs.home, `.${name}`)
 }
 
+/** What the user does when Codex doesn't trust memory's hooks yet (CodexHooks.ts). */
+export const CODEX_TRUST_NOTE = "Codex runs new hooks only once you trust them: open Codex and type /hooks."
+
 export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
   const claude = claudeDir(dirs)
   const codex = codexHome(dirs)
@@ -156,7 +159,7 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
       hooks: { file: join(codex, "hooks.json"), layout: "wrapped" },
       skillDirs: [],
       sharedSkills: true,
-      note: "Codex runs new hooks only once you trust them: open Codex and type /hooks."
+      note: CODEX_TRUST_NOTE
     },
     {
       id: "gemini",
@@ -257,6 +260,8 @@ const bareCommand = (launch: Launch, args: string) =>
 const START_TIMEOUT_S = 90
 const TOOL_TIMEOUT_S = 15
 const END_TIMEOUT_S = 30
+/** Codex allows a session-end hook 3 seconds, and says so in every session when given more; ours returns in about 0.2 s (the storing runs detached). */
+const CODEX_END_TIMEOUT_S = 3
 
 /** The hook events memory adds to an agent's hooks. */
 export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launch): HookEvents => {
@@ -286,7 +291,7 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
           }]
         }],
         PostToolUse: [{ matcher: "Bash|apply_patch", hooks: [{ type: "command", command: o("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }],
-        SessionEnd: [{ hooks: [{ type: "command", command: o("session-end"), timeout: END_TIMEOUT_S }] }]
+        SessionEnd: [{ hooks: [{ type: "command", command: o("session-end"), timeout: CODEX_END_TIMEOUT_S }] }]
       }
     case "gemini":
       // Gemini CLI counts hook timeouts in milliseconds.

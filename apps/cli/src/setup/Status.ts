@@ -17,10 +17,11 @@ import { budgetReason, learnState, roundUsd, spentToday, waitReason } from "../w
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
 import { learningQueue, lockInfo } from "./Background.ts"
+import { codexHooks } from "./CodexHooks.ts"
 import { LEARNER_NAMES, resolveLearner } from "./Learner.ts"
-import { readLearn } from "./Preferences.ts"
+import { modelFor, readLearn } from "./Preferences.ts"
 import { makeStyle, plural, tilde, usd } from "./Ui.ts"
-import { agentStates, detectAgents, findExecutable } from "./Wiring.ts"
+import { agentStates, detectAgents, findCommand, findExecutable } from "./Wiring.ts"
 
 export const VERSION = "0.2.0"
 
@@ -56,6 +57,13 @@ export const leftOut = (skips: ReadonlyArray<Skip>, subject: string, stored: Rea
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 }
 
+/** The last background round, when it failed: its repo and why (learn.log, AutoLearn.ts). */
+export const lastLearnFailure = (log: string): { readonly subject: string; readonly reason: string } | undefined => {
+  const rounds = log.split(/\r?\n/).filter((l) => /^\d{4}-\d\d-\d\dT\S+ \S+: /.test(l))
+  const last = rounds.at(-1)?.match(/^\S+ (\S+): failed: (.*)$/)
+  return last === undefined || last === null ? undefined : { subject: last[1], reason: last[2] }
+}
+
 const shortDate = (iso: string): string => {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en", { month: "short", day: "numeric" })
@@ -68,6 +76,7 @@ const clock = (iso: string): string => {
 
 export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly color: boolean; readonly memoryHome?: string | undefined }) {
   const s = makeStyle(o.color)
+  const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const say = (line = "") => Console.log(line)
   const home = yield* loadHome(o.memoryHome)
@@ -91,6 +100,12 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
         ? `    ${s.green("✓")} ${a.agent.name.padEnd(width)}${REACH[a.agent.reach].padEnd(42)}${s.dim(parts)}`
         : `    ${s.dim("·")} ${a.agent.name.padEnd(width)}${s.dim("not set up")}`
     )
+    if (a.agent.id === "codex" && a.hookEvents.length > 0) {
+      const codex = yield* findCommand("codex", o.env)
+      const hooks = codex === undefined ? undefined : yield* codexHooks(codex, dirs)
+      const untrusted = hooks?.filter((h) => !h.trusted).length ?? 0
+      if (untrusted > 0) yield* say(`      ${" ".repeat(width)}${s.yellow(`${plural(untrusted, "hook")} waiting for your trust, so Codex skips ${untrusted === 1 ? "it" : "them"}: type /hooks in Codex`)}`)
+    }
   }
   if (missing > 0) yield* say(`    ${s.dim("set up with")} ${s.cyan("singularity setup")}`)
 
@@ -145,11 +160,14 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
 
   // Learning and hooks.
   const learner = yield* Effect.result(resolveLearner(prefs.with, dirs))
-  const through = learner._tag === "Success" ? ` with ${LEARNER_NAMES[learner.success.agent]}` : ""
+  const model = learner._tag === "Success" ? modelFor(prefs, learner.success.agent) : undefined
+  const through = learner._tag === "Success" ? ` with ${LEARNER_NAMES[learner.success.agent]}${model === undefined ? "" : ` (${model})`}` : ""
   yield* say(`\n  ${s.bold("Learning")}  ${prefs.auto
     ? `on its own${through}, every ${plural(prefs.every, "new change")} · ${usd(lines.spent)} of ${usd(prefs.max_usd_per_day)} spent today ${s.dim("(the limit: singularity setup --daily-limit)")}`
     : `when you run ${s.cyan("singularity learn")}${through}${lines.spent > 0 ? ` · ${usd(lines.spent)} spent today` : ""}`}`)
   if (learner._tag === "Failure") yield* say(`            ${s.yellow(learner.failure.message)}`)
+  const failed = lastLearnFailure(yield* fs.readFileString(path.join(home.root, "learn.log")).pipe(Effect.orElseSucceed(() => "")))
+  if (failed !== undefined) yield* say(`            ${s.yellow(`the last round, of ${failed.subject}, failed: ${failed.reason.slice(0, 240)}`)}`)
   const errors = yield* recentHookErrors(home)
   yield* say(`  ${s.bold("Hooks")}     ${errors.count === 0
     ? s.green("no errors this week")

@@ -25,13 +25,15 @@ import { storePast } from "../workflows/Commits.ts"
 import { type PastSession, pastSessions } from "../workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { learnState, learnSubject, type LearnOutcome, roundUsd } from "../workflows/Learn.ts"
-import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
+import { type Agent, type AgentDirs, type AgentId, CODEX_TRUST_NOTE, type Reach, sessionHomes } from "./Agents.ts"
 import { markLock, releaseLearning, takeLock } from "./Background.ts"
-import { LEARNER_ACCOUNTS, LEARNER_MODELS, LEARNER_NAMES, learnerConfig, learnersHere } from "./Learner.ts"
+import { codexHooks, trustCodexHooks } from "./CodexHooks.ts"
+import { LEARNER_ACCOUNTS, LEARNER_MODELS, LEARNER_NAMES, learnerConfig, learnerModel, learnersHere } from "./Learner.ts"
+import { configuredLearnerModel, modelChoices, probeModel } from "./LearnerModel.ts"
 import { addToPath, COMMAND, writeLaunchers } from "./Launcher.ts"
-import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
-import { askChoice, askDollars, confirm, listWords, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
-import { detectAgents, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
+import { learnIsSet, modelFor, readLearn, writeLearn } from "./Preferences.ts"
+import { askChoice, askDollars, askText, confirm, listWords, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
+import { detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
   /** Take every default and ask nothing. */
@@ -52,6 +54,8 @@ export interface SetupOptions {
   readonly dailyLimit?: number | undefined
   /** The agent whose model learns, when the user said so already (`--learn-with`): not asked. */
   readonly learnWith?: ModelAgent | undefined
+  /** The model it learns with, when the user said so already (`--learn-model`): checked, not asked. */
+  readonly learnModel?: string | undefined
 }
 
 export const INTRO = [
@@ -164,7 +168,8 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       const wired = yield* wireHooks(a, launches)
       if (wired.problem !== undefined) yield* item(`${s.red("✗")} ${a.name.padEnd(width2)}${wired.problem}`)
       else yield* item(`${s.green("✓")} ${a.name.padEnd(width2)}${wired.hooks === undefined ? "skill only" : `${a.plugin === undefined ? "hooks" : "plugin"} in ${tilde(wired.hooks, o.home)}`}`)
-      if (a.note !== undefined) yield* item(`  ${" ".repeat(width2)}${s.yellow(a.note)}`)
+      const note = a.id === "codex" && wired.hooks !== undefined ? yield* codexTrust(o, asking) : a.note
+      if (note !== undefined) yield* item(`  ${" ".repeat(width2)}${note.startsWith("✓") ? s.green(note) : s.yellow(note)}`)
     }
     if (chosen.length > 0) {
       const skillDirs = skillDirsFor(chosen, dirs)
@@ -216,14 +221,17 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   }
   if (asking) yield* say()
   const learner = yield* pickLearner(learners, o, prefs.with, chosen, asking)
+  const learnCwd = path.join(defaultWorkspaces(), "_learner")
+  const model = yield* pickModel(learner, o, modelFor(prefs, learner.agent), dirs, learnCwd, asking, s)
   const auto = yield* ask("Learn on its own?", (yield* learnIsSet(home.root)) ? prefs.auto : true)
   const limit = o.dailyLimit !== undefined
     ? Math.max(0, o.dailyLimit)
     : auto
     ? yield* askDollars("At most how many dollars a day?", prefs.max_usd_per_day, asking).pipe(Effect.orElseSucceed(() => prefs.max_usd_per_day))
     : prefs.max_usd_per_day
-  yield* writeLearn({ ...prefs, auto, max_usd_per_day: limit, with: learner.agent }, home.root)
-  const through = `with ${LEARNER_NAMES[learner.agent]} (${LEARNER_MODELS[learner.agent]}, on ${LEARNER_ACCOUNTS[learner.agent]})`
+  const { model: _before, ...kept } = prefs
+  yield* writeLearn({ ...kept, auto, max_usd_per_day: limit, with: learner.agent, ...(model === undefined ? {} : { model }) }, home.root)
+  const through = `with ${LEARNER_NAMES[learner.agent]} (${learnerModel(learner.agent, model)}, on ${LEARNER_ACCOUNTS[learner.agent]})`
   yield* item(auto
     ? `${s.green("✓")} learning on its own ${through}, at most ${usd(limit)} a day`
     : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}, ${through}`)
@@ -262,7 +270,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
           const learned = yield* withSpinner(
             "learning (a minute or two)",
             learnSubject(subject, {
-              ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner")),
+              ...learnerConfig(learner, learnCwd, model),
               every: prefs.every,
               now: true
             }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
@@ -307,6 +315,81 @@ const pickLearner = Effect.fnUntraced(function*(
     asking
   ).pipe(Effect.orElseSucceed(() => initial.agent))
   return learners.find((l) => l.agent === agent) ?? initial
+})
+
+/** The choice for a model typed in. */
+const OTHER_MODEL = "\u0000other"
+
+/**
+ * The model the learner learns with, checked with one tiny call: the one
+ * `--learn-model` names, or the one chosen before, or the agent's own
+ * setting (undefined). When it doesn't answer, offers the models the agent
+ * lists and checks the one chosen; with nobody to ask, says how to choose
+ * and keeps what there was. Claude Code learns with Sonnet, unchecked.
+ */
+const pickModel = Effect.fnUntraced(function*(
+  learner: ModelCli,
+  o: SetupOptions,
+  before: string | undefined,
+  dirs: AgentDirs,
+  cwd: string,
+  asking: boolean,
+  s: Style
+) {
+  const item = (line: string) => Console.log(`     ${line}`)
+  if (learner.agent === "claude") return o.learnModel ?? before
+  const name = LEARNER_NAMES[learner.agent]
+  const check = (model: string | undefined) =>
+    Effect.gen(function*() {
+      const label = model ?? (yield* configuredLearnerModel(learner, dirs)) ?? `${name}'s own model`
+      const probe = yield* withSpinner(`checking that ${label} answers through ${name}`, probeModel(learner, model, cwd), o.interactive)
+      if (probe.ok) yield* item(`${s.green("✓")} ${label} answers through ${name}`)
+      else yield* item(`${s.yellow("·")} ${label} doesn't answer through ${name}: ${probe.reason}`)
+      return probe.ok
+    })
+  const model = o.learnModel ?? before
+  if (yield* check(model)) return model
+  const choices = yield* modelChoices(learner, dirs)
+  if (!asking) {
+    const examples = choices.slice(0, 3).map((c) => c.id)
+    yield* item(s.yellow(`Learning needs a model that answers: singularity setup --learn-model <model>${examples.length > 0 ? ` (${name} lists ${listWords(examples)})` : ""}`))
+    return model
+  }
+  for (let tries = 0; tries < 3; tries++) {
+    const picked = choices.length === 0
+      ? OTHER_MODEL
+      : yield* askChoice(
+        `Learn with which ${name} model?`,
+        [...choices.map((c) => ({ title: c.id, description: c.note, value: c.id })), { title: "another", description: "type its name", value: OTHER_MODEL }],
+        choices[0].id,
+        asking
+      ).pipe(Effect.orElseSucceed(() => choices[0].id))
+    const typed = picked === OTHER_MODEL ? yield* askText(`The ${name} model to learn with:`, "", asking).pipe(Effect.orElseSucceed(() => "")) : picked
+    if (typed === "") break
+    if (yield* check(typed)) return typed
+  }
+  yield* item(s.yellow(`Learning needs a model that answers; choose one later with singularity setup --learn-model <model>`))
+  return before
+})
+
+/**
+ * Codex runs memory's hooks only once the user trusts them. Asks, when some
+ * aren't trusted yet, and trusts them as Codex's `/hooks` would; the line to
+ * show under Codex, or undefined when there is nothing to say.
+ */
+const codexTrust = Effect.fnUntraced(function*(
+  o: SetupOptions,
+  asking: boolean
+) {
+  const codex = yield* findCommand("codex", o.env)
+  const hooks = codex === undefined ? undefined : yield* codexHooks(codex, { home: o.home, env: o.env })
+  if (codex === undefined || hooks === undefined || hooks.length === 0) return CODEX_TRUST_NOTE
+  const untrusted = hooks.filter((h) => !h.trusted)
+  if (untrusted.length === 0) return "✓ Codex trusts them"
+  if (!asking) return CODEX_TRUST_NOTE
+  const yes = yield* confirm(`Codex runs new hooks only once you trust them. Trust memory's ${plural(untrusted.length, "hook")} in Codex now?`, true, asking).pipe(Effect.orElseSucceed(() => false))
+  if (!yes) return CODEX_TRUST_NOTE
+  return (yield* trustCodexHooks(codex, { home: o.home, env: o.env }, untrusted)) ? "✓ trusted in Codex" : CODEX_TRUST_NOTE
 })
 
 /** The end of setup: what happens now, and the commands to know. */

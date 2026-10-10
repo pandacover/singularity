@@ -75,7 +75,8 @@ in Claude Code's format; Hermes Agent through a plugin of memory's own that
 runs the same hook script, `HermesPlugin.ts`, enabled by an edit of its
 `config.yaml` that touches only `plugins.enabled`; Cursor and OpenCode get
 the skill), their hook files
-(`HookFiles.ts`), the skill (`Skill.ts`), the
+(`HookFiles.ts`; Codex runs a hook only once the user trusts it, which setup
+offers and status checks through `codex app-server`, `CodexHooks.ts`), the skill (`Skill.ts`), the
 `singularity` command on PATH (`Launcher.ts`), learning on its own after a
 stored change (`AutoLearn.ts`, started in the background by `Background.ts`;
 rounds run one at a time, by hand or not, under `learn.lock`, and one asked
@@ -97,8 +98,10 @@ Claude Code (`src/eval/Llm.ts`, Sonnet), Codex (`src/eval/CodexLlm.ts`,
 `codex exec --output-schema`, its cost counted from tokens at API prices)
 or Hermes Agent (`src/eval/HermesLlm.ts`, `hermes chat -Q`, JSON asked for
 in the prompt and checked, its cost read from Hermes's `state.db`), picked
-by `src/eval/ModelCall.ts`. Learning never moves to another agent on its
-own. The eval harness and the commands that build memory by hand keep
+by `src/eval/ModelCall.ts`. Setup checks with one tiny call that the model
+answers, and when it doesn't, offers the ones the agent lists and keeps the
+choice as `learn.model` (`src/setup/LearnerModel.ts`). Learning never moves
+to another agent or model on its own. The eval harness and the commands that build memory by hand keep
 using Claude Code.
 
 ## Writing Effect 4 code

@@ -55,7 +55,7 @@ describe("hook entries", () => {
       additionalContextLimit: 4000
     })
     // Codex's sessions are read too, so their end records them.
-    expect(codex.SessionEnd[0].hooks[0]).toMatchObject({ command: "node \"C:/app/src/workflows/hook.ts\" session-end", timeout: 30 })
+    expect(codex.SessionEnd[0].hooks[0]).toMatchObject({ command: "node \"C:/app/src/workflows/hook.ts\" session-end", timeout: 3 })
     const gemini = hookEvents("gemini", claudeLaunch, bareLaunch)
     expect(Object.keys(gemini)).toEqual(["BeforeAgent", "AfterTool"])
     expect(gemini.BeforeAgent[0].hooks[0].timeout).toBe(90_000)
@@ -315,6 +315,33 @@ describe("setup", () => {
     const told = await captureLog(() => withEnv({ SINGULARITY_HOME: none.memory }, () => run(runSetup(none.options))))
     expect(told).toContain("Memory learns with the model of Claude Code, Codex or Hermes Agent, and none of them is here.")
     expect(existsSync(join(none.home, ".gemini", "settings.json"))).toBe(true)
+  }, 60_000)
+
+  it("checks the model Codex would learn with, says how to choose another when it's refused, and keeps the one named", async () => {
+    const m = sandbox([".codex"], { codex: true })
+    const codexHome = join(m.home, ".codex")
+    writeFileSync(join(codexHome, "config.toml"), "model = \"gpt-5.6-sol\"\n")
+    writeFileSync(join(codexHome, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-5.6-sol", visibility: "list" }, { slug: "gpt-5.6-luna", visibility: "list" }] }))
+    const answers = join(m.root, "answers.json")
+    writeFileSync(answers, JSON.stringify([{ ok: true }]))
+    const env = { SINGULARITY_HOME: m.memory, CODEX_HOME: codexHome, FAKE_CODEX_ANSWERS: answers, FAKE_CODEX_REFUSE: "gpt-5.6-sol" }
+    const options = { ...m.options, env: { ...m.options.env, CODEX_HOME: codexHome } }
+
+    const said = await captureLog(() => withEnv(env, () => run(runSetup(options))))
+    expect(said).toContain("gpt-5.6-sol doesn't answer through Codex: The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.")
+    expect(said).toContain("Learning needs a model that answers: singularity setup --learn-model <model> (Codex lists gpt-5.6-luna and gpt-5.6-sol)")
+    expect((await run(readLearn(m.memory))).model).toBeUndefined()
+    // With nobody to ask, Codex's hooks stay for the user to trust.
+    expect(said).toContain("Codex runs new hooks only once you trust them: open Codex and type /hooks.")
+
+    const named = await captureLog(() => withEnv(env, () => run(runSetup({ ...options, learnModel: "gpt-5.6-luna" }))))
+    expect(named).toContain("✓ gpt-5.6-luna answers through Codex")
+    expect(named).toContain("learning on its own with Codex (gpt-5.6-luna, on your Codex account)")
+    expect(await run(readLearn(m.memory))).toMatchObject({ with: "codex", model: "gpt-5.6-luna" })
+    // Run again: the model chosen stays, checked again.
+    const again = await captureLog(() => withEnv(env, () => run(runSetup(options))))
+    expect(again).toContain("✓ gpt-5.6-luna answers through Codex")
+    expect((await run(readLearn(m.memory))).model).toBe("gpt-5.6-luna")
   }, 60_000)
 
   it("puts Droid's hooks in its settings.json when the user keeps theirs there", async () => {

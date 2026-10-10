@@ -1,7 +1,7 @@
 /**
  * Daily use of local memory, for anyone:
  *
- *     singularity setup [--yes] [--agent ID ...] [--learn-with ID] [--no-path]   set memory up in this machine's coding agents
+ *     singularity setup [--yes] [--agent ID ...] [--learn-with ID] [--learn-model M] [--no-path]   set memory up in this machine's coding agents
  *     singularity status                                       what memory knows, and where it is set up
  *     singularity recall TASK...                               what a task here would be handed
  *     singularity learn [--past] [--all] [--with ID] [--dry-run]   learn from the changes stored now
@@ -24,8 +24,8 @@ import type { Subject } from "../records/Subjects.ts"
 import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
 import { learningQueue, lockInfo, markLock, queueLearning, releaseLearning, releaseLock, takeLock, unqueueLearning } from "../setup/Background.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
-import { LEARNER_NAMES, learnerConfig, resolveLearner } from "../setup/Learner.ts"
-import { readLearn } from "../setup/Preferences.ts"
+import { LEARNER_NAMES, learnerConfig, LearnerError, resolveLearner, withModelHint } from "../setup/Learner.ts"
+import { modelFor, readLearn } from "../setup/Preferences.ts"
 import { describeOutcome, runSetup } from "../setup/Setup.ts"
 import { runStatus } from "../setup/Status.ts"
 import { confirm, makeStyle, plural, tilde, usd, wantsColor, withSpinner } from "../setup/Ui.ts"
@@ -53,12 +53,14 @@ const setup = Command.make(
     agent: Flag.Literals("agent", AGENT_IDS).pipe(Flag.atLeast(0), Flag.withDescription("only this agent (repeatable; default: every agent found)")),
     noPath: Flag.Boolean("no-path").pipe(Flag.withDefault(false), Flag.withDescription("don't put the singularity command on PATH")),
     dailyLimit: Flag.Finite("daily-limit").pipe(Flag.optional, Flag.withDescription("the most learning on its own may spend a day, in dollars (default: asked, or $1)")),
-    learnWith: Flag.Literals("learn-with", MODEL_AGENTS).pipe(Flag.optional, Flag.withDescription("the agent whose model learns, on your account with it (default: asked when there are several)"))
+    learnWith: Flag.Literals("learn-with", MODEL_AGENTS).pipe(Flag.optional, Flag.withDescription("the agent whose model learns, on your account with it (default: asked when there are several)")),
+    learnModel: Flag.String("learn-model").pipe(Flag.optional, Flag.withDescription("the model it learns with, for Codex or Hermes Agent (default: the one it is set to use, checked)"))
   },
   Effect.fn(function*(args) {
     const ok = yield* runSetup({
       dailyLimit: Option.getOrUndefined(args.dailyLimit),
       learnWith: Option.getOrUndefined(args.learnWith),
+      learnModel: Option.getOrUndefined(args.learnModel),
       yes: args.yes,
       only: args.agent,
       path: !args.noPath,
@@ -124,7 +126,9 @@ const learnQueued = Effect.fn("learnQueued")(function*(home: Home, subjectId: st
     const short = budgetReason(roundUsd(state), yield* spentToday(), prefs.max_usd_per_day)
     if (short !== undefined) return yield* log(`waits: ${short}`)
     const learner = yield* resolveLearner(prefs.with, dirsOf())
-    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner")), every: prefs.every })
+    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)), every: prefs.every }).pipe(
+      Effect.mapError((e) => new LearnerError({ message: withModelHint(e.message, learner.agent) }))
+    )
     const s = makeStyle(false)
     for (const line of describeOutcome(s, outcome)) yield* log(line.trim())
   }).pipe(
@@ -232,10 +236,10 @@ const learn = Command.make(
         const outcome = yield* withSpinner(
           `learning ${subject.name} with ${agent} (a minute or two)`,
           learnSubject(subject, {
-            ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner")),
+            ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)),
             every: prefs.every,
             now: true
-          }).pipe(Effect.provide(stores)),
+          }).pipe(Effect.provide(stores), Effect.mapError((e) => new LearnerError({ message: withModelHint(e.message, learner.agent) }))),
           interactive()
         )
         spent += outcome.costUsd
