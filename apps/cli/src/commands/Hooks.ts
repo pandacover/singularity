@@ -1,6 +1,6 @@
 /**
- * `singularity hooks ...`: put the hooks into Claude Code's settings, or take
- * them out; and `singularity handover TASK`: what a task would be handed.
+ * `node src/cli.ts hooks ...`: put the hooks into Claude Code's settings, or take
+ * them out; and `node src/cli.ts handover TASK`: what a task would be handed.
  */
 import { Console, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"

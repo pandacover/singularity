@@ -73,7 +73,10 @@ singularity setup               # again, to update or change your answers
 singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
 ```
 
-From a clone instead: `npm install`, then `node apps/cli/src/cli.ts setup`.
+These five are all the installed command has. The commands below, for
+building and measuring memory, run from a clone of this repo.
+
+From a clone instead: `npm install`, then `node apps/cli/src/singularity.ts setup`.
 
 ## Develop
 
@@ -90,7 +93,7 @@ npm test               # every workspace's tests (vitest), through turbo
 npm run typecheck      # every workspace's tsc
 npm run build          # the landing page, into apps/landing/dist
 npm run dev            # the landing page's dev server
-npm run cli -- <args>  # the command line, same as node apps/cli/src/cli.ts <args>
+npm run cli -- <args>  # the whole command line, same as node apps/cli/src/cli.ts <args>
 ```
 
 Commands in this README run from the repo root, where eval runs go

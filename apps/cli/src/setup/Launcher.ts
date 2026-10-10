@@ -1,6 +1,8 @@
 /**
  * The `singularity` command: small launchers in `<memory home>/bin` that run
  * this checkout's CLI with node, and that directory on the user's PATH.
+ * The command is the CLI for daily use (src/singularity.ts); the commands for
+ * building and measuring memory stay in src/cli.ts, run from the repo.
  *
  *     <home>/bin/singularity       sh (macOS, Linux, Git Bash)
  *     <home>/bin/singularity.cmd   Windows (cmd and PowerShell)
@@ -11,8 +13,12 @@
  * uninstalling removes exactly it.
  */
 import { Effect, FileSystem, Path } from "effect"
+import { fileURLToPath } from "node:url"
 import { runProcess } from "../eval/Proc.ts"
 import { join, slashes } from "./Agents.ts"
+
+/** What the command runs: the CLI for daily use, next to this directory. */
+export const COMMAND = fileURLToPath(new URL("../singularity.ts", import.meta.url))
 
 /** Marks the line setup adds to a shell's startup file. */
 export const RC_MARKER = "# added by singularity setup"

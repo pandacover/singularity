@@ -25,7 +25,7 @@ Code, computer use and any future agent use these same four calls.
 All of them reach the same four calls (`src/layer/Api.ts`):
 
 - **Hooks**, for agents that have them: Claude Code, Codex, Gemini CLI, Droid, and Hermes Agent through a plugin that runs the same script. `src/workflows/hook.ts` now routes every event through the API.
-- **The CLI**, for anything that can run a command: `singularity memory start|step|end|learn`, a JSON request on stdin and a JSON answer on stdout. A harness or an agent without hooks uses this.
+- **The CLI**, for anything that can run a command: `node apps/cli/src/cli.ts layer start|step|end|learn` from the repo (the installed `singularity` command keeps to daily use), a JSON request on stdin and a JSON answer on stdout. A harness or an agent without hooks uses this.
 - **MCP**, for agents that call tools: the same calls as tools. Designed here, not built tonight (the hosted service's door, see the storage plan).
 
 The eval harness uses the hooks, like users do. It never takes a shortcut into memory.
@@ -113,7 +113,7 @@ Written as the night went:
 - **Web memory learns from failures; code memory still doesn't.** Failed sessions with the check's feedback are evidence for web memory (that's where silent rules come from). Code memory is unchanged, on purpose.
 - **A workflow's pitfalls come with it at the start, triggered or not** (web only): an app's rules are cheap to read and costly to miss. Triggered ones also fire mid-task.
 - **Who starts.** At a task's start the code reader runs first, exactly as before; the web reader only when the code reader has nothing and the task names an address.
-- **The MCP door is designed, not built.** The CLI door (`singularity layer start|step|end|learn`) is built and tried.
+- **The MCP door is designed, not built.** The CLI door (`cli.ts layer start|step|end|learn`) is built and tried.
 - **A weakness seen in practice, not patched.** On the practice app, the cue writer (shared with code) gave both checkout workflows the cue "loan", so "Renew the loan" was handed the checkout workflows. That is a look-alike misfire; it was left in on purpose, frozen with the rest.
 - **The builder was fast**: it sealed after about 27 minutes. I can't judge its work without opening it; the report will say what `reveal` shows about it.
 - **Something else edited the landing page** in this working tree at 05:41 (`apps/landing`: `Intro.tsx` deleted, `App.tsx` and others changed), after the user went to sleep. Not this session; left alone.

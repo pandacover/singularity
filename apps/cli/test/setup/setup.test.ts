@@ -2,10 +2,12 @@ import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
 import { join } from "node:path"
+import { CLI } from "../../src/setup/Background.ts"
 import { agents, hookEvents, isMemoryHookCommand, type Launch, slashes } from "../../src/setup/Agents.ts"
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
-import { cmdLauncher, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine } from "../../src/setup/Launcher.ts"
+import { cmdLauncher, COMMAND, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine } from "../../src/setup/Launcher.ts"
 import { readLearn } from "../../src/setup/Preferences.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
@@ -159,6 +161,14 @@ describe("the singularity command", () => {
     expect(cmd).toContain('"%SINGULARITY_NODE%" "C:\\app\\src\\cli.ts" %*')
   })
 
+  it("offers only the commands for daily use; memory's background work runs through the whole command line", () => {
+    const help = (cli: string) => spawnSync(process.execPath, [cli, "--help"], { encoding: "utf-8" }).stdout
+    const subcommands = (text: string) => [...text.split("SUBCOMMANDS")[1].matchAll(/^ {2}(\S+)/gm)].map((m) => m[1])
+    expect(slashes(COMMAND)).toMatch(/\/src\/singularity\.ts$/)
+    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "recall", "learn", "uninstall"])
+    expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["learn", "record"]))
+  })
+
   it("knows whether a directory is on PATH, and puts one line in the shell's startup file", () => {
     expect(onPath("C:\\Users\\a\\.singularity\\bin", "C:\\Windows;c:/users/a/.singularity/bin/", "win32")).toBe(true)
     expect(onPath("/home/a/.singularity/bin", "/usr/bin:/bin", "linux")).toBe(false)
@@ -237,7 +247,8 @@ describe("setup", () => {
     for (const d of [".claude/skills", ".agents/skills", ".factory/skills"]) {
       expect(readFileSync(join(home, d, "singularity", "SKILL.md"), "utf-8")).toBe(SKILL_TEXT)
     }
-    expect(existsSync(join(memory, "bin", "singularity"))).toBe(true)
+    // The command on PATH is the one for daily use, not the whole command line.
+    expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
     expect((await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).auto).toBe(true)
     // The daily limit is the user's: given once, it stays until given again.
     await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, dailyLimit: 2.5 })))

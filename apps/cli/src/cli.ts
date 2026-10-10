@@ -1,10 +1,12 @@
 /**
- * Command line:
+ * The whole command line, run from the repo. The `singularity` command setup
+ * installs is src/singularity.ts, with only the commands for daily use:
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
  *     singularity status | recall TASK... | learn [--past] [--all] | uninstall [--purge]
  *
- * and for building and measuring memory:
+ * This one has those too, and, for building and measuring memory (and for
+ * memory's own background work, src/setup/Background.ts):
  *
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
  *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]

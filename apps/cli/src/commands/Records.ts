@@ -1,5 +1,5 @@
 /**
- * `singularity record ...`: build, list and show workflow records.
+ * `node src/cli.ts record ...`: build, list and show workflow records.
  */
 import { Console, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
