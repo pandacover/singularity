@@ -1,15 +1,15 @@
 /**
  * `singularity setup`: everything local memory needs, in one go, saying what
- * each step means as it happens.
+ * each step means as it happens, in the layout of Ui.ts.
  *
- *   1. The machine: node and git.
- *   2. The coding agents found here: memory's hooks where the agent has
- *      them, the skill everywhere (Agents.ts says what each agent gets).
- *   3. The `singularity` command, on PATH for new terminals.
+ *   1. The machine: only what is missing (git).
+ *   2. Your agents: memory's hooks where the agent has them, the skill
+ *      everywhere (Agents.ts says what each agent gets).
+ *   3. The `singularity` command, on PATH for new terminals (said at the end).
  *   4. Learning: the agent whose model learns (Claude Code, Codex or Hermes
  *      Agent, asked when there are several, Learner.ts); on its own after
- *      changes, within a daily limit; and in a repo with past sessions, a
- *      first memory from them.
+ *      changes, within a daily limit.
+ *   5. This repo: in a repo with past sessions, a first memory from them.
  *
  * Running it again updates everything in place. `--yes` takes every default
  * and asks nothing; it never spends on learning right away.
@@ -30,10 +30,10 @@ import { markLock, releaseLearning, takeLock } from "./Background.ts"
 import { codexHooks, trustCodexHooks } from "./CodexHooks.ts"
 import { LEARNER_ACCOUNTS, LEARNER_MODELS, LEARNER_NAMES, learnerConfig, learnerModel, learnersHere } from "./Learner.ts"
 import { configuredLearnerModel, modelChoices, probeModel } from "./LearnerModel.ts"
-import { addToPath, COMMAND, writeLaunchers } from "./Launcher.ts"
+import { addToPath, COMMAND, type PathChange, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, modelFor, readLearn, writeLearn } from "./Preferences.ts"
-import { askChoice, askDollars, askText, confirm, listWords, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
-import { detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
+import { askChoice, askDollars, askMany, askText, confirm, listWords, makeStyle, makeTree, marks, plural, type Style, tilde, title, TITLED_ENV, type Tree, usd, withSpinner } from "./Ui.ts"
+import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
   /** Take every default and ask nothing. */
@@ -60,17 +60,16 @@ export interface SetupOptions {
 
 export const INTRO = [
   "Coding agents start every session from zero. singularity remembers how",
-  "tasks get done in your repos (where a kind of change goes, how it is",
-  "checked, which traps to avoid) and hands that to the next agent. On",
-  "excalidraw, changes like ones it had seen took about half the tokens."
+  "tasks get done in your repos and hands that to the next agent."
 ]
 
 /** The Windows installer, for WSL users whose agents run on Windows. */
 export const WINDOWS_INSTALL = "irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex"
 
-const REACH: Record<Reach, string> = {
-  "learns": "hands over memory at task start, learns from changes",
-  "hands-over": "hands over memory at task start",
+/** What memory does in an agent, by how far it reaches there. */
+export const REACH: Record<Reach, string> = {
+  "learns": "memory at task start, learns from its sessions",
+  "hands-over": "memory at task start",
   "on-request": "memory when you ask for it"
 }
 
@@ -86,144 +85,138 @@ export const pastCount = (agents: ReadonlyArray<PastSession["agent"]>): string =
 /** What learning on its own costs a round, for the user deciding. */
 const ROUND_USD = 0.25
 
-const heading = (s: Style, n: number, title: string) => `\n  ${s.magenta(String(n))}  ${s.bold(title)}\n`
-
 const stores = (home: Home, path: Path.Path) =>
   Layer.merge(
     JsonRecordStore.layer(home.tenantDir, home.tenant),
     JsonWorkflowStore.layer(JsonWorkflowStore.workflowsDir(home.tenantDir, path), home.tenant)
   )
 
-/** What a learning round did, in a line or a few. */
+/** What a learning round did: an item's line, then the workflows under it, two further in. */
 export const describeOutcome = (s: Style, o: LearnOutcome): ReadonlyArray<string> => {
   if (o.kind === "waiting") return [`${s.dim("·")} not yet: ${o.reason}`]
   if (o.kind === "kept") return [`${s.dim("·")} ${o.reason} (${usd(o.costUsd)})`]
   const what = `${plural(o.workflows.length, "workflow")} and ${plural(o.pitfalls, "known mistake")}`
   return [
-    `${s.green("✓")} ${o.round === "build" ? "Learned" : "Now knows"} ${what} from ${plural(o.sessions, "change")} (${usd(o.costUsd)}):`,
-    ...o.workflows.slice(0, 6).map((name) => `    ${s.dim("·")} ${name}`),
-    ...(o.workflows.length > 6 ? [`    ${s.dim(`· and ${o.workflows.length - 6} more`)}`] : [])
+    `${s.green("✓")} ${o.round === "build" ? "Learned" : "Now knows"} ${what} from ${plural(o.sessions, "change")} ${s.dim(`(${usd(o.costUsd)})`)}:`,
+    ...o.workflows.slice(0, 6).map((name) => `  ${s.dim("·")} ${name}`),
+    ...(o.workflows.length > 6 ? [`  ${s.dim(`· and ${o.workflows.length - 6} more`)}`] : [])
   ]
 }
 
+/** The note under an agent: done ("✓ ...", said dimly) or still to do. */
+const noteLine = (s: Style, note: string) => (note.startsWith("✓") ? s.dim(note.slice(1).trim()) : marks(s).warn(note))
+
 export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   const s = makeStyle(o.color)
+  const M = marks(s)
+  const T = makeTree(s)
   const path = yield* Path.Path
   const say = (line = "") => Console.log(line)
-  const item = (line: string) => Console.log(`     ${line}`)
   const asking = o.interactive && !o.yes
+  // A question takes the next branch: what is held goes out first.
   const ask = (message: string, initial: boolean) =>
-    confirm(message, initial, asking).pipe(Effect.orElseSucceed(() => initial))
+    asking ? T.pause.pipe(Effect.andThen(confirm(message, initial, asking)), Effect.orElseSucceed(() => initial)) : Effect.succeed(initial)
 
+  if (o.env[TITLED_ENV] === undefined) yield* say(title(s, "setup"))
   yield* say()
-  yield* say(`  ${s.magenta("◆")} ${s.bold("singularity")}  ${s.dim("memory for coding agents")}`)
-  yield* say()
-  for (const line of INTRO) yield* say(`  ${line}`)
+  for (const line of INTRO) yield* say(`  ${s.dim(line)}`)
 
-  // 1. The machine.
-  yield* say(heading(s, 1, "Your machine"))
+  // 1. The machine: said only when something is missing.
   const nodeMajor = Number(process.versions.node.split(".")[0])
   const git = yield* versionOf("git")
-  const mark = (ok: boolean) => (ok ? s.green("✓") : s.red("✗"))
-  yield* item([
-    `${mark(nodeMajor >= MIN_NODE_MAJOR)} node ${process.versions.node}`,
-    `${mark(git !== undefined)} ${git?.replace(/^git version\s*/, "git ") ?? "git"}`
-  ].join("   "))
-  if (git === undefined) {
-    yield* item(`${s.red("git isn't on your PATH.")} Memory knows your repos through git: install it, then run ${s.cyan("singularity setup")} again.`)
-    return false
+  if (git === undefined || nodeMajor < MIN_NODE_MAJOR) {
+    yield* T.section("Your machine")
+    if (nodeMajor < MIN_NODE_MAJOR) yield* T.item(M.warn(`node ${process.versions.node} is older than memory needs (${MIN_NODE_MAJOR} or later)`))
+    if (git === undefined) {
+      yield* T.item(M.fail("git isn't on your PATH. Memory knows your repos through git:"))
+      yield* T.note(`install it, then run ${s.cyan("singularity setup")} again`)
+      yield* T.close
+      yield* say()
+      return false
+    }
   }
   const home = yield* loadHome()
   const layers = stores(home, path)
 
   // 2. The agents.
-  yield* say(heading(s, 2, "Your coding agents"))
+  yield* T.section("Your agents")
   const dirs: AgentDirs = { home: o.home, env: o.env }
   const found = (yield* detectAgents(dirs, (c) => findExecutable(c, o.env).pipe(Effect.map((p) => p !== undefined))))
     .filter((f) => f.found && (o.only.length === 0 || o.only.includes(f.agent.id)))
     .map((f) => f.agent)
   let chosen: ReadonlyArray<Agent> = []
   if (found.length === 0) {
-    yield* item("No coding agent found here. Install one (Claude Code gets all of memory), then run setup again.")
+    yield* T.item(M.warn("No coding agent found here. Install one (Claude Code gets all of memory),"))
+    yield* T.note(`then run ${s.cyan("singularity setup")} again.`)
   } else {
-    const width = Math.max(...found.map((a) => a.name.length)) + 3
-    for (const a of found) yield* item(`${a.name.padEnd(width)}${s.dim(REACH[a.reach])}`)
-    if (asking) yield* say()
-    if (yield* ask(found.length === 1 ? `Set up memory in ${found[0].name}?` : `Set up memory in all ${found.length}?`, true)) {
-      chosen = found
-    } else if (found.length > 1) {
-      const picked: Array<Agent> = []
-      for (const a of found) if (yield* ask(`Set up memory in ${a.name}?`, true)) picked.push(a)
-      chosen = picked
-    }
-    yield* say()
+    // One question for all of them, ticked to begin with: the agents that have memory
+    // already (hooks, or the skill where that is all an agent gets), or all of them the first time.
+    const states = yield* agentStates(found.map((agent) => ({ agent, found: true })), dirs)
+    const had = states
+      .filter((st) => st.hookEvents.length > 0 || (st.agent.hooks === undefined && st.agent.plugin === undefined && st.skill))
+      .map((st) => st.agent)
+    if (asking) yield* T.pause
+    const picked = yield* askMany(
+      "Set up memory in which agents?",
+      found.map((a) => ({ title: a.name, description: REACH[a.reach], value: a.id, selected: had.length === 0 || had.includes(a) })),
+      asking
+    )
+    chosen = found.filter((a) => picked.includes(a.id))
     // Memory's hooks stay out of agents left out, including hooks an earlier setup put there.
-    for (const a of found.filter((a) => !chosen.includes(a))) yield* unwireHooks(a)
+    const leftOut = found.filter((a) => !chosen.includes(a))
+    for (const a of leftOut) yield* unwireHooks(a)
     const launches = {
       claude: { node: process.execPath, script: HOOK_SCRIPT },
       other: { node: yield* nodeForHooks(), script: HOOK_SCRIPT }
     }
-    const width2 = Math.max(...chosen.map((a) => a.name.length), "skill".length) + 3
+    const width = Math.max(...chosen.map((a) => a.name.length))
     for (const a of chosen) {
       const wired = yield* wireHooks(a, launches)
-      if (wired.problem !== undefined) yield* item(`${s.red("✗")} ${a.name.padEnd(width2)}${wired.problem}`)
-      else yield* item(`${s.green("✓")} ${a.name.padEnd(width2)}${wired.hooks === undefined ? "skill only" : `${a.plugin === undefined ? "hooks" : "plugin"} in ${tilde(wired.hooks, o.home)}`}`)
+      // Codex's question, if it asks one, comes before Codex's line, so the answer goes under it.
+      if (asking && a.id === "codex") yield* T.pause
       const note = a.id === "codex" && wired.hooks !== undefined ? yield* codexTrust(o, asking) : a.note
-      if (note !== undefined) yield* item(`  ${" ".repeat(width2)}${note.startsWith("✓") ? s.green(note) : s.yellow(note)}`)
+      yield* T.item(wired.problem !== undefined ? M.fail(`${a.name}  ${wired.problem}`) : M.ok(a.name.padEnd(width), REACH[a.reach]))
+      if (note !== undefined) yield* T.note(noteLine(s, note))
     }
     if (chosen.length > 0) {
-      const skillDirs = skillDirsFor(chosen, dirs)
-      const blocked = yield* wireSkills(skillDirs)
-      const placed = skillDirs.filter((d) => !blocked.includes(d)).map((d) => tilde(d, o.home))
-      if (placed.length > 0) yield* item(`${s.green("✓")} ${"skill".padEnd(width2)}${placed.join(", ")}`)
-      for (const d of blocked) yield* item(`${s.yellow("·")} ${"skill".padEnd(width2)}${tilde(d, o.home)} has a skill of yours named singularity; left it alone`)
+      const blocked = yield* wireSkills(skillDirsFor(chosen, dirs))
+      for (const d of blocked) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
     }
+    if (leftOut.length > 0) yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))} left out`))
   }
   // WSL has agents of its own; the ones that run on Windows are set up from Windows.
   if (o.env.WSL_DISTRO_NAME !== undefined) {
-    yield* say()
-    yield* item(s.dim("This is WSL. For the agents you run on Windows, run this in PowerShell:"))
-    yield* item(s.cyan(WINDOWS_INSTALL))
+    yield* T.item(M.skip("This is WSL. For the agents you run on Windows, run this in PowerShell:"))
+    yield* T.note(s.cyan(WINDOWS_INSTALL))
   }
 
-  // 3. The command.
-  yield* say(heading(s, 3, "The singularity command"))
+  // 3. The command: said at the end, with what to do next.
   const bin = yield* writeLaunchers(home.root, process.execPath, COMMAND, process.platform)
-  let newTerminal = false
-  if (!o.path) {
-    yield* item(`${s.green("✓")} ${tilde(bin, o.home)} ${s.dim("(not added to PATH)")}`)
-  } else {
-    const change = yield* addToPath(bin, { home: o.home, shell: o.env.SHELL, platform: process.platform, pathValue: o.env.PATH ?? o.env.Path })
-    if (change.state === "already") yield* item(`${s.green("✓")} ${tilde(bin, o.home)}, on your PATH`)
-    else if (change.state === "added") {
-      newTerminal = true
-      yield* item(`${s.green("✓")} ${tilde(bin, o.home)}, on your PATH in new terminals${change.file === undefined ? "" : s.dim(` (${tilde(change.file, o.home)})`)}`)
-    } else yield* item(`${s.yellow("·")} ${tilde(bin, o.home)}: add it to your PATH to run ${s.cyan("singularity")} anywhere`)
-  }
+  const onPath: PathChange | undefined = o.path
+    ? yield* addToPath(bin, { home: o.home, shell: o.env.SHELL, platform: process.platform, pathValue: o.env.PATH ?? o.env.Path })
+    : undefined
+  const end = (learning: boolean) => done(s, T, o, chosen, bin, onPath, learning)
 
   // 4. Learning.
-  yield* say(heading(s, 4, "Learning"))
+  yield* T.section("Learning")
   const prefs = yield* readLearn(home.root)
   const learners = yield* learnersHere(dirs)
   if (learners.length === 0) {
-    yield* item("Memory learns with the model of Claude Code, Codex or Hermes Agent, and none of them is here.")
-    yield* item(`Install one, then run ${s.cyan("singularity setup")} again to turn learning on.`)
-    return yield* done(s, o, chosen, bin, newTerminal)
+    yield* T.item(M.warn("Memory learns with the model of Claude Code, Codex or Hermes Agent, and none of them is here."))
+    yield* T.note(`Install one, then run ${s.cyan("singularity setup")} again to turn learning on.`)
+    return yield* end(false)
   }
-  for (const line of [
-    "Memory keeps each change a Claude Code, Codex or Hermes Agent session commits",
-    `with its checks passing, as it is committed. After every ${prefs.every} such changes in a`,
-    "repo it can learn on its own, in the background: a model reads them and writes",
-    `workflows, about ${usd(ROUND_USD)} a round, up to a daily limit you choose.`
-  ]) yield* item(line)
+  yield* T.text(`Memory keeps the changes your agents commit with checks passing. Every ${prefs.every}`)
+  yield* T.text(`in a repo, a model can learn workflows from them: about ${usd(ROUND_USD)} a round.`)
   if (o.learnWith !== undefined && !learners.some((l) => l.agent === o.learnWith)) {
-    yield* item(s.yellow(`${LEARNER_NAMES[o.learnWith]} isn't here, so learning can't go through it.`))
+    yield* T.item(M.warn(`${LEARNER_NAMES[o.learnWith]} isn't here, so learning can't go through it.`))
   }
-  if (asking) yield* say()
+  if (asking) yield* T.pause
   const learner = yield* pickLearner(learners, o, prefs.with, chosen, asking)
   const learnCwd = path.join(defaultWorkspaces(), "_learner")
-  const model = yield* pickModel(learner, o, modelFor(prefs, learner.agent), dirs, learnCwd, asking, s)
+  const model = yield* pickModel(learner, o, modelFor(prefs, learner.agent), dirs, learnCwd, asking, s, T)
   const auto = yield* ask("Learn on its own?", (yield* learnIsSet(home.root)) ? prefs.auto : true)
+  if (asking) yield* T.pause
   const limit = o.dailyLimit !== undefined
     ? Math.max(0, o.dailyLimit)
     : auto
@@ -231,64 +224,62 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     : prefs.max_usd_per_day
   const { model: _before, ...kept } = prefs
   yield* writeLearn({ ...kept, auto, max_usd_per_day: limit, with: learner.agent, ...(model === undefined ? {} : { model }) }, home.root)
-  const through = `with ${LEARNER_NAMES[learner.agent]} (${learnerModel(learner.agent, model)}, on ${LEARNER_ACCOUNTS[learner.agent]})`
-  yield* item(auto
-    ? `${s.green("✓")} learning on its own ${through}, at most ${usd(limit)} a day`
-    : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}, ${through}`)
+  const through = `${learnerModel(learner.agent, model)}, on ${LEARNER_ACCOUNTS[learner.agent]}`
+  yield* T.item(auto
+    ? M.ok(`on its own with ${LEARNER_NAMES[learner.agent]}, up to ${usd(limit)} a day`, through)
+    : M.skip(`when you run singularity learn, with ${LEARNER_NAMES[learner.agent]} (${through})`))
   const others = learners.filter((l) => l.agent !== learner.agent)
   if (!asking && o.learnWith === undefined && others.length > 0) {
-    yield* item(s.dim(`  to learn with ${listWords(others.map((l) => LEARNER_NAMES[l.agent]))} instead: singularity setup --learn-with ${others.map((l) => l.agent).join("|")}`))
+    yield* T.note(s.dim(`to learn with ${listWords(others.map((l) => LEARNER_NAMES[l.agent]))} instead: singularity setup --learn-with ${others.map((l) => l.agent).join("|")}`))
   }
 
+  // 5. This repo's past sessions.
   const repo = yield* identifyRepo(o.cwd)
   const homes = sessionHomes(dirs, chosen.map((a) => a.id))
   const past = repo === undefined ? [] : yield* pastSessions(repo.root, homes).pipe(Effect.orElseSucceed(() => []))
-  if (repo !== undefined && past.length > 0) {
-    const name = path.basename(repo.root)
-    yield* say()
-    yield* item(`This repo, ${s.bold(name)}, has ${pastCount(past.map((p) => p.agent))}.`)
-    const read = yield* withSpinner("reading them", storePast(repo.root, homes, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
-    if (read._tag === "Failure") {
-      yield* item(`${s.red("✗")} couldn't read them (${read.failure.message}); ${s.cyan("singularity learn --past")} tries again`)
-      return yield* done(s, o, chosen, bin, newTerminal)
-    }
-    const n = read.success.stored.length + read.success.existing.length
-    if (n === 0) {
-      yield* item(`${s.dim("·")} they committed no change with passing checks; memory learns as you work`)
-    } else {
-      yield* item(`${s.green("✓")} ${n === 1 ? "one change" : `${n} changes`} they committed with passing checks`)
-      const { subject, price } = yield* Effect.gen(function*() {
-        const subject = yield* (yield* RecordStore).subjectFor(repo)
-        return { subject, price: subject === undefined ? 0 : roundUsd(yield* learnState(subject.id)) }
-      }).pipe(Effect.provide(layers))
-      if (subject !== undefined && !o.yes) {
-        const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now, with ${LEARNER_NAMES[learner.agent]}? About ${usd(price)}.`, true)
-        if (go && !takeLock(home.root)) {
-          yield* item(`${s.dim("·")} a learning round is running now; run ${s.cyan("singularity learn")} when it's done`)
-        } else if (go) {
-          markLock(home.root, subject.id)
-          const learned = yield* withSpinner(
-            "learning (a minute or two)",
-            learnSubject(subject, {
-              ...learnerConfig(learner, learnCwd, model),
-              every: prefs.every,
-              now: true
-            }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
-            o.interactive
-          )
-          if (learned._tag === "Success") for (const line of describeOutcome(s, learned.success)) yield* item(line)
-          else yield* item(`${s.red("✗")} learning failed (${learned.failure.message}); try ${s.cyan("singularity learn")} later`)
-        }
-      } else if (n > 0) {
-        yield* item(`${s.dim("·")} run ${s.cyan("singularity learn")} in this repo to learn from ${n === 1 ? "it" : "them"}`)
-      }
-    }
-  } else if (repo === undefined) {
-    yield* say()
-    yield* item(s.dim(`In a repo with past Claude Code, Codex or Hermes Agent sessions, ${"`singularity learn --past`"} starts memory from them.`))
+  if (repo === undefined || past.length === 0) return yield* end(true)
+  yield* T.section(`This repo  ${s.dim(path.basename(repo.root))}`)
+  const read = yield* withSpinner(`reading ${pastCount(past.map((p) => p.agent))}`, storePast(repo.root, homes, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
+  if (read._tag === "Failure") {
+    yield* T.item(M.fail(`couldn't read its past sessions (${read.failure.message}); ${s.cyan("singularity learn --past")} tries again`))
+    return yield* end(true)
   }
-
-  return yield* done(s, o, chosen, bin, newTerminal)
+  const n = read.success.stored.length + read.success.existing.length
+  if (n === 0) {
+    yield* T.item(M.skip(`its ${pastCount(past.map((p) => p.agent))} committed no change with passing checks; memory learns as you work`))
+    return yield* end(true)
+  }
+  yield* T.item(M.ok(`${n === 1 ? "one change" : `${n} changes`} committed with passing checks`, `from ${pastCount(past.map((p) => p.agent))}`))
+  const { subject, price } = yield* Effect.gen(function*() {
+    const subject = yield* (yield* RecordStore).subjectFor(repo)
+    return { subject, price: subject === undefined ? 0 : roundUsd(yield* learnState(subject.id)) }
+  }).pipe(Effect.provide(layers))
+  if (subject === undefined || o.yes) {
+    yield* T.item(M.skip(`run singularity learn here to learn from ${n === 1 ? "it" : "them"}`))
+    return yield* end(true)
+  }
+  const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now, with ${LEARNER_NAMES[learner.agent]}? About ${usd(price)}.`, true)
+  if (go && !takeLock(home.root)) {
+    yield* T.item(M.skip("a learning round is running now; run singularity learn when it's done"))
+  } else if (go) {
+    markLock(home.root, subject.id)
+    yield* T.pause
+    const learned = yield* withSpinner(
+      "learning (a minute or two)",
+      learnSubject(subject, {
+        ...learnerConfig(learner, learnCwd, model),
+        every: prefs.every,
+        now: true
+      }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
+      o.interactive
+    )
+    if (learned._tag === "Success") {
+      const [first, ...rest] = describeOutcome(s, learned.success)
+      yield* T.item(first)
+      for (const line of rest) yield* T.note(line.trim())
+    } else yield* T.item(M.fail(`learning failed (${learned.failure.message}); try ${s.cyan("singularity learn")} later`))
+  }
+  return yield* end(true)
 })
 
 /**
@@ -334,17 +325,18 @@ const pickModel = Effect.fnUntraced(function*(
   dirs: AgentDirs,
   cwd: string,
   asking: boolean,
-  s: Style
+  s: Style,
+  T: Tree
 ) {
-  const item = (line: string) => Console.log(`     ${line}`)
+  const M = marks(s)
   if (learner.agent === "claude") return o.learnModel ?? before
   const name = LEARNER_NAMES[learner.agent]
   const check = (model: string | undefined) =>
     Effect.gen(function*() {
       const label = model ?? (yield* configuredLearnerModel(learner, dirs)) ?? `${name}'s own model`
+      yield* T.pause
       const probe = yield* withSpinner(`checking that ${label} answers through ${name}`, probeModel(learner, model, cwd), o.interactive)
-      if (probe.ok) yield* item(`${s.green("✓")} ${label} answers through ${name}`)
-      else yield* item(`${s.yellow("·")} ${label} doesn't answer through ${name}: ${probe.reason}`)
+      yield* T.item(probe.ok ? M.ok(`${label} answers through ${name}`) : M.warn(`${label} doesn't answer through ${name}: ${probe.reason}`))
       return probe.ok
     })
   const model = o.learnModel ?? before
@@ -352,10 +344,11 @@ const pickModel = Effect.fnUntraced(function*(
   const choices = yield* modelChoices(learner, dirs)
   if (!asking) {
     const examples = choices.slice(0, 3).map((c) => c.id)
-    yield* item(s.yellow(`Learning needs a model that answers: singularity setup --learn-model <model>${examples.length > 0 ? ` (${name} lists ${listWords(examples)})` : ""}`))
+    yield* T.note(s.yellow(`Learning needs a model that answers: singularity setup --learn-model <model>${examples.length > 0 ? ` (${name} lists ${listWords(examples)})` : ""}`))
     return model
   }
   for (let tries = 0; tries < 3; tries++) {
+    yield* T.pause
     const picked = choices.length === 0
       ? OTHER_MODEL
       : yield* askChoice(
@@ -368,14 +361,15 @@ const pickModel = Effect.fnUntraced(function*(
     if (typed === "") break
     if (yield* check(typed)) return typed
   }
-  yield* item(s.yellow(`Learning needs a model that answers; choose one later with singularity setup --learn-model <model>`))
+  yield* T.note(s.yellow(`Learning needs a model that answers; choose one later with singularity setup --learn-model <model>`))
   return before
 })
 
 /**
  * Codex runs memory's hooks only once the user trusts them. Asks, when some
  * aren't trusted yet, and trusts them as Codex's `/hooks` would; the line to
- * show under Codex, or undefined when there is nothing to say.
+ * show under Codex ("✓ ..." when it is done), or undefined when there is
+ * nothing to say.
  */
 export const codexTrust = Effect.fnUntraced(function*(
   o: Pick<SetupOptions, "home" | "env">,
@@ -392,16 +386,24 @@ export const codexTrust = Effect.fnUntraced(function*(
   return (yield* trustCodexHooks(codex, { home: o.home, env: o.env }, untrusted)) ? "✓ trusted in Codex" : CODEX_TRUST_NOTE
 })
 
-/** The end of setup: what happens now, and the commands to know. */
-const done = Effect.fnUntraced(function*(s: Style, o: SetupOptions, chosen: ReadonlyArray<Agent>, bin: string, newTerminal: boolean) {
-  const say = (line = "") => Console.log(line)
-  const item = (line: string) => Console.log(`     ${line}`)
-  yield* say()
-  yield* say(`  ${s.green("✓")} ${s.bold("All set.")}`)
-  yield* say()
-  yield* item("Start a task in a repo memory knows: the agent gets what earlier")
-  yield* item("sessions learned there with your first prompt.")
-  yield* say()
+/** The end of setup: whether it's ready, what to do now, and the commands to know. */
+const done = Effect.fnUntraced(function*(
+  s: Style,
+  T: Tree,
+  o: SetupOptions,
+  chosen: ReadonlyArray<Agent>,
+  bin: string,
+  onPath: PathChange | undefined,
+  learning: boolean
+) {
+  const M = marks(s)
+  const ready = chosen.length > 0
+  yield* T.head(`${ready ? s.green("✓") : s.yellow("!")} ${s.bold(ready ? "Ready" : "Not set up in any agent")}${ready ? `  ${s.dim("agents running now get memory from their next start")}` : ""}`)
+  if (onPath === undefined) yield* T.item(s.dim(`the singularity command is ${tilde(bin, o.home)}/singularity`))
+  else if (onPath.state === "added") yield* T.item(s.dim("open a new terminal for the singularity command"))
+  else if (onPath.state === "failed") yield* T.item(M.warn(`add ${tilde(bin, o.home)} to your PATH to run singularity anywhere`))
+  if (!learning) yield* T.item(s.dim("learning is off until Claude Code, Codex or Hermes Agent is here"))
+  yield* T.section("Commands")
   const commands: ReadonlyArray<readonly [string, string]> = [
     ["singularity status", "what memory knows, repo by repo"],
     ["singularity recall \"<task>\"", "what a task would be handed"],
@@ -410,12 +412,8 @@ const done = Effect.fnUntraced(function*(s: Style, o: SetupOptions, chosen: Read
     ["singularity uninstall", "take it all out (memory stays)"]
   ]
   const w = Math.max(...commands.map(([c]) => c.length)) + 3
-  for (const [c, what] of commands) yield* item(`${s.cyan(c.padEnd(w))}${s.dim(what)}`)
-  if (newTerminal) {
-    yield* say()
-    yield* item(s.dim(`Open a new terminal for the ${"`singularity`"} command (or run ${tilde(bin, o.home)}/singularity).`))
-  }
-  if (chosen.length > 0) yield* item(s.dim("Agents running now get memory from their next start."))
-  yield* say()
+  for (const [c, what] of commands) yield* T.item(`${s.cyan(c.padEnd(w))}${s.dim(what)}`)
+  yield* T.close
+  yield* Console.log("")
   return true
 })

@@ -26,11 +26,20 @@ npm run cli -- <args>  # the whole command line, same as node apps/cli/src/cli.t
 
 Commands here run from the repo root, where eval runs go (`runs/`). There
 are two entry points: `apps/cli/src/singularity.ts` is the `singularity`
-command setup installs, with the five daily commands only, so nothing
+command setup installs, with the six daily commands only, so nothing
 user-facing points anywhere else; `apps/cli/src/cli.ts` is the whole command
-line, with those five too, and runs memory's background work. To set memory
+line, with those six too, and runs memory's background work. To set memory
 up from a clone instead of the installer's copy:
 `node apps/cli/src/singularity.ts setup`.
+
+To try the install as a user gets it, with this checkout as it is
+(uncommitted changes included), in a sandbox home that leaves your agents and
+PATH alone: `scripts/try-install.ps1` on Windows, `scripts/try-install.sh`
+elsewhere. The first run installs and runs setup; a run after that updates;
+`-Fresh` (`--fresh`) starts over and `-OwnNode` (`--own-node`) makes the
+installer fetch its own Node.js. Everything singularity prints, the
+installers included, follows one layout, described in
+`apps/cli/src/setup/Ui.ts`.
 
 ## Where things are
 

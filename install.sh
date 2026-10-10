@@ -25,23 +25,33 @@ NODE_MAJOR=24
 NODE_DIST="https://nodejs.org/dist/latest-v$NODE_MAJOR.x"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
-  D="$(printf '\033[2m')" G="$(printf '\033[32m')" R="$(printf '\033[31m')" M="$(printf '\033[35m')" X="$(printf '\033[0m')"
+  B="$(printf '\033[1m')" D="$(printf '\033[2m')" G="$(printf '\033[32m')" R="$(printf '\033[31m')" M="$(printf '\033[35m')" X="$(printf '\033[0m')"
 else
-  D="" G="" R="" M="" X=""
+  B="" D="" G="" R="" M="" X=""
 fi
 # Steps show a spinner while they run where the terminal can redraw a line;
 # elsewhere each one prints its line once it is done.
 LIVE=""
 if [ -t 1 ] && [ "${TERM:-}" != "dumb" ]; then LIVE=1; fi
 
+# Why the install stops. In a step, the reason goes to its file, for after the step's line.
+STEP=""
 fail() {
+  if [ -n "$STEP" ]; then printf '%s' "$1" >"$LOG/$STEP.why"; exit 1; fi
   printf '\n  %s✗%s %s\n\n' "$R" "$X" "$1" >&2
   exit 1
 }
 # Downloads give up on an address that doesn't answer and try the next.
 get() { curl -fsSL --connect-timeout 20 --retry 2 "$@"; }
 
-printf '\n  %s◆%s %sgetting singularity%s\n' "$M" "$X" "$D" "$X"
+# Set up already (setup writes the command) and no flags for setup: this run updates.
+WHAT=installing
+if [ $# -eq 0 ] && [ -f "$ROOT/bin/singularity" ]; then WHAT=updating; fi
+
+# The layout singularity's commands print in (apps/cli/src/setup/Ui.ts): the
+# title, then a section, a tree of steps.
+printf '\n  %ssingularity%s  %s%s%s\n' "$B" "$X" "$D" "$WHAT" "$X"
+printf '\n  %sDownload%s\n' "$B" "$X"
 
 command -v git >/dev/null 2>&1 || fail "git isn't installed: get it from https://git-scm.com (Ubuntu and WSL: sudo apt install git), then run this again."
 command -v curl >/dev/null 2>&1 || fail "curl isn't installed (Ubuntu and WSL: sudo apt install curl)."
@@ -113,7 +123,7 @@ trap 'stopped; kill $PIDS 2>/dev/null || :; exit 143' TERM
 step_node() {
   if [ -n "$FETCH" ]; then fetch_node; fi
   npm_of "$NODE" >/dev/null || fail "npm, which comes with Node.js, isn't next to $NODE."
-  printf 'node %s%s' "$("$NODE" -p 'process.versions.node')" "${OWN:+ ${D}(its own)${X}}" >"$LOG/node.done"
+  printf 'node %s%s' "$("$NODE" -p 'process.versions.node')" "${OWN:+  ${D}its own${X}}" >"$LOG/node.done"
 }
 
 step_code() {
@@ -124,7 +134,7 @@ step_code() {
     mkdir -p "$ROOT"
     git clone --quiet --depth 1 --branch "$REF" "$REPO" "$APP" || fail "couldn't clone $REPO."
   fi
-  printf 'code %s(%s, %s)%s' "$D" "$REF" "$(git -C "$APP" rev-parse --short HEAD)" "$X" >"$LOG/code.done"
+  printf 'code  %s%s · %s%s' "$D" "$REF" "$(git -C "$APP" rev-parse --short HEAD)" "$X" >"$LOG/code.done"
 }
 
 # npm runs with its own node first on PATH, so it never picks up another.
@@ -138,16 +148,18 @@ step_dependencies() {
 # Start steps side by side; nothing reads the terminal, which is this script's pipe.
 start() {
   for s in "$@"; do
-    ( set +e; ( set -e; "step_$s" ) >"$LOG/$s.log" 2>&1 </dev/null; echo $? >"$LOG/$s.status" ) &
+    ( STEP="$s"; set +e; ( set -e; "step_$s" ) >"$LOG/$s.log" 2>&1 </dev/null; echo $? >"$LOG/$s.status" ) &
     PIDS="$PIDS $!"
   done
 }
 
 # One step's line: a spinner frame while it runs, then ✓ and what it did, or ✗.
+# Its branch: the dependencies are the last step.
 line() {
-  if [ ! -f "$LOG/$1.status" ]; then printf '    %s%s%s %s' "$M" "$2" "$X" "$1"
-  elif [ "$(cat "$LOG/$1.status")" = 0 ]; then printf '    %s✓%s %s' "$G" "$X" "$(cat "$LOG/$1.done")"
-  else printf '    %s✗%s %s' "$R" "$X" "$1"
+  if [ "$1" = dependencies ]; then b='└─'; else b='├─'; fi
+  if [ ! -f "$LOG/$1.status" ]; then printf '  %s%s%s %s%s%s %s' "$D" "$b" "$X" "$M" "$2" "$X" "$1"
+  elif [ "$(cat "$LOG/$1.status")" = 0 ]; then printf '  %s%s%s %s✓%s %s' "$D" "$b" "$X" "$G" "$X" "$(cat "$LOG/$1.done")"
+  else printf '  %s%s%s %s✗%s %s' "$D" "$b" "$X" "$R" "$X" "$1"
   fi
 }
 
@@ -178,8 +190,10 @@ finish() {
   if [ -n "$LIVE" ]; then printf '\033[?25h'; else for s in "$@"; do printf '%s\n' "$(line "$s" "")"; done; fi
   for s in "$@"; do
     if [ "$(cat "$LOG/$s.status")" != 0 ]; then
-      cat "$LOG/$s.log" >&2
-      exit 1
+      # What the tools said, under the step's line, then why it stopped.
+      if [ "$s" = dependencies ]; then under='   '; else under='│  '; fi
+      sed "s/^/  $D$under   /; s/\$/$X/" "$LOG/$s.log" >&2
+      if [ -f "$LOG/$s.why" ]; then fail "$(cat "$LOG/$s.why")"; else fail "$s stopped; the messages above say why."; fi
     fi
   done
 }
@@ -189,17 +203,18 @@ finish node code
 NPM="$(npm_of "$NODE")"
 start dependencies
 finish dependencies
-printf '\n'
 rm -rf "$LOG"
 trap - EXIT INT TERM
 
-# Questions go through the terminal: curl's pipe is stdin.
+# Questions go through the terminal: curl's pipe is stdin. The CLI goes on
+# below the title printed here.
 CLI="$APP/apps/cli/src/singularity.ts"
+export SINGULARITY_TITLED=1
 tty=""
 if [ -t 1 ] && (: </dev/tty) 2>/dev/null; then tty=1; fi
-# Set up already (setup writes the command): the new code brings it up to date
-# and asks nothing setup asked. Flags for setup run setup.
-if [ $# -eq 0 ] && [ -f "$ROOT/bin/singularity" ]; then
+# Set up already: the new code brings it up to date and asks nothing setup
+# asked. Flags for setup run setup.
+if [ "$WHAT" = updating ]; then
   if [ -n "$tty" ]; then exec "$NODE" "$CLI" update --no-fetch </dev/tty; else exec "$NODE" "$CLI" update --no-fetch; fi
 fi
 if [ -n "$tty" ]; then

@@ -17,6 +17,8 @@
 & {
   # A script block, so that `irm | iex` leaves nothing behind in the session, and
   # `return` (never `exit`, which would close the window) ends it on an error.
+  # Programs this install starts are the ones started from now on (Ctrl+C stops them).
+  $started = Get-Date
   $repo = if ($env:SINGULARITY_REPO) { $env:SINGULARITY_REPO } else { 'https://github.com/pandacover/singularity.git' }
   $ref = if ($env:SINGULARITY_REF) { $env:SINGULARITY_REF } else { 'main' }
   $root = if ($env:SINGULARITY_HOME) { $env:SINGULARITY_HOME } else { Join-Path $HOME '.singularity' }
@@ -59,7 +61,7 @@
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
       }
       $version = (& $node -p 'process.versions.node' | Out-String).Trim()
-      @{ ok = $true; text = "node $version"; note = $(if ($own) { '(its own)' } else { '' }) }
+      @{ ok = $true; text = "node $version"; note = $(if ($own) { 'its own' } else { '' }) }
     } catch { @{ ok = $false; text = $_.Exception.Message } }
   }
 
@@ -76,7 +78,7 @@
       $out = git clone --quiet --depth 1 --branch $ref $repo $app 2>&1
       if ($LASTEXITCODE -ne 0) { return @{ ok = $false; text = "couldn't clone $repo."; output = (& $messages $out) } }
     }
-    @{ ok = $true; text = 'code'; note = "($ref, $((git -C $app rev-parse --short HEAD | Out-String).Trim()))" }
+    @{ ok = $true; text = 'code'; note = "$ref $([char]0x00B7) $((git -C $app rev-parse --short HEAD | Out-String).Trim())" }
   }
 
   # npm through the node it came with, so it never runs another.
@@ -105,21 +107,25 @@
 
   # One step's line: a spinner frame while it runs, then a check mark and what it did, or a cross.
   # Live, it fills the line, to cover what the frame before left.
-  function Show-Step($step, $frame, $width) {
-    Write-Host '    ' -NoNewline
+  # Its branch: the last step's is the tree's corner.
+  function Show-Step($step, $frame, $width, $last) {
+    Write-Host '  ' -NoNewline
+    Write-Host $(if ($last) { "$([char]0x2514)$([char]0x2500)" } else { "$([char]0x251C)$([char]0x2500)" }) -ForegroundColor DarkGray -NoNewline
+    Write-Host ' ' -NoNewline
     $text = " $($step.Name)"
     $note = ''
     if ($null -eq $step.Result) { Write-Host $frame -ForegroundColor Magenta -NoNewline }
-    elseif ($step.Result.ok) { Write-Host ([char]0x2713) -ForegroundColor Green -NoNewline; $text = " $($step.Result.text)"; if ($step.Result.note) { $note = " $($step.Result.note)" } }
+    elseif ($step.Result.ok) { Write-Host ([char]0x2713) -ForegroundColor Green -NoNewline; $text = " $($step.Result.text)"; if ($step.Result.note) { $note = "  $($step.Result.note)" } }
     else { Write-Host ([char]0x2717) -ForegroundColor Red -NoNewline }
     Write-Host $text -NoNewline
     Write-Host $note -ForegroundColor DarkGray -NoNewline
-    Write-Host (' ' * [Math]::Max(0, $width - 5 - $text.Length - $note.Length))
+    Write-Host (' ' * [Math]::Max(0, $width - 6 - $text.Length - $note.Length))
   }
 
   # Wait for the steps, redrawing their lines where the console can (elsewhere
   # each prints its line once done); false, having said why, when one failed.
-  function Wait-Steps($steps) {
+  # $last: these are the last steps, and the last of them closes the tree.
+  function Wait-Steps($steps, $last) {
     $live = $Host.Name -eq 'ConsoleHost' -and -not [Console]::IsOutputRedirected
     $width = 0
     if ($live) { try { $width = [Console]::WindowWidth - 1 } catch { $live = $false } }
@@ -133,7 +139,7 @@
         foreach ($s in $steps) { if ($null -eq $s.Result -and $s.Handle.IsCompleted) { $s.Result = Receive-Step $s } }
         if ($live) {
           if ($top -ge 0) { [Console]::SetCursorPosition(0, $top) }
-          foreach ($s in $steps) { Show-Step $s $frames[$n % $frames.Count] $width }
+          foreach ($s in $steps) { Show-Step $s $frames[$n % $frames.Count] $width ($last -and $s -eq $steps[-1]) }
           # Where the lines start, once the console scrolled to make room for them.
           if ($top -lt 0) { $top = [Console]::CursorTop - $steps.Count }
         }
@@ -143,13 +149,22 @@
       }
     } finally {
       if ($live) { try { [Console]::CursorVisible = $true } catch {} }
-      # Stopped with Ctrl+C: steps still running are stopped too.
-      foreach ($s in $steps) { if ($null -eq $s.Result) { $s.Ps.Stop(); $s.Ps.Dispose() } }
+      # Stopped with Ctrl+C: steps still running stop too, at once. Their threads are
+      # told to stop without waiting; the programs they run (git, npm, node), this
+      # process's children started since the install began, end with all they started.
+      if ($steps | Where-Object { $null -eq $_.Result }) {
+        Get-CimInstance Win32_Process -Filter "ParentProcessId = $PID" -ErrorAction SilentlyContinue |
+          Where-Object { $_.CreationDate -ge $started } |
+          ForEach-Object { taskkill.exe /T /F /PID $_.ProcessId 2>&1 | Out-Null }
+        foreach ($s in $steps) { if ($null -eq $s.Result) { [void]$s.Ps.BeginStop($null, $null) } }
+      }
     }
-    if (-not $live) { foreach ($s in $steps) { Show-Step $s '' 0 } }
+    if (-not $live) { foreach ($s in $steps) { Show-Step $s '' 0 ($last -and $s -eq $steps[-1]) } }
     foreach ($s in $steps) {
       if (-not $s.Result.ok) {
-        if ($s.Result.output) { Write-Host ''; Write-Host $s.Result.output }
+        # What the tools said, under the step's line, then why it stopped.
+        $under = if ($last -and $s -eq $steps[-1]) { '   ' } else { "$([char]0x2502)  " }
+        if ($s.Result.output) { foreach ($l in ($s.Result.output -split "`n")) { Write-Host "  $under   $l" -ForegroundColor DarkGray } }
         Fail $s.Result.text
         return $false
       }
@@ -157,9 +172,16 @@
     $true
   }
 
+  # Set up already (setup writes the command) and no flags for setup: this run updates.
+  $updating = $args.Count -eq 0 -and (Test-Path (Join-Path $root 'bin\singularity'))
+
+  # The layout singularity's commands print in (apps/cli/src/setup/Ui.ts): the
+  # title, then a section, a tree of steps.
   Write-Host ''
-  Write-Host "  $([char]0x25C6) " -ForegroundColor Magenta -NoNewline
-  Write-Host 'getting singularity' -ForegroundColor DarkGray
+  Write-Host '  singularity  ' -NoNewline
+  Write-Host $(if ($updating) { 'updating' } else { 'installing' }) -ForegroundColor DarkGray
+  Write-Host ''
+  Write-Host '  Download'
 
   if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail 'git isn''t installed: get it from https://git-scm.com, then run this again.'; return }
 
@@ -177,15 +199,17 @@
   $fetched = Wait-Steps @(
     (Start-Step 'node' $nodeStep @{ node = $node; fetch = $fetch; own = ($node -eq $own); root = $root; dist = $dist; nodeMajor = $nodeMajor }),
     (Start-Step 'code' $codeStep @{ app = $app; root = $root; repo = $repo; ref = $ref })
-  )
+  ) $false
   if (-not $fetched) { return }
-  if (-not (Wait-Steps @(Start-Step 'dependencies' $dependenciesStep @{ app = $app; node = $node }))) { return }
-  Write-Host ''
+  if (-not (Wait-Steps @(Start-Step 'dependencies' $dependenciesStep @{ app = $app; node = $node }) $true)) { return }
 
-  # Set up already (setup writes the command): the new code brings it up to date
-  # and asks nothing setup asked. Flags for setup run setup.
+  # Set up already: the new code brings it up to date and asks nothing setup
+  # asked. Flags for setup run setup. It goes on below the title printed here.
   $cli = Join-Path $app 'apps\cli\src\singularity.ts'
-  if ($args.Count -eq 0 -and (Test-Path (Join-Path $root 'bin\singularity'))) { & $node $cli update --no-fetch } else { & $node $cli setup @args }
+  $env:SINGULARITY_TITLED = '1'
+  try {
+    if ($updating) { & $node $cli update --no-fetch } else { & $node $cli setup @args }
+  } finally { Remove-Item Env:SINGULARITY_TITLED -ErrorAction SilentlyContinue }
 
   # The command works in this window too, not only in new ones.
   $bin = Join-Path $root 'bin'

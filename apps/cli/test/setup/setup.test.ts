@@ -300,7 +300,7 @@ describe("setup", () => {
     const codexOnly = sandbox([".codex"], { codex: true })
     const said = await captureLog(() => withEnv({ SINGULARITY_HOME: codexOnly.memory }, () => run(runSetup(codexOnly.options))))
     expect(await run(readLearn(codexOnly.memory))).toMatchObject({ auto: true, with: "codex" })
-    expect(said).toContain("learning on its own with Codex (the model Codex is set to use, on your Codex account)")
+    expect(said).toContain("on its own with Codex, up to $1.00 a day  the model Codex is set to use, on your Codex account")
     expect(said).not.toContain("Claude Code isn't")
 
     const both = sandbox([".claude", ".codex"], { claude: true, codex: true })
@@ -338,7 +338,7 @@ describe("setup", () => {
 
     const named = await captureLog(() => withEnv(env, () => run(runSetup({ ...options, learnModel: "gpt-5.6-luna" }))))
     expect(named).toContain("✓ gpt-5.6-luna answers through Codex")
-    expect(named).toContain("learning on its own with Codex (gpt-5.6-luna, on your Codex account)")
+    expect(named).toContain("on its own with Codex, up to $1.00 a day  gpt-5.6-luna, on your Codex account")
     expect(await run(readLearn(m.memory))).toMatchObject({ with: "codex", model: "gpt-5.6-luna" })
     // Run again: the model chosen stays, checked again.
     const again = await captureLog(() => withEnv(env, () => run(runSetup(options))))
@@ -445,7 +445,7 @@ describe("update", () => {
     // Droid was left out at setup, and stays out; the choices stay as they were.
     expect(existsSync(join(home, ".factory", "hooks.json"))).toBe(false)
     expect(existsSync(join(home, ".factory", "skills", "singularity"))).toBe(false)
-    expect(said).toContain("Droid is here without memory")
+    expect(said).toContain("Droid: no memory · singularity setup adds it")
     expect(readFileSync(join(memory, "config.json"), "utf-8")).toBe(config)
   }, 60_000)
 
