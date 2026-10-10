@@ -16,6 +16,7 @@ import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
+import { learningQueue, lockInfo } from "./Background.ts"
 import { readLearn } from "./Preferences.ts"
 import { makeStyle, plural, tilde, usd } from "./Ui.ts"
 import { agentStates, detectAgents, findExecutable } from "./Wiring.ts"
@@ -59,6 +60,11 @@ const shortDate = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en", { month: "short", day: "numeric" })
 }
 
+const clock = (iso: string): string => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" })
+}
+
 export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly color: boolean; readonly memoryHome?: string | undefined }) {
   const s = makeStyle(o.color)
   const path = yield* Path.Path
@@ -100,6 +106,8 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
     const here = repo === undefined ? undefined : matchSubject(subjects, repo)
     const committed = yield* (yield* WorkflowStore).candidates("committed")
     const spent = yield* spentToday()
+    const running = lockInfo(home.root)
+    const queued = learningQueue(home.root)
     const out: Array<string> = []
     const w = Math.max(0, ...subjects.map((x) => x.name.length)) + 3
     for (const subject of subjects) {
@@ -112,7 +120,11 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
       const changes = `${plural(state.records.length, "change")} stored${state.learned.length > 0 ? `, ${state.learned.length} learned from` : ""}`
       const waiting = waitReason(state, prefs.every, false)
       const short = prefs.auto ? budgetReason(roundUsd(state), spent, prefs.max_usd_per_day) : undefined
-      const next = waiting !== undefined
+      const next = running?.subject === subject.id
+        ? s.yellow(`learning now, since ${clock(running.at)}`)
+        : queued.includes(subject.id)
+        ? s.yellow(running === undefined ? "queued to learn" : "queued to learn after the round running now")
+        : waiting !== undefined
         ? s.dim(waiting)
         : short === undefined
         ? s.yellow("ready to learn")

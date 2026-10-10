@@ -48,7 +48,7 @@ export interface RunEvidence {
   readonly detours: ReadonlyArray<Detour>
   /** For each file it created: the files of the same kind it read before writing it. */
   readonly readFirst: ReadonlyArray<{ readonly created: string; readonly read: ReadonlyArray<string> }>
-  /** The task's own values: names, keys and labels it introduced or named, which memory must never carry. */
+  /** The task's own values: names, keys and labels it introduced or named, while still its own (`stillOwn`), which memory must never carry. */
   readonly values: ReadonlyArray<string>
   /** The main thread's tool calls and working directory, for checking triggers against its detours. */
   readonly calls: ReadonlyArray<ToolCall>
@@ -198,6 +198,78 @@ const existingNames = Effect.fnUntraced(function*(repo: string, commit: string, 
   return found
 })
 
+/** Values no file can use as a word: long ones and ones across lines are a task's own wording. */
+const MAX_WORD_VALUE = 120
+
+/** git grep's patterns in groups: at most 100, and short enough for a Windows command line. */
+const patternGroups = (values: ReadonlyArray<string>): Array<Array<string>> => {
+  const groups: Array<Array<string>> = []
+  let group: Array<string> = []
+  let chars = 0
+  for (const v of values) {
+    if (group.length === 100 || chars + v.length > 8000) {
+      groups.push(group)
+      group = []
+      chars = 0
+    }
+    group.push(v)
+    chars += v.length + 4
+  }
+  if (group.length > 0) groups.push(group)
+  return groups
+}
+
+/** The files that use each of `values` at `commit`, as a whole word in any case, by the value in lower case. */
+const filesUsing = Effect.fnUntraced(function*(repo: string, commit: string, values: ReadonlyArray<string>) {
+  const files = new Map<string, Set<string>>()
+  for (const group of patternGroups(values)) {
+    // git grep exits 1 when nothing matches.
+    const out = yield* git(repo, ["grep", "-I", "-i", "-o", "-w", "-F", "-z", ...group.flatMap((v) => ["-e", v]), commit, "--"]).pipe(
+      Effect.orElseSucceed(() => "")
+    )
+    for (const line of out.split(/\r?\n/)) {
+      const nul = line.indexOf("\u0000")
+      if (nul < 0) continue
+      const file = line.slice(line.startsWith(`${commit}:`) ? commit.length + 1 : 0, nul)
+      const value = line.slice(nul + 1).toLowerCase()
+      files.set(value, (files.get(value) ?? new Set<string>()).add(file))
+    }
+  }
+  return files
+})
+
+/** A run's change committed in its repo: where, its last commit, and the files it touched. Eval runs' changes aren't commits. */
+interface Committed {
+  readonly repo: string
+  readonly head: string
+  readonly touched: ReadonlySet<string>
+}
+
+/**
+ * A name stays a task's own while it is only the task's: once files its
+ * change didn't touch use it, in any case, it is a word of the repo (`update`,
+ * `hook`, `setup`), which memory may write. Read at the newest change memory
+ * learns from: in a repo that grows, most of its words were new once. Eval
+ * runs' changes never land in the repo, so their names stay theirs.
+ */
+const stillOwn = Effect.fnUntraced(function*(runs: ReadonlyArray<RunEvidence>, committed: ReadonlyMap<string, Committed>) {
+  const out = [...runs]
+  for (const subject of new Set(runs.filter((r) => committed.has(r.record)).map((r) => r.subject))) {
+    const mine = out.flatMap((r, i) => (r.subject === subject && committed.has(r.record) ? [i] : []))
+    const repo = committed.get(out[mine[0]].record)!.repo
+    const heads = [...new Set(mine.map((i) => committed.get(out[i].record)!.head))]
+    const newest = (yield* git(repo, ["rev-list", "--no-walk", "--ignore-missing", "-n", "1", ...heads]).pipe(Effect.orElseSucceed(() => ""))).trim()
+    if (newest === "") continue
+    const words = [...new Set(mine.flatMap((i) => out[i].values))].filter((v) => v.length <= MAX_WORD_VALUE && !/[\r\n]/.test(v))
+    const users = yield* filesUsing(repo, newest, words)
+    for (const i of mine) {
+      const touched = committed.get(out[i].record)!.touched
+      out[i] = { ...out[i], values: out[i].values.filter((v) => [...(users.get(v.toLowerCase()) ?? [])].every((f) => touched.has(f))) }
+    }
+  }
+  return out
+})
+
 export interface GatherOptions {
   /** Where to read files at a run's base commit, when not in the run's own working directory. */
   readonly repo?: string | undefined
@@ -212,6 +284,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
   const readPooled = new Map<string, { evidence: Set<string>; tasks: Set<string> }>()
   const files = new Map<string, ReadonlyArray<string> | undefined>()
   const runs: Array<RunEvidence> = []
+  const committed = new Map<string, Committed>()
   const skipped: Array<string> = []
   const families = new Map<string, string>()
   const checkedFamily = new Set<string>()
@@ -242,6 +315,9 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       continue
     }
     const d = editsOfDiff(diff)
+    if (r.run.head_commit !== null) {
+      committed.set(r.id, { repo, head: r.run.head_commit, touched: new Set([...d.edits.map((e) => e.file), ...d.created.map((c) => c.file), ...d.deleted, ...d.snapshots]) })
+    }
     const linesAt = Effect.fnUntraced(function*(file: string) {
       const key = `${repo}\u0000${base}\u0000${file}`
       if (!files.has(key)) files.set(key, (yield* fileAt(repo, base, file))?.split("\n"))
@@ -370,7 +446,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
     }
   })
   readPlaces.sort((a, b) => b.tasks.length - a.tasks.length || b.evidence.length - a.evidence.length || a.file.localeCompare(b.file) || a.id.localeCompare(b.id))
-  return { places, readPlaces, runs, skipped, families } satisfies Evidence
+  return { places, readPlaces, runs: yield* stillOwn(runs, committed), skipped, families } satisfies Evidence
 })
 
 /** A place as a PlaceShape, for finding it in code. */

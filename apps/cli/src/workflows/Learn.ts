@@ -137,12 +137,15 @@ export const learnState = Effect.fn("learnState")(function*(subject: string) {
 /** Why a subject waits, or undefined when it has enough to learn from. */
 export const waitReason = (state: LearnState, every: number, now: boolean): string | undefined => {
   const first = state.memory.workflows.length === 0
+  const need = now ? 1 : every
   if (first) {
     if (state.fresh.length === 0) return state.records.length === 0 ? "no changes stored yet" : "nothing new since the last try"
     if (state.records.length < MIN_FIRST) return `${state.records.length} of ${MIN_FIRST} changes stored for a first build`
+    // A first build that kept nothing reads every change again: it waits for as many new ones as a learning round.
+    const tried = state.fresh.length < state.records.length
+    if (tried && state.fresh.length < need) return `${state.fresh.length} of ${need} new changes since the last try`
     return undefined
   }
-  const need = now ? 1 : every
   if (state.fresh.length < need) return `${state.fresh.length} of ${need} new changes stored`
   return undefined
 }
@@ -159,8 +162,9 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
   const full = yield* store.memory()
   const first = state.memory.workflows.length === 0
 
-  const propose = (memory: WorkflowMemory, records: ReadonlyArray<string>, rationale: string, costUsd: number) =>
-    store.propose(mergeSubject(full, subject.id, memory), { baseVersion, rationale, records, model: config.model, costUsd, report: { problems: [], replay: null } })
+  // What the checks dropped or flagged goes with the candidate: why a round kept little is there to read, without paying again.
+  const propose = (memory: WorkflowMemory, records: ReadonlyArray<string>, rationale: string, costUsd: number, problems: ReadonlyArray<string>) =>
+    store.propose(mergeSubject(full, subject.id, memory), { baseVersion, rationale, records, model: config.model, costUsd, report: { problems: [...problems], replay: null } })
 
   if (first) {
     const evidence = yield* gatherEvidence(state.records, {})
@@ -168,13 +172,13 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
     const built = withSnapshots(induced.memory, evidence.runs)
     const records = evidence.runs.map((r) => r.record)
     if (built.workflows.length === 0) {
-      const candidate = yield* propose(built, records, induced.rationale, induced.costUsd)
+      const candidate = yield* propose(built, records, induced.rationale, induced.costUsd, induced.problems)
       yield* store.reject(candidate.id, "no workflows")
       return { kind: "kept", subject: subject.id, reason: "the changes showed no workflow to keep yet", costUsd: induced.costUsd } satisfies LearnOutcome
     }
     const cued = yield* writeCues(config, built, evidence.runs)
     const costUsd = induced.costUsd + cued.costUsd
-    const candidate = yield* propose(cued.memory, records, induced.rationale, costUsd)
+    const candidate = yield* propose(cued.memory, records, induced.rationale, costUsd, [...induced.problems, ...cued.problems])
     const version = yield* store.commit(candidate.id)
     return {
       kind: "learned",
@@ -212,7 +216,7 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
   const verdict = passes(then, now)
   const costUsd = refined.costUsd + cued.costUsd
   const records = [...state.learned.map((r) => r.id), ...state.unlearned.map((r) => r.id)]
-  const candidate = yield* propose(revision, records, refined.rationale, costUsd)
+  const candidate = yield* propose(revision, records, refined.rationale, costUsd, [...refined.problems, ...cued.problems])
   if (!verdict.commit) {
     yield* store.reject(candidate.id, verdict.reason)
     return { kind: "kept", subject: subject.id, reason: `kept the memory it had: the revision ${verdict.reason}`, costUsd } satisfies LearnOutcome

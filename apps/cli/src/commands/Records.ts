@@ -217,7 +217,9 @@ const commits = Command.make(
       yield* say(`${name}: ${result.examined} new commits looked at, ${result.stored.length} stored${skipped === "" ? "" : ` (left out: ${skipped})`}`)
     }
     if (args.background && result.subject !== undefined && result.stored.length > 0) {
-      if (yield* Effect.promise(() => afterRecord(result.subject!))) yield* say(`${name}: started a learning round`)
+      const learning = yield* Effect.promise(() => afterRecord(result.subject!))
+      if (learning === "started") yield* say(`${name}: started a learning round`)
+      if (learning === "queued") yield* say(`${name}: a learning round is queued after the one running`)
     }
   })
 ).pipe(Command.withDescription("store the changes sessions committed, one record per commit (the hooks run this on their own)"))

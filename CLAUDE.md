@@ -71,7 +71,9 @@ runs the same hook script, `HermesPlugin.ts`, enabled by an edit of its
 the skill), their hook files
 (`HookFiles.ts`), the skill (`Skill.ts`), the
 `singularity` command on PATH (`Launcher.ts`), learning on its own after a
-stored change (`AutoLearn.ts`, started in the background by `Background.ts`)
+stored change (`AutoLearn.ts`, started in the background by `Background.ts`;
+rounds run one at a time, by hand or not, under `learn.lock`, and one asked
+for meanwhile waits in `learn-queue/`, each repo once)
 and the onboarding itself (`Setup.ts`). In daily use memory stores a change
 when it is committed, one record per commit (or per command that made
 several), with the part of the session's log since its previous commit
