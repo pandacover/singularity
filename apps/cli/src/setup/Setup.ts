@@ -23,7 +23,7 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { storePast } from "../workflows/Commits.ts"
 import { type PastSession, pastSessions } from "../workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
-import { estimateUsd, learnSubject, type LearnOutcome } from "../workflows/Learn.ts"
+import { learnState, learnSubject, type LearnOutcome, roundUsd } from "../workflows/Learn.ts"
 import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
 import { CLI } from "./AutoLearn.ts"
 import { markLock, releaseLearning, takeLock } from "./Background.ts"
@@ -241,11 +241,12 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       yield* item(`${s.dim("·")} they committed no change with passing checks; memory learns as you work`)
     } else {
       yield* item(`${s.green("✓")} ${n === 1 ? "one change" : `${n} changes`} they committed with passing checks`)
-      const subject = yield* Effect.gen(function*() {
-        return yield* (yield* RecordStore).subjectFor(repo)
+      const { subject, price } = yield* Effect.gen(function*() {
+        const subject = yield* (yield* RecordStore).subjectFor(repo)
+        return { subject, price: subject === undefined ? 0 : roundUsd(yield* learnState(subject.id)) }
       }).pipe(Effect.provide(layers))
       if (subject !== undefined && !o.yes) {
-        const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now? About ${usd(estimateUsd(n))}.`, true)
+        const go = yield* ask(`Learn from ${n === 1 ? "it" : `those ${n}`} now? About ${usd(price)}.`, true)
         if (go && !takeLock(home.root)) {
           yield* item(`${s.dim("·")} a learning round is running now; run ${s.cyan("singularity learn")} when it's done`)
         } else if (go) {

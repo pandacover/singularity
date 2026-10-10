@@ -116,6 +116,31 @@ export interface LearnState {
    */
   readonly fresh: ReadonlyArray<WorkflowRecord>
   readonly memory: WorkflowMemory
+  /** Every round memory ran, any repo's, oldest first: the next one is priced from them. */
+  readonly rounds: ReadonlyArray<PastRound>
+}
+
+/** A round memory ran: a first build or a learning round, the changes it read, what it cost. */
+export interface PastRound {
+  readonly build: boolean
+  readonly changes: number
+  readonly usd: number
+}
+
+/**
+ * The rounds memory ran, oldest first, from the candidates they proposed. A
+ * round that read changes a committed round had learned from was a learning
+ * round, and read only its others; the first build of a repo read none.
+ */
+export const pastRounds = (candidates: ReadonlyArray<WorkflowCandidate>): Array<PastRound> => {
+  const learned = new Set<string>()
+  const rounds: Array<PastRound> = []
+  for (const c of [...candidates].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    const known = c.records.filter((r) => learned.has(r)).length
+    rounds.push({ build: known === 0, changes: c.records.length - known, usd: c.cost_usd ?? 0 })
+    if (c.status === "committed") for (const r of c.records) learned.add(r)
+  }
+  return rounds
 }
 
 export const learnState = Effect.fn("learnState")(function*(subject: string) {
@@ -130,7 +155,8 @@ export const learnState = Effect.fn("learnState")(function*(subject: string) {
     learned: records.filter((r) => learnedIds.has(r.id)),
     unlearned: records.filter((r) => !learnedIds.has(r.id)),
     fresh: records.filter((r) => !seen.has(r.id)),
-    memory: forSubject(yield* store.memory(), subject)
+    memory: forSubject(yield* store.memory(), subject),
+    rounds: pastRounds(candidates)
   } satisfies LearnState
 })
 
@@ -247,9 +273,26 @@ export const spentToday = Effect.fn("spentToday")(function*() {
 /** A rough price for learning from `changes` changes: what the eval memories cost to build and revise. */
 export const estimateUsd = (changes: number): number => 0.1 + 0.05 * changes
 
-/** The next round's rough price: a first build reads every change, a learning round the new ones. */
-export const roundUsd = (state: LearnState): number =>
-  estimateUsd(state.memory.workflows.length === 0 ? state.records.length : state.unlearned.length)
+/** The latest rounds a price follows: few, so that it follows the model's prices and memory's size. */
+const PRICED_ROUNDS = 5
+
+/**
+ * The next round's rough price: a first build reads every change, a learning
+ * round the new ones. Sessions differ from repo to repo and from the eval
+ * tasks the formula came from (a real first build cost 1.7 times it), so the
+ * formula is scaled by what the latest rounds of the same kind cost against
+ * it, or of the other kind before one of its own ran; the formula alone
+ * before any round ran.
+ */
+export const roundUsd = (state: LearnState): number => {
+  const build = state.memory.workflows.length === 0
+  const priced = state.rounds.filter((r) => r.changes > 0 && r.usd > 0)
+  const same = priced.filter((r) => r.build === build)
+  const past = (same.length > 0 ? same : priced).slice(-PRICED_ROUNDS)
+  const cost = past.reduce((sum, r) => sum + r.usd, 0)
+  const formula = past.reduce((sum, r) => sum + estimateUsd(r.changes), 0)
+  return estimateUsd(build ? state.records.length : state.unlearned.length) * (past.length === 0 ? 1 : cost / formula)
+}
 
 const dollars = (x: number): string => `$${x.toFixed(2)}`
 
