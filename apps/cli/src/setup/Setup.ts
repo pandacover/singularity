@@ -25,9 +25,8 @@ import { type PastSession, pastSessions } from "../workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { learnState, learnSubject, type LearnOutcome, roundUsd } from "../workflows/Learn.ts"
 import { type Agent, type AgentDirs, type AgentId, type Reach, sessionHomes } from "./Agents.ts"
-import { CLI } from "./AutoLearn.ts"
 import { markLock, releaseLearning, takeLock } from "./Background.ts"
-import { addToPath, writeLaunchers } from "./Launcher.ts"
+import { addToPath, COMMAND, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn, writeLearn } from "./Preferences.ts"
 import { askDollars, confirm, makeStyle, plural, type Style, tilde, usd, withSpinner } from "./Ui.ts"
 import { detectAgents, findClaude, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
@@ -187,7 +186,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
 
   // 3. The command.
   yield* say(heading(s, 3, "The singularity command"))
-  const bin = yield* writeLaunchers(home.root, process.execPath, CLI, process.platform)
+  const bin = yield* writeLaunchers(home.root, process.execPath, COMMAND, process.platform)
   let newTerminal = false
   if (!o.path) {
     yield* item(`${s.green("✓")} ${tilde(bin, o.home)} ${s.dim("(not added to PATH)")}`)

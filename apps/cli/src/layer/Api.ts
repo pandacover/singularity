@@ -16,7 +16,8 @@
  * nothing for it, to the web reader.
  *
  * Ways in, all onto these calls: the hooks (src/workflows/hook.ts), the CLI
- * (`singularity layer start|step|end|learn`, JSON in and out), and, later,
+ * (`node src/cli.ts layer start|step|end|learn`, JSON in and out, from the
+ * repo: the installed `singularity` command keeps to daily use), and, later,
  * MCP. The eval harness uses the hooks and these functions, like users do.
  */
 import { NodeServices } from "@effect/platform-node"

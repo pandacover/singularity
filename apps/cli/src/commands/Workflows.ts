@@ -1,5 +1,5 @@
 /**
- * `singularity workflows ...`: memory v1, workflows with blanks in a graph.
+ * `node src/cli.ts workflows ...`: memory v1, workflows with blanks in a graph.
  *
  *     workflows build [--task ID ...] [--repo DIR] [--fresh] [--dry-run]   induce from the records
  *     workflows show [AT] [--json]                                         print a version or candidate

@@ -28,7 +28,10 @@ memory v1 on its own.
 Layout of `apps/cli` (paths from here to the end are relative to it, except
 `node_modules/`, `runs/` and the install scripts, at the root): `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
 procedural graph store of the first graph setup), `src/eval/` (the eval
-harness and memory setups), `src/cli.ts` (the command line). The local memory
+harness and memory setups), `src/cli.ts` (the whole command line, run from
+the repo), `src/singularity.ts` (the `singularity` command setup installs:
+the five daily commands only, so nothing user-facing may point users or
+agents at another one). The local memory
 from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
 `src/records/` (workflow records: extraction, where edits went, the model's
 reading, the store), `src/memory/` (the memory graph: build, replay, store),

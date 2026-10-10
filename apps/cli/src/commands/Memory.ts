@@ -1,5 +1,5 @@
 /**
- * `singularity memory ...`: build the memory graph from the records, and look at it.
+ * `node src/cli.ts memory ...`: build the memory graph from the records, and look at it.
  */
 import { Console, Effect, FileSystem, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"

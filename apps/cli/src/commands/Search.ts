@@ -1,5 +1,5 @@
 /**
- * `singularity search ...`: exact and word search over local memory.
+ * `node src/cli.ts search ...`: exact and word search over local memory.
  */
 import { Console, Effect, Layer, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"

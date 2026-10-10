@@ -3,10 +3,10 @@
  * that can run a command: an agent without hooks, a harness, a script. Each
  * call takes a JSON request on stdin and prints a JSON answer:
  *
- *     singularity layer start   {"session_id","prompt","cwd"}
- *     singularity layer step    {"session_id","tool_name","tool_input","tool_response"?,"error"?,"cwd"?}
- *     singularity layer end     {"session_id","transcript_path","cwd","outcome"?:{"success","feedback"},"task_id"?,"prompt"?}
- *     singularity layer learn   {"subject","model"?,"effort"?,"every"?,"now"?}
+ *     node src/cli.ts layer start   {"session_id","prompt","cwd"}
+ *     node src/cli.ts layer step    {"session_id","tool_name","tool_input","tool_response"?,"error"?,"cwd"?}
+ *     node src/cli.ts layer end     {"session_id","transcript_path","cwd","outcome"?:{"success","feedback"},"task_id"?,"prompt"?}
+ *     node src/cli.ts layer learn   {"subject","model"?,"effort"?,"every"?,"now"?}
  */
 import { Console, Effect, Path, Predicate, Schema } from "effect"
 import { Command } from "effect/cli"
