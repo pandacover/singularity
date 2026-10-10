@@ -89,7 +89,7 @@ const learn = Command.make("learn", {}, () =>
       Api.learn({
         subject,
         config: {
-          claude: await Effect.runPromise(defaultClaude().pipe(Effect.provide((await import("@effect/platform-node")).NodeServices.layer))),
+          claude: await Effect.runPromise(defaultClaude().pipe(Effect.provide((await import("@effect/platform-node/NodeServices")).layer))),
           cwd: path.join(defaultWorkspaces(), "_learner"),
           model: str(r, "model") ?? DEFAULT_INDUCE_MODEL,
           effort: str(r, "effort") ?? DEFAULT_INDUCE_EFFORT,

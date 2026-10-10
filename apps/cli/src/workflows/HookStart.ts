@@ -12,7 +12,7 @@
  * `SINGULARITY_DRAFTER=on` hands over the change itself, written at task start
  * by `SINGULARITY_DRAFTER_MODEL` (default sonnet; Draft.ts).
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Path } from "effect"
 import { defaultClaude } from "../eval/Agent.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"

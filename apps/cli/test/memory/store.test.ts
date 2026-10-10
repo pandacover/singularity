@@ -1,7 +1,7 @@
 /**
  * Contract tests for MemoryStore. A database backend gets added to `backends`.
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer, Path } from "effect"
 import { buildGraph } from "../../src/memory/Build.ts"

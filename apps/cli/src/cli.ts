@@ -24,7 +24,8 @@
  *     node src/cli.ts hooks install|uninstall [--scope user|project|local] | print | status
  *     node src/cli.ts workflows build [--task ID ...] [--fresh] | show [AT] | candidates
  */
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"

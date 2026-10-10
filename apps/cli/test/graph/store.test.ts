@@ -4,7 +4,7 @@
  * Every backend in `backends` runs the contract tests against a fresh, empty
  * store per test. To test another backend (a graph database), add it there.
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Equal, FileSystem, Layer, Path, Schema } from "effect"
 import { TestClock } from "effect/testing"

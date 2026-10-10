@@ -6,7 +6,7 @@
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as NodePath from "@effect/platform-node/NodePath"
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Path } from "effect"
 import { decodeHookInput } from "../handover/HookInput.ts"
 import { loadHome } from "../local/Home.ts"

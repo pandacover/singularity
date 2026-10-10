@@ -7,7 +7,7 @@
  * search alone then decides, on a clear match); `SINGULARITY_SELECTOR_MODEL`
  * picks it (default sonnet).
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Path } from "effect"
 import { defaultClaude } from "../eval/Agent.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"

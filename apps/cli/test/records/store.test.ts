@@ -2,7 +2,7 @@
  * Contract tests for RecordStore. Every backend in `backends` runs them
  * against a fresh, empty store; a database backend gets added there.
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer, Path } from "effect"
 import type { RepoIdentity } from "../../src/local/Git.ts"
