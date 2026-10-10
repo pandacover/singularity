@@ -85,6 +85,12 @@ export const askChoice = <const A>(
     ? Prompt.run(Prompt.Select({ message, choices: choices.map((c) => ({ ...c, selected: c.value === initial })) }))
     : Effect.succeed(initial)
 
+/** A line of text, trimmed; the default when there is no terminal to ask in. */
+export const askText = (message: string, initial: string, interactive: boolean) =>
+  interactive
+    ? Prompt.run(Prompt.String({ message, default: initial })).pipe(Effect.map((s) => s.trim()))
+    : Effect.succeed(initial)
+
 /** An amount of dollars, none below zero; the default when there is no terminal to ask in. */
 export const askDollars = (message: string, initial: number, interactive: boolean) =>
   interactive

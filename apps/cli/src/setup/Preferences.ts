@@ -12,6 +12,10 @@
  * - `with`: the agent learning goes through, on the user's account with it:
  *   `claude`, `codex` or `hermes` (Learner.ts). Homes set up before there was
  *   a choice don't have it; they learned through Claude Code.
+ * - `model`: the model that agent learns with, when its own setting won't
+ *   do (refused on the user's plan, say, or retired): setup checks that the
+ *   model answers and asks for another when it doesn't (LearnerModel.ts). It
+ *   goes with `with`: another agent learns with its own model.
  */
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { type ModelAgent, MODEL_AGENTS } from "../eval/Llm.ts"
@@ -22,7 +26,8 @@ export const LearnPreferences = Schema.Struct({
   auto: Schema.Boolean,
   every: Schema.Int,
   max_usd_per_day: Schema.Number,
-  with: Schema.optionalKey(Schema.Literals(MODEL_AGENTS))
+  with: Schema.optionalKey(Schema.Literals(MODEL_AGENTS)),
+  model: Schema.optionalKey(Schema.String)
 })
 export type LearnPreferences = typeof LearnPreferences.Type
 
@@ -34,7 +39,8 @@ const ConfigLearn = Schema.fromJsonString(Schema.Struct({
     every: Schema.optionalKey(Schema.Int),
     max_usd_per_day: Schema.optionalKey(Schema.Number),
     // Any string, so that a name this version doesn't know leaves the rest readable.
-    with: Schema.optionalKey(Schema.String)
+    with: Schema.optionalKey(Schema.String),
+    model: Schema.optionalKey(Schema.String)
   }))
 }))
 
@@ -56,9 +62,13 @@ export const readLearn = Effect.fn("readLearn")(function*(root?: string) {
     auto: learn?.auto ?? DEFAULT_LEARN.auto,
     every: Math.max(1, learn?.every ?? DEFAULT_LEARN.every),
     max_usd_per_day: learn?.max_usd_per_day ?? DEFAULT_LEARN.max_usd_per_day,
-    ...(isModelAgent(chosen) ? { with: chosen } : {})
+    ...(isModelAgent(chosen) ? { with: chosen } : {}),
+    ...(isModelAgent(chosen) && learn?.model !== undefined && learn.model.trim() !== "" ? { model: learn.model.trim() } : {})
   } satisfies LearnPreferences
 })
+
+/** The model to learn with through `agent`: the one chosen for it, else undefined (its own setting; Sonnet for Claude Code). */
+export const modelFor = (learn: LearnPreferences, agent: ModelAgent): string | undefined => (learn.with === agent ? learn.model : undefined)
 
 /** Whether the user chose learning preferences yet (setup asks with its defaults until then). */
 export const learnIsSet = Effect.fn("learnIsSet")(function*(root?: string) {

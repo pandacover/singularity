@@ -13,7 +13,10 @@
  *
  * Each learns with its own model, at high effort: Claude Code with Sonnet, as
  * memory's learning was measured; Codex with the model it is set to use;
- * Hermes Agent with the model and provider it is set to use.
+ * Hermes Agent with the model and provider it is set to use. When that model
+ * doesn't answer (a plan that refuses it, a model since retired), setup asks
+ * for another and keeps it as `learn.model` (LearnerModel.ts); learning never
+ * picks one on its own.
  */
 import { Effect, FileSystem, Path, Schema } from "effect"
 import { CLAUDE_ENV, defaultClaude } from "../eval/Agent.ts"
@@ -98,10 +101,26 @@ export const resolveLearner = Effect.fn("resolveLearner")(function*(chosen: Mode
   return yield* new LearnerError({ message: "learning needs Claude Code, Codex or Hermes Agent, and none is on this machine" })
 })
 
-/** How an agent learns: its model and effort, run in `cwd`, a directory with no CLAUDE.md or AGENTS.md above it. */
-export const learnerConfig = (cli: ModelCli, cwd: string): InduceConfig => ({
+/**
+ * How an agent learns: its model and effort, run in `cwd`, a directory with
+ * no CLAUDE.md or AGENTS.md above it. `model` is the one the user chose for
+ * it (`learn.model`), when the agent's own setting wouldn't do.
+ */
+export const learnerConfig = (cli: ModelCli, cwd: string, model?: string | undefined): InduceConfig => ({
   cli,
   cwd,
-  model: cli.agent === "claude" ? DEFAULT_INDUCE_MODEL : undefined,
+  model: model ?? (cli.agent === "claude" ? DEFAULT_INDUCE_MODEL : undefined),
   effort: DEFAULT_INDUCE_EFFORT
 })
+
+/**
+ * A learning failure, with how to choose another model when the model may be
+ * why ("The 'x' model is not supported", "Model 'x' not found"). Claude Code
+ * learns with Sonnet; the hint is for the agents learning with a model of
+ * the user's.
+ */
+export const withModelHint = (message: string, agent: ModelAgent): string =>
+  agent === "claude" || !/\bmodel\b/i.test(message) ? message : `${message} (to learn with another model: singularity setup --learn-model <model>)`
+
+/** What an agent learns with, for the user: the model chosen, or what its own setting is. */
+export const learnerModel = (agent: ModelAgent, model: string | undefined): string => model ?? LEARNER_MODELS[agent]

@@ -76,11 +76,18 @@ const PRICES: ReadonlyArray<readonly [prefix: string, input: number, cached: num
 ]
 const DEAREST = [5, 0.5, 30] as const
 
+/** A model's API price in dollars per million tokens, and whether it is listed (an unknown model gets the dearest). */
+export const codexPrice = (model: string | undefined) => {
+  const name = (model ?? "").toLowerCase()
+  const listed = PRICES.find(([prefix]) => name.startsWith(prefix))
+  const [, input, cached, output] = listed ?? ["", ...DEAREST]
+  return { input, cached, output, listed: listed !== undefined }
+}
+
 /** What a call's tokens cost at the model's API price; `input` includes the cached tokens, as Codex counts them. */
 export const codexUsd = (model: string | undefined, input: number, cached: number, output: number): number => {
-  const name = (model ?? "").toLowerCase()
-  const [, inUsd, cachedUsd, outUsd] = PRICES.find(([prefix]) => name.startsWith(prefix)) ?? ["", ...DEAREST]
-  return (Math.max(0, input - cached) * inUsd + cached * cachedUsd + output * outUsd) / 1e6
+  const price = codexPrice(model)
+  return (Math.max(0, input - cached) * price.input + cached * price.cached + output * price.output) / 1e6
 }
 
 /**

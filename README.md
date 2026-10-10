@@ -58,7 +58,9 @@ clone of this repo instead: `npm install`, then
 | Droid | ✓ | ✓ | | |
 | Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | | | |
 
-Codex runs new hooks only once you trust them: open Codex and type `/hooks`.
+Codex runs new hooks only once you trust them. Setup offers to trust
+memory's hooks for you (as `/hooks` in Codex would), and `singularity
+status` says when Codex is still skipping them.
 
 ## How it works
 
@@ -140,7 +142,12 @@ measure memory by hand run from a clone of this repo
   to use) or Hermes Agent (with the model and provider it is set to use).
   Setup asks which when you have more than one;
   `singularity setup --learn-with codex` changes it, and
-  `singularity learn --with hermes` uses another one once.
+  `singularity learn --with hermes` uses another one once. Setup checks
+  with one tiny call that the model answers: a plan may refuse the model
+  Codex is set to use, or a provider may have retired Hermes's. When it
+  doesn't, setup offers the models the agent lists (cheapest first for
+  Codex, free ones first for Hermes), and `singularity setup --learn-model
+  <model>` picks one. Memory never switches models on its own.
 - **How much.** A learning round costs cents to a few dimes. A repo's first
   memory reads every change stored for it, so a first memory from a long
   history of past sessions can cost a few dollars. `singularity learn

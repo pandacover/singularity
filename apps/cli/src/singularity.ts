@@ -34,10 +34,9 @@ Command.make("singularity").pipe(
     PlatformError: reportError,
     StoreError: reportError,
     CandidateNotFound: reportError,
-    Conflict: reportError,
     HomeError: reportError,
-    // A learning round's model call: Codex out of its plan's limit, Hermes without a provider.
-    LlmError: reportError
+    // A learning round that failed: Codex out of its plan's limit, Hermes without a provider, a model refused.
+    LearnerError: reportError
   }),
   Effect.provide(NodeServices.layer),
   NodeRuntime.runMain
