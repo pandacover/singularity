@@ -12,7 +12,7 @@ import { commitRecordId } from "../../src/records/Build.ts"
 import { branchCommits, storePast } from "../../src/workflows/Commits.ts"
 import { pastSessions, projectDirName } from "../../src/workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
-import { budgetReason, learnState, learnSubject, mergeSubject, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
+import { budgetReason, learnState, learnSubject, mergeSubject, type PastRound, pastRounds, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
 import { CLI, learningQueue, lockHeld, markLock, queueLearning, releaseLock, takeLock } from "../../src/setup/Background.ts"
 import { writeLearn } from "../../src/setup/Preferences.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
@@ -204,7 +204,8 @@ describe("learning repo by repo", () => {
       learned: [],
       unlearned: [],
       fresh: Array.from({ length: fresh }) as never,
-      memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`))
+      memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`)),
+      rounds: []
     })
     expect(waitReason(state(1, 1, 0), 3, false)).toBe("1 of 2 changes stored for a first build")
     expect(waitReason(state(2, 2, 0), 3, false)).toBeUndefined()
@@ -223,7 +224,8 @@ describe("learning repo by repo", () => {
       learned: [],
       unlearned: Array.from({ length: unlearned }) as never,
       fresh: [],
-      memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`))
+      memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`)),
+      rounds: []
     })
     // A first build reads every change; a learning round, the new ones.
     expect(roundUsd(state(38, 38, 0))).toBeCloseTo(2)
@@ -231,6 +233,43 @@ describe("learning repo by repo", () => {
     expect(budgetReason(2, 0, 1)).toBe("the next round, about $2.00, is more than today's limit leaves ($1.00 of $1.00)")
     expect(budgetReason(0.25, 0.9, 1)).toBe("the next round, about $0.25, is more than today's limit leaves ($0.10 of $1.00)")
     expect(budgetReason(0.25, 0.5, 1)).toBeUndefined()
+  })
+
+  it("prices a round from what the latest rounds of its kind cost against the formula", () => {
+    const candidate = (hour: number, records: ReadonlyArray<string>, usd: number, status: "committed" | "rejected") =>
+      ({ records, cost_usd: usd, status, created_at: `2026-10-10T0${hour}:00:00.000Z` }) as never
+    const forty = Array.from({ length: 40 }, (_, i) => `r${i}`)
+    // Two first builds that kept nothing, one that kept memory, then a learning round on three new changes.
+    const rounds = pastRounds([
+      candidate(4, [...forty, "r40", "r41", "r42"], 1.2, "committed"),
+      candidate(1, forty, 3.53, "rejected"),
+      candidate(2, forty, 3.56, "rejected"),
+      candidate(3, forty, 3.67, "committed")
+    ])
+    expect(rounds).toEqual([
+      { build: true, changes: 40, usd: 3.53 },
+      { build: true, changes: 40, usd: 3.56 },
+      { build: true, changes: 40, usd: 3.67 },
+      { build: false, changes: 3, usd: 1.2 }
+    ])
+    const state = (records: number, unlearned: number, workflows: number, rounds: ReadonlyArray<PastRound>) => ({
+      records: Array.from({ length: records }) as never,
+      learned: [],
+      unlearned: Array.from({ length: unlearned }) as never,
+      fresh: [],
+      memory: memoryOf("a", Array.from({ length: workflows }, (_, i) => `w${i}`)),
+      rounds
+    })
+    // Before any round, the formula.
+    expect(roundUsd(state(40, 40, 0, []))).toBeCloseTo(2.1)
+    // A first build, as the first builds cost.
+    expect(roundUsd(state(40, 40, 0, rounds))).toBeCloseTo((3.53 + 3.56 + 3.67) / 3)
+    // A learning round before one ran, as the first builds cost against the formula; then as the learning rounds did.
+    expect(roundUsd(state(43, 3, 2, rounds.slice(0, 3)))).toBeCloseTo(0.25 * (3.53 + 3.56 + 3.67) / 6.3)
+    expect(roundUsd(state(43, 3, 2, rounds))).toBeCloseTo(1.2)
+    // The latest five only: a round's cost drifts with the model's prices and memory's size.
+    const learning = (usd: number): PastRound => ({ build: false, changes: 3, usd })
+    expect(roundUsd(state(46, 3, 2, [learning(9), ...Array.from({ length: 5 }, () => learning(1))]))).toBeCloseTo(1)
   })
 
   it("builds a repo's first memory from its sessions, with cues, and keeps another repo's when it learns that one", async () => {

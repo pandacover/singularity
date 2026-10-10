@@ -44,7 +44,8 @@ Setup also puts the `singularity` command on your PATH and asks whether
 memory may learn on its own (about $0.25 a round on your Claude account) and
 how much it may spend a day ($1 unless you choose; `--daily-limit` sets it
 without asking). A round whose estimate wouldn't fit in what's left of the
-day's limit waits; `singularity learn` runs it by hand. Rounds run one at a
+day's limit waits; `singularity learn` runs it by hand. Estimates follow what
+the latest rounds really cost. Rounds run one at a
 time: one asked for while another runs is queued, each repo once, and when
 its turn comes it reads only changes no round has read yet, or is skipped. It never touches the rest of an agent's settings, and keeps a
 copy of each file it changes (`<file>.before-singularity`).
