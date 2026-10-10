@@ -9,7 +9,8 @@
  * own background work (`record commits`, `learn --auto`) runs through it as
  * well (src/setup/Background.ts), so nothing here needs to offer it.
  */
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Console, Effect } from "effect"
 import { Command } from "effect/cli"
 import { setupCommands } from "./commands/Setup.ts"

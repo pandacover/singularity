@@ -2,7 +2,7 @@
  * The SessionEnd hook: record the session if its change was committed and
  * its tests pass (SessionEnd.ts). Prints nothing: the session is over.
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Path } from "effect"
 import { loadHome } from "../local/Home.ts"
 import * as JsonMemoryStore from "../memory/JsonMemoryStore.ts"

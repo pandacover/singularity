@@ -20,7 +20,7 @@
  * repo: the installed `singularity` command keeps to daily use), and, later,
  * MCP. The eval harness uses the hooks and these functions, like users do.
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Path } from "effect"
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"

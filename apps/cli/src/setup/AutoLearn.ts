@@ -9,7 +9,7 @@
  * rounds run in a detached `singularity learn --auto`, which outlives what
  * started it, writes to `<home>/learn.log` and holds `<home>/learn.lock`.
  */
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Path } from "effect"
 import { loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
