@@ -25,10 +25,10 @@ import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
 import { binDir, COMMAND, writeLaunchers } from "./Launcher.ts"
 import { learnIsSet, readLearn } from "./Preferences.ts"
-import { codexTrust } from "./Setup.ts"
+import { codexTrust, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
 import { LEARNER_NAMES } from "./Learner.ts"
-import { listWords, makeStyle, type Style, tilde, usd, withSpinner } from "./Ui.ts"
+import { listWords, makeStyle, makeTree, marks, type Style, tilde, title, TITLED_ENV, usd, withSpinner } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, nodeForHooks, skillDirsFor, wireHooks, wireSkills } from "./Wiring.ts"
 
 export class UpdateError extends Schema.TaggedError<UpdateError>()("UpdateError", {
@@ -123,6 +123,8 @@ const runInstalled = Effect.fn("runInstalled")(function*(app: string, args: Read
   return yield* Effect.scoped(Effect.gen(function*() {
     const handle = yield* spawner.spawn(ChildProcess.make(process.execPath, [cliIn(app, path), ...args], {
       cwd: process.cwd(),
+      // The title is on screen: the new code goes on below it.
+      env: { ...process.env, [TITLED_ENV]: "1" },
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit"
@@ -142,40 +144,48 @@ export interface UpdateOptions {
 export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
   const fs = yield* FileSystem.FileSystem
   const s = makeStyle(o.color)
-  const item = (line: string) => Console.log(`     ${line}`)
+  const M = marks(s)
+  const T = makeTree(s)
   const memory = yield* loadHome()
   const app = appDir(memory.root)
-  yield* Console.log(`\n  ${s.magenta("◆")} ${s.bold("singularity")}  ${s.dim("update")}\n`)
+  const stop = T.close.pipe(Effect.andThen(Console.log("")), Effect.as(false))
+  yield* Console.log(title(s, "updating"))
+  yield* T.section("Download")
   if (!(yield* fs.exists(join(app, ".git")).pipe(Effect.orElseSucceed(() => false)))) {
-    yield* item(`${tilde(app, o.home)} isn't there: singularity wasn't installed by its installer, so there's no code here to update.`)
-    yield* item("Run the installer (see the README), or in a clone of the repo, git pull and npm install.")
-    return false
+    yield* T.item(M.fail(`${tilde(app, o.home)} isn't there: singularity wasn't installed by its installer, so there's no code to update.`))
+    yield* T.note("Run the installer (see the README), or in a clone of the repo, git pull and npm install.")
+    return yield* stop
   }
   // A round running now reads code and dependencies the update would replace under it.
   for (const lock of ["learn.lock", "store.lock"]) {
     if (lockHeld(memory.root, lock)) {
-      yield* item(`${s.yellow("·")} memory is ${lock === "learn.lock" ? "learning" : "storing a change"} in the background now; run ${s.cyan("singularity update")} again when it's done (${s.cyan("singularity status")} shows it).`)
-      return false
+      yield* T.item(M.warn(`memory is ${lock === "learn.lock" ? "learning" : "storing a change"} in the background now; nothing changed`))
+      yield* T.note(`run ${s.cyan("singularity update")} again when ${s.cyan("singularity status")} shows it done`)
+      return yield* stop
     }
   }
   const code = yield* updateCode(app, o.interactive)
   if (code.kind === "current") {
-    yield* item(`${s.green("✓")} already the latest ${s.dim(`(${code.commit.slice(0, 7)})`)}`)
+    yield* T.item(M.ok("code", `${code.commit.slice(0, 7)}, already the latest`))
+    yield* T.head(`${s.green("✓")} ${s.bold("Up to date")}`)
+    yield* T.close
     yield* Console.log("")
     return true
   }
-  yield* item(`${s.green("✓")} ${code.ref} ${code.before.slice(0, 7)} → ${code.after.slice(0, 7)}${code.subject === "" ? "" : s.dim(`  ${code.subject}`)}`)
-  if (code.dependencies) yield* item(`${s.green("✓")} dependencies`)
+  yield* T.item(M.ok("code", `${code.ref} · ${code.before.slice(0, 7)} → ${code.after.slice(0, 7)}${code.subject === "" ? "" : `  ${code.subject}`}`))
+  if (code.dependencies) yield* T.item(M.ok("dependencies"))
+  yield* T.close
   return (yield* runInstalled(app, ["update", "--no-fetch"])) === 0
 })
 
 const describeLearning = Effect.fnUntraced(function*(root: string, s: Style) {
-  if (!(yield* learnIsSet(root))) return `${s.yellow("·")} learning isn't set up: ${s.cyan("singularity setup")} sets it up`
+  const M = marks(s)
+  if (!(yield* learnIsSet(root))) return M.warn(`not set up: ${s.cyan("singularity setup")} sets it up`)
   const prefs = yield* readLearn(root)
   const through = prefs.with === undefined ? "" : ` with ${LEARNER_NAMES[prefs.with]}`
   return prefs.auto
-    ? `${s.green("✓")} learning on its own${through}, at most ${usd(prefs.max_usd_per_day)} a day`
-    : `${s.dim("·")} learning when you run ${s.cyan("singularity learn")}${through}`
+    ? M.ok(`on its own${through}, up to ${usd(prefs.max_usd_per_day)} a day`)
+    : M.skip(`when you run singularity learn${through}`)
 })
 
 /**
@@ -185,31 +195,41 @@ const describeLearning = Effect.fnUntraced(function*(root: string, s: Style) {
  */
 export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
   const s = makeStyle(o.color)
-  const item = (line: string) => Console.log(`     ${line}`)
+  const M = marks(s)
+  const T = makeTree(s)
   const memory = yield* loadHome()
   const dirs: AgentDirs = { home: o.home, env: o.env }
+  if (o.env[TITLED_ENV] === undefined) yield* Console.log(title(s, "updating"))
+  yield* T.section("Your agents")
   if (!(yield* isSetUp(memory.root))) {
-    yield* item(`Memory isn't set up here yet: run ${s.cyan("singularity setup")}.`)
+    yield* T.item(M.warn(`Memory isn't set up here yet: run ${s.cyan("singularity setup")}.`))
+    yield* T.close
+    yield* Console.log("")
     return false
   }
   const states = yield* agentStates(yield* detectAgents(dirs, (c) => findExecutable(c, o.env).pipe(Effect.map((p) => p !== undefined))), dirs)
-  const hooked = states.filter((st) => st.hookEvents.length > 0).map((st) => st.agent)
   const launches = {
     claude: { node: process.execPath, script: HOOK_SCRIPT },
     other: { node: yield* nodeForHooks(), script: HOOK_SCRIPT }
   }
-  const width = Math.max(...hooked.map((a) => a.name.length), "skill".length) + 3
+  // Agents with memory: hooks (or Hermes Agent's plugin), or the skill when that is all they get.
+  const withMemory = states.filter((st) => st.hookEvents.length > 0 || (st.agent.hooks === undefined && st.agent.plugin === undefined && st.skill))
+  const width = Math.max(...withMemory.map((st) => st.agent.name.length))
   let ok = true
-  for (const a of hooked) {
-    const wired = yield* wireHooks(a, launches)
-    if (wired.problem !== undefined) {
-      ok = false
-      yield* item(`${s.red("✗")} ${a.name.padEnd(width)}${wired.problem}`)
-      continue
+  for (const { agent: a, hookEvents } of withMemory) {
+    if (hookEvents.length > 0) {
+      const wired = yield* wireHooks(a, launches)
+      if (wired.problem !== undefined) {
+        ok = false
+        yield* T.item(M.fail(`${a.name}  ${wired.problem}`))
+        continue
+      }
     }
-    yield* item(`${s.green("✓")} ${a.name.padEnd(width)}${a.plugin === undefined ? "hooks" : "plugin"} in ${tilde(wired.hooks ?? a.dir, o.home)}`)
-    const note = a.id === "codex" ? yield* codexTrust(o, o.interactive) : undefined
-    if (note !== undefined) yield* item(`  ${" ".repeat(width)}${note.startsWith("✓") ? s.green(note) : s.yellow(note)}`)
+    // Codex's question, if it asks one, comes before Codex's line, so the answer goes under it.
+    if (a.id === "codex" && o.interactive) yield* T.pause
+    const note = a.id === "codex" && hookEvents.length > 0 ? yield* codexTrust(o, o.interactive) : undefined
+    yield* T.item(M.ok(a.name.padEnd(width), REACH[a.reach]))
+    if (note !== undefined) yield* T.note(note.startsWith("✓") ? s.dim(note.slice(1).trim()) : M.warn(note))
   }
   // The skill where setup put it, and nowhere else.
   const placed: Array<string> = []
@@ -217,22 +237,23 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
     const state = yield* skillState(dir).pipe(Effect.orElseSucceed((): SkillState => "missing"))
     if (state === "current" || state === "outdated") placed.push(dir)
   }
-  const blocked = yield* wireSkills(placed)
-  const kept = placed.filter((d) => !blocked.includes(d))
-  if (kept.length > 0) yield* item(`${s.green("✓")} ${"skill".padEnd(width)}${kept.map((d) => tilde(d, o.home)).join(", ")}`)
+  for (const d of yield* wireSkills(placed)) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
   yield* writeLaunchers(memory.root, process.execPath, COMMAND, process.platform)
-  yield* item(`${s.green("✓")} the singularity command`)
-  yield* item(yield* describeLearning(memory.root, s))
-
   const leftOut: ReadonlyArray<Agent> = states
     .filter((st) => st.found && st.hookEvents.length === 0 && !st.skill)
     .map((st) => st.agent)
   if (leftOut.length > 0) {
-    yield* item(s.dim(`${listWords(leftOut.map((a) => a.name))} ${leftOut.length === 1 ? "is" : "are"} here without memory; ${"`singularity setup`"} sets ${leftOut.length === 1 ? "it" : "them"} up`))
+    yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))}: no memory · singularity setup adds ${leftOut.length === 1 ? "it" : "them"}`))
   }
-  yield* Console.log("")
-  yield* Console.log(`  ${ok ? s.green("✓") : s.yellow("·")} ${s.bold(ok ? "Up to date." : "Updated, with the problem above.")} ${s.dim("Your choices stay as they were; singularity setup changes them.")}`)
-  if (hooked.length > 0) yield* item(s.dim("Agents running now get the new memory from their next start."))
+
+  yield* T.section("Learning")
+  yield* T.item(yield* describeLearning(memory.root, s))
+
+  yield* T.head(ok
+    ? `${s.green("✓")} ${s.bold("Up to date")}${withMemory.length > 0 ? `  ${s.dim("agents running now get it at their next start")}` : ""}`
+    : `${s.yellow("!")} ${s.bold("Updated, with the problem above")}`)
+  yield* T.item(s.dim("your answers stay as they were; singularity setup changes them"))
+  yield* T.close
   yield* Console.log("")
   return ok
 })

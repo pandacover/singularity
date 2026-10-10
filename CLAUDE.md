@@ -163,6 +163,12 @@ records use those keys.
 ## Working rules
 
 - Commit only when the user asks. Work on a feature branch, not `main`.
+- Before committing a change to the installers, setup, update or anything
+  else singularity prints, try it with `scripts/try-install.ps1` (or `.sh`),
+  then give the user that command to try it themselves, and wait for their go.
+  It installs this checkout, uncommitted changes included, in a sandbox home
+  (`%TEMP%\singularity-try`) and keeps setup off PATH (`--no-path`): on
+  Windows PATH lives in the registry, outside any home.
 - Eval runs spend real money on the user's Claude account. Use `--dry-run`
   first and keep `max_budget_usd` set in suites.
 - Compare runs only with runs of the same Claude Code version: it updates
