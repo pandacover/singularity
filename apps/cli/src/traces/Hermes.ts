@@ -135,6 +135,12 @@ export const readHermesSession = Effect.fn("readHermesSession")(function*(transc
   return hermesTrace(chain, transcript)
 })
 
+/** A session's row: what Hermes counted for it, its cost among them; undefined when it can't be read. */
+export const hermesSessionRow = (db: string, sessionId: string) =>
+  withDb(hermesTranscript(db, sessionId), db, (d) => sessionRows(d, " WHERE id = ?", sessionId)[0]).pipe(
+    Effect.orElseSucceed(() => undefined)
+  )
+
 export interface HermesTask {
   /** The session the task ended in, and the transcript that names it. */
   readonly sessionId: string
@@ -147,7 +153,8 @@ export interface HermesTask {
 
 /**
  * The tasks a Hermes database holds, each the last session of its chain:
- * sessions of the user's own, not those Hermes's subagents ran.
+ * sessions of the user's own, not those Hermes's subagents ran or tools
+ * started (source `tool`, as memory's own learning calls are).
  */
 export const hermesTasks = Effect.fn("hermesTasks")(function*(db: string) {
   const { rows, lastMessage } = yield* withDb(db, db, (d) => ({
@@ -164,7 +171,7 @@ export const hermesTasks = Effect.fn("hermesTasks")(function*(db: string) {
   }))
   const out: Array<HermesTask> = []
   for (const tip of rows) {
-    if (hasChild.has(tip.id) || tip.source === "subagent") continue
+    if (hasChild.has(tip.id) || tip.source === "subagent" || tip.source === "tool") continue
     let root = tip
     for (let i = 0; i < 200; i++) {
       const parent = root.parent_session_id === undefined || root.parent_session_id === null ? undefined : byId.get(root.parent_session_id)

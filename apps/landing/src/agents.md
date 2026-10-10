@@ -2,7 +2,7 @@
 
 > Procedural memory for coding agents. It learns workflows from a repository's past Claude Code, Codex and Hermes Agent sessions and hands them to the next session at task start, so repeated kinds of change take fewer turns and tokens. It never writes the change itself.
 
-Source: https://github.com/pandacover/singularity
+Source: https://github.com/pandacover/singularity (MIT license)
 
 ## What it does
 
@@ -13,9 +13,9 @@ Source: https://github.com/pandacover/singularity
 
 ## Before installing
 
-Ask your user first. Setup changes agent settings, and by default lets memory learn on its own on their Claude account: about $0.25 a round, at most $1 a day. Ask them what daily limit they want, and pass it as `--daily-limit <dollars>`. Run without a terminal, or with `--yes`, setup asks nothing and takes these defaults.
+Ask your user first. Setup changes agent settings, and by default lets memory learn on its own with the model of one of their agents (Claude Code, Codex or Hermes Agent), on their account with it: about $0.25 a round, at most $1 a day. Ask them what daily limit they want, and pass it as `--daily-limit <dollars>`; if they have more than one of those agents, ask which one learning should use, and pass it as `--learn-with <claude|codex|hermes>`. Run without a terminal, or with `--yes`, setup asks nothing and takes these defaults (Claude Code first).
 
-Needs git. Needs Node.js 24 or later; without it, the installer fetches its own copy into `~/.singularity/node` and changes nothing else. Learning needs Claude Code.
+Needs git. Needs Node.js 24 or later; without it, the installer fetches its own copy into `~/.singularity/node` and changes nothing else. Learning needs Claude Code, Codex or Hermes Agent.
 
 ## Install
 
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | 
 
 The installer clones the code into `~/.singularity/app`, then runs `singularity setup`. WSL keeps its own agents: for agents that run on Windows, use the PowerShell command on Windows.
 
-Setup flags: `--yes` (`-y`) takes every default and asks nothing; `--agent <claude|codex|gemini|droid|hermes|cursor|opencode>` sets up only that agent (repeatable); `--no-path` leaves the `singularity` command off PATH.
+Setup flags: `--yes` (`-y`) takes every default and asks nothing; `--agent <claude|codex|gemini|droid|hermes|cursor|opencode>` sets up only that agent (repeatable); `--learn-with <claude|codex|hermes>` picks the agent whose model learns; `--daily-limit <dollars>` sets what learning may spend a day; `--no-path` leaves the `singularity` command off PATH.
 
 ## What setup changes
 

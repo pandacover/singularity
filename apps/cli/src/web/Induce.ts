@@ -15,7 +15,7 @@
  * specific. Problems go back to the model once; what still fails is dropped.
  */
 import { Effect } from "effect"
-import { callStructured } from "../eval/Llm.ts"
+import { callModel } from "../eval/ModelCall.ts"
 import { describeTrigger, triggerProblem } from "../records/Triggers.ts"
 import { type InduceConfig, type InductionAnswer, InductionAnswer as InductionAnswerSchema, namedValue } from "../workflows/Induce.ts"
 import { type Edge, END, FORMAT, type Pitfall, type Place, START, type Workflow, type WorkflowMemory } from "../workflows/Models.ts"
@@ -336,8 +336,8 @@ export const induceWeb = Effect.fn("induceWeb")(function*(config: InduceConfig, 
   let result: WebChecked | undefined
   let rationale = ""
   for (let attempt = 0; attempt < 2; attempt++) {
-    const answer = yield* callStructured({
-      claude: config.claude,
+    const answer = yield* callModel({
+      cli: config.cli,
       system: WEB_INDUCE_PROMPT,
       prompt: webInductionPrompt(evidence, current, notes, previous),
       schema: InductionAnswerSchema,

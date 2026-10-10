@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "description": "singularity's landing page",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

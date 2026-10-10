@@ -2,22 +2,27 @@
  * What the user chose at setup, kept in the memory home's config.json next to
  * the tenant (Home.ts reads only that):
  *
- *     { "tenant": "local", "learn": { "auto": true, "every": 3, "max_usd_per_day": 1 } }
+ *     { "tenant": "local", "learn": { "auto": true, "every": 3, "max_usd_per_day": 1, "with": "codex" } }
  *
  * - `auto`: learn on its own after a change is stored, once a repo has
  *   `every` new changes, in the background.
  * - `max_usd_per_day`: what learning on its own may spend in a day. A round
  *   starts on its own only when its estimate fits in what is left of it;
  *   otherwise it waits for another day, a higher limit or `singularity learn`.
+ * - `with`: the agent learning goes through, on the user's account with it:
+ *   `claude`, `codex` or `hermes` (Learner.ts). Homes set up before there was
+ *   a choice don't have it; they learned through Claude Code.
  */
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
+import { type ModelAgent, MODEL_AGENTS } from "../eval/Llm.ts"
 import { DEFAULT_TENANT, homeRoot } from "../local/Home.ts"
 import { DEFAULT_EVERY } from "../workflows/Learn.ts"
 
 export const LearnPreferences = Schema.Struct({
   auto: Schema.Boolean,
   every: Schema.Int,
-  max_usd_per_day: Schema.Number
+  max_usd_per_day: Schema.Number,
+  with: Schema.optionalKey(Schema.Literals(MODEL_AGENTS))
 })
 export type LearnPreferences = typeof LearnPreferences.Type
 
@@ -27,9 +32,13 @@ const ConfigLearn = Schema.fromJsonString(Schema.Struct({
   learn: Schema.optionalKey(Schema.Struct({
     auto: Schema.optionalKey(Schema.Boolean),
     every: Schema.optionalKey(Schema.Int),
-    max_usd_per_day: Schema.optionalKey(Schema.Number)
+    max_usd_per_day: Schema.optionalKey(Schema.Number),
+    // Any string, so that a name this version doesn't know leaves the rest readable.
+    with: Schema.optionalKey(Schema.String)
   }))
 }))
+
+const isModelAgent = (s: string | undefined): s is ModelAgent => (MODEL_AGENTS as ReadonlyArray<string | undefined>).includes(s)
 const ConfigObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 
 const configFile = Effect.fnUntraced(function*(root?: string) {
@@ -42,10 +51,12 @@ export const readLearn = Effect.fn("readLearn")(function*(root?: string) {
   const fs = yield* FileSystem.FileSystem
   const text = yield* fs.readFileString(yield* configFile(root)).pipe(Effect.orElseSucceed(() => "{}"))
   const learn = Option.getOrUndefined(Schema.decodeUnknownOption(ConfigLearn)(text))?.learn
+  const chosen = learn?.with
   return {
     auto: learn?.auto ?? DEFAULT_LEARN.auto,
     every: Math.max(1, learn?.every ?? DEFAULT_LEARN.every),
-    max_usd_per_day: learn?.max_usd_per_day ?? DEFAULT_LEARN.max_usd_per_day
+    max_usd_per_day: learn?.max_usd_per_day ?? DEFAULT_LEARN.max_usd_per_day,
+    ...(isModelAgent(chosen) ? { with: chosen } : {})
   } satisfies LearnPreferences
 })
 

@@ -64,18 +64,18 @@ export const commandOfShim = (text: string, shimDir: string, node: string = proc
 }
 
 /** `SINGULARITY_CLAUDE`, else the `claude` executable on PATH, resolved to a full path like a shell would. */
-export const defaultClaude = Effect.fn("defaultClaude")(function*() {
+export const defaultClaude = Effect.fn("defaultClaude")(function*(env: Readonly<Record<string, string | undefined>> = process.env) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
-  const set = process.env[CLAUDE_ENV]?.trim()
+  const set = env[CLAUDE_ENV]?.trim()
   if (set) {
     if (!set.startsWith("[")) return [set]
     return yield* Schema.decodeUnknownEffect(ClaudeCommand)(set).pipe(
       Effect.mapError((e) => new AgentError({ message: `${CLAUDE_ENV} isn't a path or a JSON array of strings: ${e.message}` }))
     )
   }
-  const exts = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""]
-  for (const dir of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
+  const exts = process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""]
+  for (const dir of (env.PATH ?? env.Path ?? "").split(delimiter).filter(Boolean)) {
     for (const ext of exts) {
       const candidate = path.join(dir, `claude${ext}`)
       if (!(yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false)))) continue

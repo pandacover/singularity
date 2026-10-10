@@ -29,6 +29,7 @@ import { hooksSettings } from "../handover/Install.ts"
 import * as Api from "../layer/Api.ts"
 import { addUsage, emptyUsage, findTranscript, metricsToJson, parseSession, traceMetrics, usageFromModelUsage, usageToJson, type Usage } from "../traces/index.ts"
 import { buildCommand, runAgent } from "../eval/Agent.ts"
+import { claudeCli } from "../eval/Llm.ts"
 import type { AgentConfig } from "../eval/Suite.ts"
 import { isoNow } from "../eval/Time.ts"
 import { WORKFLOWS_HOOK_SCRIPT } from "../eval/WorkflowsMemory.ts"
@@ -216,7 +217,7 @@ export const runBench = Effect.fn("runBench")(function*(o: BenchOptions) {
           const origin = originOf(url)
           if (phaseId !== "test" && origin !== undefined) {
             learned = yield* Effect.promise(() =>
-              Api.learn({ home: memoryHome, subject: webSubjectId(origin), config: { claude: [o.claude], cwd: o.learner.cwd, model: o.learner.model, effort: o.learner.effort } })
+              Api.learn({ home: memoryHome, subject: webSubjectId(origin), config: { cli: claudeCli([o.claude]), cwd: o.learner.cwd, model: o.learner.model, effort: o.learner.effort } })
             ).pipe(Effect.catchCause((cause) => Effect.succeed({ kind: "error", reason: String(cause).slice(0, 400) } as Record<string, unknown>)))
           }
         }

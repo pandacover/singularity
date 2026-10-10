@@ -17,6 +17,7 @@ import { budgetReason, learnState, roundUsd, spentToday, waitReason } from "../w
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
 import { learningQueue, lockInfo } from "./Background.ts"
+import { LEARNER_NAMES, resolveLearner } from "./Learner.ts"
 import { readLearn } from "./Preferences.ts"
 import { makeStyle, plural, tilde, usd } from "./Ui.ts"
 import { agentStates, detectAgents, findExecutable } from "./Wiring.ts"
@@ -143,9 +144,12 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
   for (const l of lines.out) yield* say(l)
 
   // Learning and hooks.
+  const learner = yield* Effect.result(resolveLearner(prefs.with, dirs))
+  const through = learner._tag === "Success" ? ` with ${LEARNER_NAMES[learner.success.agent]}` : ""
   yield* say(`\n  ${s.bold("Learning")}  ${prefs.auto
-    ? `on its own, every ${plural(prefs.every, "new change")} · ${usd(lines.spent)} of ${usd(prefs.max_usd_per_day)} spent today ${s.dim("(the limit: singularity setup --daily-limit)")}`
-    : `when you run ${s.cyan("singularity learn")}${lines.spent > 0 ? ` · ${usd(lines.spent)} spent today` : ""}`}`)
+    ? `on its own${through}, every ${plural(prefs.every, "new change")} · ${usd(lines.spent)} of ${usd(prefs.max_usd_per_day)} spent today ${s.dim("(the limit: singularity setup --daily-limit)")}`
+    : `when you run ${s.cyan("singularity learn")}${through}${lines.spent > 0 ? ` · ${usd(lines.spent)} spent today` : ""}`}`)
+  if (learner._tag === "Failure") yield* say(`            ${s.yellow(learner.failure.message)}`)
   const errors = yield* recentHookErrors(home)
   yield* say(`  ${s.bold("Hooks")}     ${errors.count === 0
     ? s.green("no errors this week")

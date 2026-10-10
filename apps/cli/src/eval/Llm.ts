@@ -6,6 +6,10 @@
  * key is needed. Calls run with no tools, our system prompt in place of Claude
  * Code's, auto-memory off and no saved session. Run them in a directory with no
  * CLAUDE.md above it, or Claude Code adds that file to the conversation.
+ *
+ * Learning in daily use can go through Codex or Hermes Agent instead, as the
+ * user chose (ModelCall.ts); the eval harness and the commands that build
+ * memory by hand always use Claude Code.
  */
 import { Effect, FileSystem, Path, Predicate, Schema } from "effect"
 import type { Usage } from "../traces/index.ts"
@@ -16,6 +20,27 @@ import { runProcess } from "./Proc.ts"
 export class LlmError extends Schema.TaggedError<LlmError>()("LlmError", {
   message: Schema.String
 }) {}
+
+/** The agents whose command lines memory can make its model calls through. */
+export const MODEL_AGENTS = ["claude", "codex", "hermes"] as const
+export type ModelAgent = (typeof MODEL_AGENTS)[number]
+
+/** An agent's command line for one-shot model calls: which agent it is, and the command that starts it. */
+export interface ModelCli {
+  readonly agent: ModelAgent
+  /** e.g. ["C:/.../claude.exe"], or node and the script an npm shim runs. */
+  readonly command: ReadonlyArray<string>
+}
+
+/** Claude Code's command line. */
+export const claudeCli = (command: ReadonlyArray<string>): ModelCli => ({ agent: "claude", command })
+
+/** A structured call through any of the agents (ModelCall.ts). */
+export interface ModelCall<A> extends Omit<StructuredCall<A>, "claude" | "model"> {
+  readonly cli: ModelCli
+  /** undefined: the model the agent is set to use (Codex's and Hermes Agent's own setting). */
+  readonly model?: string | undefined
+}
 
 export interface StructuredCall<A> {
   /** The `claude` command, e.g. ["C:/.../claude.exe"]. */

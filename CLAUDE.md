@@ -3,7 +3,10 @@
 Procedural memory for coding agents: learn from past Claude Code sessions so
 repeated and similar tasks take fewer tokens. `HANDOFF.md` has the design,
 decisions, results and next steps; read it first. `HANDOFF-v1.md` describes
-memory v1 on its own.
+memory v1 on its own. `README.md` is for users (keep it about using
+singularity, not a log of work); the reference for the code's parts and the
+eval harness is `docs/development.md` and `docs/evaluation.md`. The code is
+MIT licensed (`LICENSE`).
 
 ## Stack
 
@@ -88,7 +91,15 @@ edits they hold. Commits left out are logged with the reason
 (`skipped.jsonl`), and status shows them. Which sessions ran in a repo, in
 any of its worktrees, is `src/workflows/Transcripts.ts`; `learn --past` and
 setup store what earlier sessions committed. Learning in daily use goes repo
-by repo (`src/workflows/Learn.ts`).
+by repo (`src/workflows/Learn.ts`), with the model of the agent the user
+chose at setup (`learn.with` in `config.json`; `src/setup/Learner.ts`):
+Claude Code (`src/eval/Llm.ts`, Sonnet), Codex (`src/eval/CodexLlm.ts`,
+`codex exec --output-schema`, its cost counted from tokens at API prices)
+or Hermes Agent (`src/eval/HermesLlm.ts`, `hermes chat -Q`, JSON asked for
+in the prompt and checked, its cost read from Hermes's `state.db`), picked
+by `src/eval/ModelCall.ts`. Learning never moves to another agent on its
+own. The eval harness and the commands that build memory by hand keep
+using Claude Code.
 
 ## Writing Effect 4 code
 
@@ -180,8 +191,9 @@ records use those keys.
   takes room from the code it shows.
 - Model calls that build memory (`record annotate`, `memory build
   --conditions`) cost a few cents each; run them on a few records first.
-- Learning on its own spends on the user's Claude account: only when they
-  said yes at setup, within the daily limit in `config.json`, and never in
+- Learning on its own spends on the user's account with the agent memory
+  learns with: only when they said yes at setup, within the daily limit in
+  `config.json`, and never in
   eval runs (`SINGULARITY_AUTOLEARN=off`, set by the hook setups). Setup's
   `--yes` never learns right away. Tests never run setup against the real
   home or the real agents' settings: they pass a temporary home and an

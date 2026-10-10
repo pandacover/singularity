@@ -1,10 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 /**
  * Run an effect with Node services and a fresh view of the environment.
@@ -20,6 +20,31 @@ export const run = <A, E>(effect: Effect.Effect<A, E, NodeServices.NodeServices>
   )
 
 export const FAKE_CLAUDE = [process.execPath, fileURLToPath(new URL("./fixtures/fake-claude.ts", import.meta.url))]
+export const FAKE_CODEX = [process.execPath, fileURLToPath(new URL("./fixtures/fake-codex.ts", import.meta.url))]
+export const FAKE_HERMES = [process.execPath, fileURLToPath(new URL("./fixtures/fake-hermes.ts", import.meta.url))]
+
+/**
+ * An agent's command in `bin` as npm installs one on Windows (`<name>.cmd`,
+ * a shim that runs a script with node) and as `<name>`, a shell script, for
+ * other systems. The script runs `fixture`.
+ */
+export const fakeCommand = (bin: string, name: string, fixture: ReadonlyArray<string>): void => {
+  const pkg = join(bin, "node_modules", `fake-${name}`)
+  mkdirSync(pkg, { recursive: true })
+  writeFileSync(join(pkg, "cli.js"), `await import(${JSON.stringify(pathToFileURL(fixture[1]).href)})\n`)
+  writeFileSync(join(bin, `${name}.cmd`), [
+    "@ECHO off",
+    String.raw`IF EXIST "%dp0%\node.exe" (`,
+    String.raw`  SET "_prog=%dp0%\node.exe"`,
+    ") ELSE (",
+    `  SET "_prog=node"`,
+    ")",
+    String.raw`endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\fake-${name}\cli.js" %*`,
+    ""
+  ].join("\r\n"))
+  writeFileSync(join(bin, name), `#!/bin/sh\nexec node "${join(pkg, "cli.js")}" "$@"\n`)
+  chmodSync(join(bin, name), 0o755)
+}
 
 export const tempDir = (): string => mkdtempSync(join(tmpdir(), "singularity-test-"))
 

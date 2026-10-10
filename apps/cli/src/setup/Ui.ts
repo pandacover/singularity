@@ -74,6 +74,17 @@ export const withSpinner = <A, E, R>(label: string, effect: Effect.Effect<A, E, 
 export const confirm = (message: string, initial: boolean, interactive: boolean) =>
   interactive ? Prompt.run(Prompt.Confirm({ message, initial })) : Effect.succeed(initial)
 
+/** One of a few choices, `initial` picked to begin with; `initial` when there is no terminal to ask in. */
+export const askChoice = <const A>(
+  message: string,
+  choices: ReadonlyArray<{ readonly title: string; readonly description?: string; readonly value: A }>,
+  initial: A,
+  interactive: boolean
+) =>
+  interactive
+    ? Prompt.run(Prompt.Select({ message, choices: choices.map((c) => ({ ...c, selected: c.value === initial })) }))
+    : Effect.succeed(initial)
+
 /** An amount of dollars, none below zero; the default when there is no terminal to ask in. */
 export const askDollars = (message: string, initial: number, interactive: boolean) =>
   interactive

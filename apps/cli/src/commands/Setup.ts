@@ -1,10 +1,10 @@
 /**
  * Daily use of local memory, for anyone:
  *
- *     singularity setup [--yes] [--agent ID ...] [--no-path]   set memory up in this machine's coding agents
+ *     singularity setup [--yes] [--agent ID ...] [--learn-with ID] [--no-path]   set memory up in this machine's coding agents
  *     singularity status                                       what memory knows, and where it is set up
  *     singularity recall TASK...                               what a task here would be handed
- *     singularity learn [--past] [--all] [--dry-run]           learn from the changes stored now
+ *     singularity learn [--past] [--all] [--with ID] [--dry-run]   learn from the changes stored now
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
  * `learn --auto` is the background rounds storing changes asks for, one
@@ -13,7 +13,7 @@
 import { Console, DateTime, Effect, FileSystem, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { homedir } from "node:os"
-import { defaultClaude } from "../eval/Agent.ts"
+import { claudeCli, MODEL_AGENTS } from "../eval/Llm.ts"
 import { lowerPriority } from "../eval/Proc.ts"
 import { defaultWorkspaces } from "../eval/Runner.ts"
 import { identifyRepo } from "../local/Git.ts"
@@ -24,13 +24,13 @@ import type { Subject } from "../records/Subjects.ts"
 import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
 import { learningQueue, lockInfo, markLock, queueLearning, releaseLearning, releaseLock, takeLock, unqueueLearning } from "../setup/Background.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
+import { LEARNER_NAMES, learnerConfig, resolveLearner } from "../setup/Learner.ts"
 import { readLearn } from "../setup/Preferences.ts"
 import { describeOutcome, runSetup } from "../setup/Setup.ts"
 import { runStatus } from "../setup/Status.ts"
 import { confirm, makeStyle, plural, tilde, usd, wantsColor, withSpinner } from "../setup/Ui.ts"
 import { unwireAll } from "../setup/Wiring.ts"
 import { storePast } from "../workflows/Commits.ts"
-import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, learnSubject, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
 import { startTask } from "../workflows/Start.ts"
@@ -52,11 +52,13 @@ const setup = Command.make(
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("take every default and ask nothing (never learns right away)")),
     agent: Flag.Literals("agent", AGENT_IDS).pipe(Flag.atLeast(0), Flag.withDescription("only this agent (repeatable; default: every agent found)")),
     noPath: Flag.Boolean("no-path").pipe(Flag.withDefault(false), Flag.withDescription("don't put the singularity command on PATH")),
-    dailyLimit: Flag.Finite("daily-limit").pipe(Flag.optional, Flag.withDescription("the most learning on its own may spend a day, in dollars (default: asked, or $1)"))
+    dailyLimit: Flag.Finite("daily-limit").pipe(Flag.optional, Flag.withDescription("the most learning on its own may spend a day, in dollars (default: asked, or $1)")),
+    learnWith: Flag.Literals("learn-with", MODEL_AGENTS).pipe(Flag.optional, Flag.withDescription("the agent whose model learns, on your account with it (default: asked when there are several)"))
   },
   Effect.fn(function*(args) {
     const ok = yield* runSetup({
       dailyLimit: Option.getOrUndefined(args.dailyLimit),
+      learnWith: Option.getOrUndefined(args.learnWith),
       yes: args.yes,
       only: args.agent,
       path: !args.noPath,
@@ -121,13 +123,8 @@ const learnQueued = Effect.fn("learnQueued")(function*(home: Home, subjectId: st
     if (waiting !== undefined) return yield* log(`skipped: ${waiting}`)
     const short = budgetReason(roundUsd(state), yield* spentToday(), prefs.max_usd_per_day)
     if (short !== undefined) return yield* log(`waits: ${short}`)
-    const outcome = yield* learnSubject(subject, {
-      claude: yield* defaultClaude(),
-      cwd: path.join(defaultWorkspaces(), "_learner"),
-      model: DEFAULT_INDUCE_MODEL,
-      effort: DEFAULT_INDUCE_EFFORT,
-      every: prefs.every
-    })
+    const learner = yield* resolveLearner(prefs.with, dirsOf())
+    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner")), every: prefs.every })
     const s = makeStyle(false)
     for (const line of describeOutcome(s, outcome)) yield* log(line.trim())
   }).pipe(
@@ -164,7 +161,8 @@ const learn = Command.make(
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("don't ask before spending")),
     auto: Flag.Boolean("auto").pipe(Flag.withDefault(false), Flag.withDescription("the background rounds stored changes ask for: the queue, one repo at a time")),
     subject: Flag.String("subject").pipe(Flag.optional, Flag.withDescription("with --auto: queue this repo's subject id first")),
-    claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable")),
+    with: Flag.Literals("with", MODEL_AGENTS).pipe(Flag.optional, Flag.withDescription("learn with this agent's model this time (default: the one chosen at setup)")),
+    claude: Flag.String("claude").pipe(Flag.optional, Flag.withDescription("learn with the claude executable at this path")),
     home: homeFlag
   },
   Effect.fn(function*(args) {
@@ -201,6 +199,12 @@ const learn = Command.make(
         : "No changes stored here yet. Memory keeps the changes Claude Code, Codex and Hermes Agent sessions commit with their checks passing; --past looks through earlier sessions.")
     }
     const prefs = yield* readLearn(home.root)
+    const resolved = yield* Effect.result(Option.isSome(args.claude)
+      ? Effect.succeed(claudeCli([args.claude.value]))
+      : resolveLearner(Option.getOrUndefined(args.with) ?? prefs.with, dirsOf()))
+    if (resolved._tag === "Failure") return yield* say(`${s.yellow("·")} Can't learn: ${resolved.failure.message}.`)
+    const learner = resolved.success
+    const agent = LEARNER_NAMES[learner.agent]
     // A round by hand holds the lock too: one round at a time, whoever starts it.
     if (!args.dryRun && !takeLock(home.root)) {
       const held = lockInfo(home.root)
@@ -219,20 +223,16 @@ const learn = Command.make(
         const estimate = roundUsd(state)
         const what = state.memory.workflows.length === 0 ? "a first memory" : "a learning round"
         if (args.dryRun) {
-          yield* say(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}`)
+          yield* say(`${subject.name}: ${what} from ${plural(changes, "change")} with ${agent}, about ${usd(estimate)}`)
           continue
         }
-        const go = yield* confirm(`${subject.name}: ${what} from ${plural(changes, "change")}, about ${usd(estimate)}. Go ahead?`, true, interactive() && !args.yes).pipe(Effect.orElseSucceed(() => false))
+        const go = yield* confirm(`${subject.name}: ${what} from ${plural(changes, "change")} with ${agent}, about ${usd(estimate)}. Go ahead?`, true, interactive() && !args.yes).pipe(Effect.orElseSucceed(() => false))
         if (!go) continue
-        const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
         markLock(home.root, subject.id)
         const outcome = yield* withSpinner(
-          `learning ${subject.name} (a minute or two)`,
+          `learning ${subject.name} with ${agent} (a minute or two)`,
           learnSubject(subject, {
-            claude,
-            cwd: path.join(defaultWorkspaces(), "_learner"),
-            model: DEFAULT_INDUCE_MODEL,
-            effort: DEFAULT_INDUCE_EFFORT,
+            ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner")),
             every: prefs.every,
             now: true
           }).pipe(Effect.provide(stores)),

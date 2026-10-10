@@ -49,15 +49,23 @@ export const findExecutable = Effect.fn("findExecutable")(function*(name: string
   return undefined
 })
 
-/** Claude Code's command on PATH: its program, or for npm's `claude.cmd` what that runs (Agent.ts). */
-export const findClaude = Effect.fn("findClaude")(function*(env: Readonly<Record<string, string | undefined>> = process.env) {
-  const found = yield* findExecutable("claude", env)
+/** A command on PATH: its program, or for an npm shim (`claude.cmd`, `codex.cmd`) what that runs (Agent.ts). */
+export const findCommand = Effect.fn("findCommand")(function*(name: string, env: Readonly<Record<string, string | undefined>> = process.env) {
+  const found = yield* findExecutable(name, env)
   if (found === undefined) return undefined
-  if (!/\.(?:cmd|bat)$/i.test(found)) return [found] as ReadonlyArray<string>
+  return yield* commandOf(found)
+})
+
+/** How to run an executable without a shell: an npm shim as what it runs, anything else as itself. */
+export const commandOf = Effect.fn("commandOf")(function*(file: string) {
+  if (!/\.(?:cmd|bat)$/i.test(file)) return [file] as ReadonlyArray<string>
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
-  return commandOfShim(yield* fs.readFileString(found).pipe(Effect.orElseSucceed(() => "")), path.dirname(found)) ?? [found]
+  return commandOfShim(yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => "")), path.dirname(file)) ?? [file]
 })
+
+/** Claude Code's command on PATH. */
+export const findClaude = (env: Readonly<Record<string, string | undefined>> = process.env) => findCommand("claude", env)
 
 /** The first line a command prints for `--version`, or undefined if it doesn't run. */
 export const versionOf = (command: string, args: ReadonlyArray<string> = ["--version"]) =>
