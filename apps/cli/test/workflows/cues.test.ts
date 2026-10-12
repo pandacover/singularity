@@ -11,7 +11,8 @@ import {
   partsChoice,
   positiveText,
   statedValues,
-  taskParts
+  taskParts,
+  withTriggered
 } from "../../src/workflows/Cues.ts"
 import type { RunEvidence } from "../../src/workflows/Evidence.ts"
 import { pickMode } from "../../src/workflows/HookStart.ts"
@@ -71,6 +72,58 @@ const memory: WorkflowMemory = {
 }
 
 const ids = (task: string) => cueChoice(memory, task).map((c) => c.workflow.id)
+
+describe("what a picked workflow sets off", () => {
+  const snapshots = workflow("update-snapshots", { steps: [{ do: "Run the snapshot update.", place: null, when: null }] })
+  const docs = workflow("write-docs", { steps: [{ do: "Document {field}.", place: null, when: null }] })
+  const asked = workflow("asked-only", { only_if_asked: true })
+  const edge = (from: string, to: string, relation: "TRIGGERS" | "LEADS_TO", condition: string | null = null) =>
+    ({ from, to, relation, condition, guidance: null, pitfalls: null })
+  const triggering: WorkflowMemory = {
+    ...memory,
+    workflows: [field, shortcut, snapshots, docs, asked, test, noCues],
+    edges: [
+      edge("add-field", "update-snapshots", "TRIGGERS"),
+      edge("update-snapshots", "write-docs", "TRIGGERS", "the field is user-facing"),
+      edge("add-field", "asked-only", "TRIGGERS"),
+      edge("add-shortcut", "keyboard-test", "TRIGGERS"),
+      edge("add-shortcut", "no-cues", "LEADS_TO")
+    ]
+  }
+  const task = "Add a new appState field `showRulers`, default false."
+
+  it("brings them in hop by hop, whole without a condition and marked with the conditions on the way, never one waiting to be asked", () => {
+    const chosen = withTriggered(triggering, cueChoice(triggering, task), task)
+    assert.deepStrictEqual(chosen.map((c) => [c.workflow.id, c.condition ?? null]), [
+      ["add-field", null],
+      ["update-snapshots", null],
+      ["write-docs", "the field is user-facing"]
+    ])
+    assert.strictEqual(chosen[1].why, "add-field makes it needed")
+    // Only TRIGGERS edges bring a workflow in; the one waiting to be asked stays out.
+    const keys = withTriggered(triggering, cueChoice(triggering, "Toggle it with Alt+U."), "Toggle it with Alt+U.")
+    assert.deepStrictEqual(keys.map((c) => c.workflow.id), ["add-shortcut"])
+    // Chosen surely by its own cues, a workflow loses the condition.
+    const sure = withTriggered(triggering, [...cueChoice(triggering, task), { workflow: docs, skip: [], why: "asked" }], task)
+    assert.isUndefined(sure.find((c) => c.workflow.id === "write-docs")?.condition)
+  })
+
+  it("picks them change by change for a task that lists several, and hands the conditional one over for the agent to judge", () => {
+    const listed = "1. Add a new appState field `showRulers`, default false.\n2. Toggle it with Alt+U."
+    const parts = partsChoice(triggering, listed)!
+    assert.deepStrictEqual(parts.chosen.map((c) => [c.workflow.id, c.condition ?? null]), [
+      ["add-field", null],
+      ["add-shortcut", null],
+      ["update-snapshots", null],
+      ["write-docs", "the field is user-facing"]
+    ])
+    assert.deepStrictEqual(parts.uses.get("update-snapshots")?.map((u) => u.label), ["1"])
+    assert.deepStrictEqual(choiceByCues(triggering, task).map((c) => c.workflow.id), ["add-field", "update-snapshots", "write-docs"])
+    const text = renderHandover(triggering, withTriggered(triggering, cueChoice(triggering, task), task), new Map(), undefined, new Map([["write-docs", new Map([["{field}", "showRulers"]])]])).text
+    assert.include(text, "## 3. write-docs (only if the field is user-facing)")
+    assert.include(text, "Document showRulers.")
+  })
+})
 
 describe("cues", () => {
   it("takes negated clauses out of a task before matching", () => {

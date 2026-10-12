@@ -18,6 +18,9 @@
  * A task that lists several changes (a numbered or bulleted list) is picked
  * and filled change by change, each with what the task says of all of them.
  *
+ * A workflow picked brings in the ones it TRIGGERS along memory's edges,
+ * since a task's text seldom names them (withTriggered).
+ *
  * This module is what task start needs; writing the cues is CueWriter.ts.
  */
 import { type Fill, graphOrder, type Workflow, type WorkflowMemory } from "./Models.ts"
@@ -55,11 +58,52 @@ export const cueChoice = (memory: WorkflowMemory, task: string): Array<Selected>
     if (c === undefined) return []
     const hit = cueMatch(text, c.any, c.none)
     if (hit === undefined) return []
-    const skip = c.steps
-      .filter((s) => s.step >= 1 && s.step <= w.steps.length && cueMatch(text, s.any, s.none) === undefined)
-      .map((s) => s.step)
+    const skip = stepSkips(w, text)
     if (skip.length >= w.steps.length) return []
     return [{ workflow: w, skip, why: `says ${JSON.stringify(hit)}` }]
+  })
+}
+
+/** A workflow's conditional steps whose cues a task's positive text doesn't say. */
+const stepSkips = (w: Workflow, text: string): Array<number> =>
+  (w.cues?.steps ?? [])
+    .filter((s) => s.step >= 1 && s.step <= w.steps.length && cueMatch(text, s.any, s.none) === undefined)
+    .map((s) => s.step)
+
+/**
+ * A choice with the workflows its workflows make needed (TRIGGERS edges,
+ * followed hop by hop): whole when the edges have no condition, else marked
+ * with their conditions for the agent to judge, since words can't. A task's
+ * text often names only the change it wants (a new setting), not what that
+ * change sets off (the test snapshots it rewrites). Never a workflow that
+ * waits to be asked for. In graph order.
+ */
+export const withTriggered = (memory: WorkflowMemory, chosen: ReadonlyArray<Selected>, task: string): Array<Selected> => {
+  const byId = new Map(memory.workflows.map((w) => [w.id, w]))
+  const picked = new Map(chosen.map((c) => [c.workflow.id, c]))
+  const text = positiveText(task)
+  const queue = [...chosen]
+  while (queue.length > 0) {
+    const from = queue.shift()!
+    for (const e of memory.edges) {
+      if (e.from !== from.workflow.id || e.relation !== "TRIGGERS") continue
+      const w = byId.get(e.to)
+      if (w === undefined || w.only_if_asked) continue
+      const conditions = [from.condition, e.condition].filter((c): c is string => c !== undefined && c !== null)
+      const condition = conditions.length === 0 ? undefined : conditions.join(", and ")
+      const had = picked.get(w.id)
+      // Chosen already, at least as surely.
+      if (had !== undefined && (had.condition === undefined || condition !== undefined)) continue
+      const skip = had?.skip ?? stepSkips(w, text)
+      if (skip.length >= w.steps.length) continue
+      const next: Selected = { workflow: w, skip, why: had?.why ?? `${from.workflow.id} makes it needed`, ...(condition === undefined ? {} : { condition }) }
+      picked.set(w.id, next)
+      queue.push(next)
+    }
+  }
+  return graphOrder(memory).flatMap((w) => {
+    const c = picked.get(w.id)
+    return c === undefined ? [] : [c]
   })
 }
 
@@ -188,19 +232,23 @@ export const partsChoice = (memory: WorkflowMemory, task: string): PartsChoice |
   if (split === undefined) return undefined
   const uses = new Map<string, Array<PartUse>>()
   const whys = new Map<string, Array<string>>()
+  // A workflow some change needs surely has no condition; else the first change's.
+  const conditions = new Map<string, string | undefined>()
   for (const p of split.parts) {
     const text = split.shared.trim() === "" ? p.text : `${p.text}\n\n${split.shared}`
-    for (const c of cueChoice(memory, text)) {
+    for (const c of withTriggered(memory, cueChoice(memory, text), text)) {
       const id = c.workflow.id
       uses.set(id, [...(uses.get(id) ?? []), { label: p.label, skip: c.skip, values: fillsFor(text, c.workflow) }])
       whys.set(id, [...(whys.get(id) ?? []), `${p.label}: ${c.why}`])
+      if (!conditions.has(id) || c.condition === undefined) conditions.set(id, c.condition)
     }
   }
-  const chosen = graphOrder(memory).flatMap((w) => {
+  const chosen = graphOrder(memory).flatMap((w): Array<Selected> => {
     const u = uses.get(w.id)
     if (u === undefined) return []
     const skip = u[0].skip.filter((s) => u.every((x) => x.skip.includes(s)))
-    return [{ workflow: w, skip, why: (whys.get(w.id) ?? []).join("; ") }]
+    const condition = conditions.get(w.id)
+    return [{ workflow: w, skip, why: (whys.get(w.id) ?? []).join("; "), ...(condition === undefined ? {} : { condition }) }]
   })
   return { chosen, uses, count: split.parts.length }
 }
@@ -220,4 +268,4 @@ export const mergedValues = (uses: ReadonlyArray<PartUse>): Map<string, string> 
 
 /** The workflows the cues pick for a task: change by change when it lists several. */
 export const choiceByCues = (memory: WorkflowMemory, task: string): Array<Selected> =>
-  partsChoice(memory, task)?.chosen ?? cueChoice(memory, task)
+  partsChoice(memory, task)?.chosen ?? withTriggered(memory, cueChoice(memory, task), task)

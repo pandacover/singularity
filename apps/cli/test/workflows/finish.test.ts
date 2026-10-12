@@ -159,6 +159,29 @@ describe("what edges say in the hand-over", () => {
     assert.include(folded, "This makes the last section needed: A new field changes snapshots.")
   })
 
+  it("lists once, in a line each, the branches with a condition that weren't handed over, and no condition the hand-over settled", () => {
+    const docs = workflow("write-docs", { name: "Write the docs", steps: [{ do: "Document the field.", place: null, when: null }, { do: "Link it from the index.", place: null, when: null }] })
+    const asked = workflow("asked-only", { only_if_asked: true })
+    const m = {
+      ...guided([
+        edge("add-field", "add-menu-item", { condition: "the task asks for a menu entry" }),
+        edge("add-field", "write-docs", { condition: "the field is user-facing" }),
+        edge("add-field", "asked-only", { condition: "always" }),
+        edge("add-field", "update-snapshots", { relation: "TRIGGERS", condition: "snapshots exist" }),
+        edge("add-menu-item", "write-docs", { condition: "the menu item is new" })
+      ]),
+      workflows: [field, menu, snapshots, docs, asked]
+    }
+    const text = renderHandover(m, all.slice(0, 2), new Map()).text
+    const first = text.slice(text.indexOf("## 1."), text.indexOf("## 2."))
+    assert.notInclude(text, "the task asks for a menu entry")
+    assert.include(first, "Memory also has, if your change needs it:\n- If the field is user-facing: Write the docs.\n")
+    // Once in a hand-over; not one waiting to be asked for, nor what a TRIGGERS edge would have brought in.
+    assert.notInclude(text, "the menu item is new")
+    assert.notInclude(text, "If always")
+    assert.notInclude(text, "If snapshots exist")
+  })
+
   it("fills the task's values into what an edge says", () => {
     const m = guided([edge("add-field", "add-menu-item", { guidance: "The item toggles {field}." })])
     const text = renderHandover(m, all, new Map(), undefined, new Map([["add-field", new Map([["{field}", "showRulers"]])]])).text
