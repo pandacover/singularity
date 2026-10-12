@@ -427,6 +427,7 @@ Command.make("singularity").pipe(
     InvalidEdit: reportError,
     Conflict: reportError,
     HomeError: reportError,
+    RecallError: reportError,
     UpdateError: reportError,
     RecordNotFound: reportError
   }),

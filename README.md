@@ -127,6 +127,7 @@ you're in.
 ```
 singularity status              # which agents have memory, what it knows per repo, how learning goes
 singularity recall "<task>"     # what a task here would be handed (no model call)
+singularity status --json       # the same as JSON, for agents and scripts (recall too)
 singularity learn               # learn from new changes now (asks before spending)
 singularity learn --past        # first store what this repo's earlier sessions committed
 singularity learn --dry-run     # what a round would learn and roughly cost
