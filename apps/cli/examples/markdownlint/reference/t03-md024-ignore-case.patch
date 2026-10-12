@@ -1,0 +1,417 @@
+diff --git a/doc-build/md024.md b/doc-build/md024.md
+index 142b2035..0503c1ba 100644
+--- a/doc-build/md024.md
++++ b/doc-build/md024.md
+@@ -30,5 +30,15 @@ headings with different parents (as is common in changelogs):
+ ### Features
+ ```
+ 
++If the parameter `ignore_case` is set to `true`, headings whose text differs
++only in letter case are treated as duplicates (GitHub generates the same anchor
++for them):
++
++```markdown
++# Install
++
++## install
++```
++
+ Rationale: Some Markdown parsers generate anchors for headings based on the
+ heading name; headings with the same content can cause problems with that.
+diff --git a/doc/Rules.md b/doc/Rules.md
+index 2dc5fdc9..c6e82fcb 100644
+--- a/doc/Rules.md
++++ b/doc/Rules.md
+@@ -836,6 +836,7 @@ Aliases: `no-duplicate-heading`
+ 
+ Parameters:
+ 
++- `ignore_case`: Ignore case of heading text (`boolean`, default `false`)
+ - `siblings_only`: Only check sibling headings (`boolean`, default `false`)
+ 
+ This rule is triggered if there are multiple headings in the document that have
+@@ -870,6 +871,16 @@ headings with different parents (as is common in changelogs):
+ ### Features
+ ```
+ 
++If the parameter `ignore_case` is set to `true`, headings whose text differs
++only in letter case are treated as duplicates (GitHub generates the same anchor
++for them):
++
++```markdown
++# Install
++
++## install
++```
++
+ Rationale: Some Markdown parsers generate anchors for headings based on the
+ heading name; headings with the same content can cause problems with that.
+ 
+diff --git a/doc/md024.md b/doc/md024.md
+index 5c26c712..b48b8906 100644
+--- a/doc/md024.md
++++ b/doc/md024.md
+@@ -6,6 +6,7 @@ Aliases: `no-duplicate-heading`
+ 
+ Parameters:
+ 
++- `ignore_case`: Ignore case of heading text (`boolean`, default `false`)
+ - `siblings_only`: Only check sibling headings (`boolean`, default `false`)
+ 
+ This rule is triggered if there are multiple headings in the document that have
+@@ -40,5 +41,15 @@ headings with different parents (as is common in changelogs):
+ ### Features
+ ```
+ 
++If the parameter `ignore_case` is set to `true`, headings whose text differs
++only in letter case are treated as duplicates (GitHub generates the same anchor
++for them):
++
++```markdown
++# Install
++
++## install
++```
++
+ Rationale: Some Markdown parsers generate anchors for headings based on the
+ heading name; headings with the same content can cause problems with that.
+diff --git a/lib/configuration-strict.d.ts b/lib/configuration-strict.d.ts
+index f9bc600c..f0867eec 100644
+--- a/lib/configuration-strict.d.ts
++++ b/lib/configuration-strict.d.ts
+@@ -781,6 +781,10 @@ export interface ConfigurationStrict {
+          * Only check sibling headings
+          */
+         siblings_only?: boolean;
++        /**
++         * Ignore case of heading text
++         */
++        ignore_case?: boolean;
+       };
+   /**
+    * MD024/no-duplicate-heading : Multiple headings with the same content : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md024.md
+@@ -801,6 +805,10 @@ export interface ConfigurationStrict {
+          * Only check sibling headings
+          */
+         siblings_only?: boolean;
++        /**
++         * Ignore case of heading text
++         */
++        ignore_case?: boolean;
+       };
+   /**
+    * MD025/single-title/single-h1 : Multiple top-level headings in the same document : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md025.md
+diff --git a/lib/md024.mjs b/lib/md024.mjs
+index c1b34f40..90a8ddc4 100644
+--- a/lib/md024.mjs
++++ b/lib/md024.mjs
+@@ -12,11 +12,13 @@ export default {
+   "parser": "micromark",
+   "function": function MD024(params, onError) {
+     const siblingsOnly = !!params.config.siblings_only;
++    const ignoreCase = !!params.config.ignore_case;
+     const knownContents = [ null, [] ];
+     let lastLevel = 1;
+     let knownContent = knownContents[lastLevel];
+     for (const heading of filterByTypesCached([ "atxHeading", "setextHeading" ])) {
+       const headingText = getHeadingText(heading);
++      const compareText = ignoreCase ? headingText.toLowerCase() : headingText;
+       if (siblingsOnly) {
+         const newLevel = getHeadingLevel(heading);
+         while (lastLevel < newLevel) {
+@@ -30,7 +32,7 @@ export default {
+         knownContent = knownContents[newLevel];
+       }
+       // @ts-ignore
+-      if (knownContent.includes(headingText)) {
++      if (knownContent.includes(compareText)) {
+         addErrorContext(
+           onError,
+           heading.startLine,
+@@ -38,7 +40,7 @@ export default {
+         );
+       } else {
+         // @ts-ignore
+-        knownContent.push(headingText);
++        knownContent.push(compareText);
+       }
+     }
+   }
+diff --git a/schema/.markdownlint.jsonc b/schema/.markdownlint.jsonc
+index 005359a1..55be47b4 100644
+--- a/schema/.markdownlint.jsonc
++++ b/schema/.markdownlint.jsonc
+@@ -120,7 +120,9 @@
+   // MD024/no-duplicate-heading : Multiple headings with the same content : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md024.md
+   "MD024": {
+     // Only check sibling headings
+-    "siblings_only": false
++    "siblings_only": false,
++    // Ignore case of heading text
++    "ignore_case": false
+   },
+ 
+   // MD025/single-title/single-h1 : Multiple top-level headings in the same document : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md025.md
+diff --git a/schema/.markdownlint.yaml b/schema/.markdownlint.yaml
+index 6ec3147a..c6a8eae0 100644
+--- a/schema/.markdownlint.yaml
++++ b/schema/.markdownlint.yaml
+@@ -111,6 +111,8 @@ MD023: true
+ MD024:
+   # Only check sibling headings
+   siblings_only: false
++  # Ignore case of heading text
++  ignore_case: false
+ 
+ # MD025/single-title/single-h1 : Multiple top-level headings in the same document : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md025.md
+ MD025:
+diff --git a/schema/build-config-schema.mjs b/schema/build-config-schema.mjs
+index a3df0886..e57d511c 100644
+--- a/schema/build-config-schema.mjs
++++ b/schema/build-config-schema.mjs
+@@ -306,6 +306,12 @@ for (const rule of rules) {
+         "type": "boolean",
+         "default": false
+       };
++      // @ts-ignore
++      subscheme.properties.ignore_case = {
++        "description": "Ignore case of heading text",
++        "type": "boolean",
++        "default": false
++      };
+       break;
+     case "MD026":
+     case "MD036":
+diff --git a/schema/markdownlint-config-schema-strict.json b/schema/markdownlint-config-schema-strict.json
+index b883ddd0..3975feb5 100644
+--- a/schema/markdownlint-config-schema-strict.json
++++ b/schema/markdownlint-config-schema-strict.json
+@@ -1586,6 +1586,11 @@
+               "description": "Only check sibling headings",
+               "type": "boolean",
+               "default": false
++            },
++            "ignore_case": {
++              "description": "Ignore case of heading text",
++              "type": "boolean",
++              "default": false
+             }
+           }
+         }
+@@ -1626,6 +1631,11 @@
+               "description": "Only check sibling headings",
+               "type": "boolean",
+               "default": false
++            },
++            "ignore_case": {
++              "description": "Ignore case of heading text",
++              "type": "boolean",
++              "default": false
+             }
+           }
+         }
+diff --git a/schema/markdownlint-config-schema.json b/schema/markdownlint-config-schema.json
+index 2e2027c9..6907ad5d 100644
+--- a/schema/markdownlint-config-schema.json
++++ b/schema/markdownlint-config-schema.json
+@@ -1586,6 +1586,11 @@
+               "description": "Only check sibling headings",
+               "type": "boolean",
+               "default": false
++            },
++            "ignore_case": {
++              "description": "Ignore case of heading text",
++              "type": "boolean",
++              "default": false
+             }
+           }
+         }
+@@ -1626,6 +1631,11 @@
+               "description": "Only check sibling headings",
+               "type": "boolean",
+               "default": false
++            },
++            "ignore_case": {
++              "description": "Ignore case of heading text",
++              "type": "boolean",
++              "default": false
+             }
+           }
+         }
+diff --git a/test/heading-duplicate-content-ignore-case-siblings-only.md b/test/heading-duplicate-content-ignore-case-siblings-only.md
+new file mode 100644
+index 00000000..137bd404
+--- /dev/null
++++ b/test/heading-duplicate-content-ignore-case-siblings-only.md
+@@ -0,0 +1,24 @@
++# Heading duplicate content ignore case siblings only
++
++## Version 1
++
++### Features
++
++### FEATURES
++
++{MD024:7}
++
++## Version 2
++
++### features
++
++## version 1
++
++{MD024:15}
++
++<!-- markdownlint-configure-file {
++  "no-duplicate-heading": {
++    "ignore_case": true,
++    "siblings_only": true
++  }
++} -->
+diff --git a/test/heading-duplicate-content-ignore-case.md b/test/heading-duplicate-content-ignore-case.md
+new file mode 100644
+index 00000000..3fd6dad0
+--- /dev/null
++++ b/test/heading-duplicate-content-ignore-case.md
+@@ -0,0 +1,30 @@
++# Heading duplicate content ignore case
++
++## Install
++
++## install
++
++{MD024:5}
++
++## INSTALL ##
++
++{MD024:9}
++
++## Usage
++
++### Options
++
++## USAGE
++
++{MD024:17}
++
++### options
++
++{MD024:21}
++
++<!-- markdownlint-configure-file {
++  "heading-style": false,
++  "no-duplicate-heading": {
++    "ignore_case": true
++  }
++} -->
+diff --git a/test/markdownlint-test-scenarios.mjs.snapshot b/test/markdownlint-test-scenarios.mjs.snapshot
+index 1fae94c6..868d16b9 100644
+--- a/test/markdownlint-test-scenarios.mjs.snapshot
++++ b/test/markdownlint-test-scenarios.mjs.snapshot
+@@ -13207,6 +13207,106 @@ exports[`markdownlint-test-scenarios.mjs > hard-line-breaks.md 1`] = `
+ }
+ `;
+ 
++exports[`markdownlint-test-scenarios.mjs > heading-duplicate-content-ignore-case-siblings-only.md 1`] = `
++{
++  "errors": [
++    {
++      "lineNumber": 7,
++      "ruleNames": [
++        "MD024",
++        "no-duplicate-heading"
++      ],
++      "ruleDescription": "Multiple headings with the same content",
++      "ruleInformation": "https://github.com/DavidAnson/markdownlint/blob/v0.0.0/doc/md024.md",
++      "errorDetail": null,
++      "errorContext": "FEATURES",
++      "errorRange": null,
++      "fixInfo": null,
++      "severity": "error"
++    },
++    {
++      "lineNumber": 15,
++      "ruleNames": [
++        "MD024",
++        "no-duplicate-heading"
++      ],
++      "ruleDescription": "Multiple headings with the same content",
++      "ruleInformation": "https://github.com/DavidAnson/markdownlint/blob/v0.0.0/doc/md024.md",
++      "errorDetail": null,
++      "errorContext": "version 1",
++      "errorRange": null,
++      "fixInfo": null,
++      "severity": "error"
++    }
++  ],
++  "fixed": "# Heading duplicate content ignore case siblings only\\n\\n## Version 1\\n\\n### Features\\n\\n### FEATURES\\n\\n{MD024:7}\\n\\n## Version 2\\n\\n### features\\n\\n## version 1\\n\\n{MD024:15}\\n\\n<!-- markdownlint-configure-file {\\n  \\"no-duplicate-heading\\": {\\n    \\"ignore_case\\": true,\\n    \\"siblings_only\\": true\\n  }\\n} -->\\n"
++}
++`;
++
++exports[`markdownlint-test-scenarios.mjs > heading-duplicate-content-ignore-case.md 1`] = `
++{
++  "errors": [
++    {
++      "lineNumber": 5,
++      "ruleNames": [
++        "MD024",
++        "no-duplicate-heading"
++      ],
++      "ruleDescription": "Multiple headings with the same content",
++      "ruleInformation": "https://github.com/DavidAnson/markdownlint/blob/v0.0.0/doc/md024.md",
++      "errorDetail": null,
++      "errorContext": "install",
++      "errorRange": null,
++      "fixInfo": null,
++      "severity": "error"
++    },
++    {
++      "lineNumber": 9,
++      "ruleNames": [
++        "MD024",
++        "no-duplicate-heading"
++      ],
++      "ruleDescription": "Multiple headings with the same content",
++      "ruleInformation": "https://github.com/DavidAnson/markdownlint/blob/v0.0.0/doc/md024.md",
++      "errorDetail": null,
++      "errorContext": "INSTALL",
++      "errorRange": null,
++      "fixInfo": null,
++      "severity": "error"
++    },
++    {
++      "lineNumber": 17,
++      "ruleNames": [
++        "MD024",
++        "no-duplicate-heading"
++      ],
++      "ruleDescription": "Multiple headings with the same content",
++      "ruleInformation": "https://github.com/DavidAnson/markdownlint/blob/v0.0.0/doc/md024.md",
++      "errorDetail": null,
++      "errorContext": "USAGE",
++      "errorRange": null,
++      "fixInfo": null,
++      "severity": "error"
++    },
++    {
++      "lineNumber": 21,
++      "ruleNames": [
++        "MD024",
++        "no-duplicate-heading"
++      ],
++      "ruleDescription": "Multiple headings with the same content",
++      "ruleInformation": "https://github.com/DavidAnson/markdownlint/blob/v0.0.0/doc/md024.md",
++      "errorDetail": null,
++      "errorContext": "options",
++      "errorRange": null,
++      "fixInfo": null,
++      "severity": "error"
++    }
++  ],
++  "fixed": "# Heading duplicate content ignore case\\n\\n## Install\\n\\n## install\\n\\n{MD024:5}\\n\\n## INSTALL ##\\n\\n{MD024:9}\\n\\n## Usage\\n\\n### Options\\n\\n## USAGE\\n\\n{MD024:17}\\n\\n### options\\n\\n{MD024:21}\\n\\n<!-- markdownlint-configure-file {\\n  \\"heading-style\\": false,\\n  \\"no-duplicate-heading\\": {\\n    \\"ignore_case\\": true\\n  }\\n} -->\\n"
++}
++`;
++
+ exports[`markdownlint-test-scenarios.mjs > heading-duplicate-content-siblings-only.md 1`] = `
+ {
+   "errors": [

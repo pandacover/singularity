@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A long task with and without singularity</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --surface-1: var(--card, #fcfcfb);
+  --text-primary: var(--foreground, #0b0b0b);
+  --text-secondary: var(--muted-foreground, #52514e);
+  --text-muted: #898781;
+  --grid: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  --axis: color-mix(in srgb, var(--text-primary) 28%, transparent);
+  --border-c: var(--border, rgba(11,11,11,0.10));
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --good: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-1: var(--card, #1a1a19);
+    --text-primary: var(--foreground, #ffffff);
+    --text-secondary: var(--muted-foreground, #c3c2b7);
+    --text-muted: #898781;
+    --border-c: var(--border, rgba(255,255,255,0.10));
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --good: #0ca30c;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --surface-1: var(--card, #1a1a19);
+  --text-primary: var(--foreground, #ffffff);
+  --text-secondary: var(--muted-foreground, #c3c2b7);
+  --text-muted: #898781;
+  --border-c: var(--border, rgba(255,255,255,0.10));
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --good: #0ca30c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root {
+  color: var(--text-primary);
+  font: 14px/1.45 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+}
+.wrap { width: 100%; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.tile, .card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-c);
+  border-radius: var(--radius, 10px);
+}
+.tile { padding: 16px; }
+.tile .label { color: var(--text-secondary); font-size: 12.5px; }
+.tile .value { font-size: 24px; font-weight: 650; margin: 2px 0; }
+.tile .note { color: var(--text-muted); font-size: 12.5px; }
+.card { padding: 16px; margin-bottom: 16px; }
+.card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 620; }
+.card .cap { color: var(--text-secondary); font-size: 12.5px; margin: 0 0 8px; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12.5px; margin: 0 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.sw.box { height: 10px; width: 10px; border-radius: 3px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--series-3); display: inline-block; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--text-muted); font-size: 11px; font-family: inherit; }
+svg .lbl { fill: var(--text-secondary); font-size: 11.5px; }
+svg .lbl-strong { fill: var(--text-primary); font-size: 11.5px; font-weight: 600; }
+.tip {
+  position: fixed; pointer-events: none; z-index: 10;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border-c); border-radius: 8px;
+  padding: 8px 10px; font-size: 12.5px; max-width: 320px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); display: none;
+}
+.tip .t { font-weight: 620; margin-bottom: 3px; }
+.tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.tip .muted { color: var(--text-secondary); margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--text-secondary); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cheaper { color: var(--good); font-weight: 600; }
+.why { margin: 0; padding-left: 18px; color: var(--text-primary); }
+.why li { margin: 4px 0; }
+.why .muted { color: var(--text-secondary); }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+@media (max-width: 760px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+
+  <div class="tiles">
+    <div class="tile"><div class="label">Tasks passed</div><div class="value">12 / 12</div><div class="note">in both arms: no harm on success</div></div>
+    <div class="tile"><div class="label">All-in dollars</div><div class="value">$7.04</div><div class="note">with singularity, against $3.93 without (+79%)</div></div>
+    <div class="tile"><div class="label">Learning</div><div class="value">$2.59</div><div class="note">4 rounds; 2 rejected by its own check</div></div>
+    <div class="tile"><div class="label">Tasks 3–12, agent dollars</div><div class="value">+8%</div><div class="note">the bar set before the runs was −10%</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Cumulative dollars, task by task</h2>
+    <p class="cap">Learning rounds ran after tasks 2, 5, 8 and 11; the rounds after 5 and 11 were rejected and changed nothing.</p>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--series-1)"></i>without singularity</span>
+      <span><i class="sw" style="background:var(--series-2)"></i>with singularity, agents</span>
+      <span><i class="sw" style="background:var(--series-3)"></i>with singularity, agents + learning</span>
+      <span><i class="dot" style="background:var(--series-3)"></i>learning round kept</span>
+      <span><i class="dot" style="background:transparent"></i>round rejected</span>
+    </div>
+    <svg id="cum" viewBox="0 0 700 280" role="img" aria-label="Cumulative dollars by task for the two arms"></svg>
+  </div>
+
+  <div class="card">
+    <h2>Dollars per task</h2>
+    <p class="cap">Agent cost only. Singularity was cheaper on tasks 8 and 9. Before any memory existed, task 2 already differed by 50% between the arms, so a single task's gap is mostly noise.</p>
+    <div class="legend">
+      <span><i class="sw box" style="background:var(--series-1)"></i>without singularity</span>
+      <span><i class="sw box" style="background:var(--series-2)"></i>with singularity</span>
+    </div>
+    <svg id="bars" viewBox="0 0 700 260" role="img" aria-label="Dollars per task, paired bars for the two arms"></svg>
+  </div>
+
+  <div class="card">
+    <h2>Why it cost more</h2>
+    <ul class="why">
+      <li>The baseline had a memory of its own: the repo's history. Before their first edit, agents without singularity looked up earlier commits in 8 of 12 sessions (<code>git show --stat HEAD~1</code>, then its diff) and copied the procedure for free. With singularity they did it in 6 of 12, after also reading the hand-over.</li>
+      <li>Hand-overs were often wrong for the task. They were picked by surface words: "documentation", "schema" and "built-in rules" put new-rule steps into the parameter task, the API export and the rename. Blanks were filled by position (<code>{tag}</code> = "# Install"). A one-rule spec written as bullets was read as four changes. Task 7 was told to use <code>doc-build/</code>, renamed away a task earlier. Agents ignored what didn't fit, and paid to read it.</li>
+      <li>Learning cost two thirds of the baseline's whole agent bill, and half of it (two rejected rounds, $1.51) changed nothing. The rounds took 2.5 to 14 minutes; the arm waited 41 minutes for them in all.</li>
+      <li class="muted">Where it helped: after the third round, the parameter task got one precise workflow (task 9, −14%), and the look-alike got only test steps (task 8, −32%).</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Table: every task</summary>
+      <table id="tbl"><thead><tr><th>#</th><th>Task</th><th>Kind</th><th class="num">Without</th><th class="num">With</th><th class="num">Diff.</th><th>Handed over</th></tr></thead><tbody></tbody></table>
+    </details>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+</div>
+<script>
+const tasks = [
+  { i: 1, name: "heading-max-level", kind: "new rule", wo: 0.3725, w: 0.3862, ho: "nothing (memory empty)" },
+  { i: 2, name: "code-block-max-lines", kind: "new rule", wo: 0.4916, w: 0.738, ho: "nothing (memory empty)" },
+  { i: 3, name: "MD024 ignore_case", kind: "parameter", wo: 0.2238, w: 0.252, ho: "new-rule docs and schema steps; {tag} = \"# Install\" (4.9k chars)" },
+  { i: 4, name: "list-max-depth", kind: "new rule", wo: 0.2395, w: 0.308, ho: "all six new-rule workflows (10.7k chars)" },
+  { i: 5, name: "getRules()", kind: "one-off", wo: 0.2166, w: 0.3728, ho: "new-rule workflows, matched on \"built-in rules\" (7.1k)" },
+  { i: 6, name: "rename doc-build", kind: "update", wo: 0.0744, w: 0.0867, ho: "the new-rule docs workflow (2.4k)" },
+  { i: 7, name: "link-url-scheme", kind: "new rule", wo: 0.4003, w: 0.4343, ho: "all six, with the stale doc-build/ path and garbage fills (10.5k)" },
+  { i: 8, name: "todo-comments example", kind: "look-alike", wo: 0.4872, w: 0.3302, ho: "fixtures, test counts, finish (3.4k)" },
+  { i: 9, name: "MD014 prompts", kind: "parameter", wo: 0.3876, w: 0.3329, ho: "add a parameter to an existing rule (3.9k)" },
+  { i: 10, name: "ol-delimiter-style", kind: "new rule", wo: 0.4908, w: 0.5689, ho: "five new-rule workflows (7.2k)" },
+  { i: 11, name: "circular extends", kind: "one-off", wo: 0.2165, w: 0.2595, ho: "the finish only (0.7k)" },
+  { i: 12, name: "no-empty-headings", kind: "new rule", wo: 0.3304, w: 0.3748, ho: "five new-rule workflows (6.6k)" }
+];
+const rounds = { 2: { usd: 0.3023, kept: true }, 5: { usd: 0.5309, kept: false }, 8: { usd: 0.7803, kept: true }, 11: { usd: 0.9789, kept: false } };
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (parent) parent.appendChild(e); return e; };
+const usd = (x) => "$" + x.toFixed(2);
+const tip = document.getElementById("tip");
+const showTip = (ev, html) => { tip.innerHTML = html; tip.style.display = "block"; const x = Math.min(ev.clientX + 14, window.innerWidth - 340); tip.style.left = x + "px"; tip.style.top = (ev.clientY + 14) + "px"; };
+const hideTip = () => { tip.style.display = "none"; };
+
+// Cumulative lines
+(() => {
+  const svg = document.getElementById("cum");
+  const W = 700, H = 280, L = 40, R = 150, T = 12, B = 30;
+  let a = 0, b = 0, c = 0;
+  const pts = [{ i: 0, wo: 0, w: 0, all: 0 }];
+  for (const t of tasks) { a += t.wo; b += t.w; c += t.w; pts.push({ i: t.i, wo: a, w: b, all: c, pre: c }); if (rounds[t.i]) { c += rounds[t.i].usd; pts[pts.length - 1].all = c; } }
+  const ymax = 7.5;
+  const x = (i) => L + (i / 12) * (W - L - R);
+  const y = (v) => T + (1 - v / ymax) * (H - T - B);
+  for (let v = 0; v <= 7; v += 1) {
+    el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 }, svg);
+    el("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = "$" + v;
+  }
+  for (let i = 0; i <= 12; i++) el("text", { x: x(i), y: H - 12, "text-anchor": "middle" }, svg).textContent = i === 0 ? "start" : String(i);
+  el("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: "var(--axis)", "stroke-width": 1 }, svg);
+  // The all-in line steps up at each learning round.
+  const allPath = [];
+  pts.forEach((p, k) => { if (k === 0) { allPath.push(`M${x(0)},${y(0)}`); return; } allPath.push(`L${x(p.i)},${y(p.pre)}`); if (p.all !== p.pre) allPath.push(`L${x(p.i)},${y(p.all)}`); });
+  const line = (key, color) => el("path", { d: pts.map((p, k) => `${k ? "L" : "M"}${x(p.i)},${y(p[key])}`).join(""), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  el("path", { d: allPath.join(""), fill: "none", stroke: "var(--series-3)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  line("w", "var(--series-2)");
+  line("wo", "var(--series-1)");
+  for (const [k, r] of Object.entries(rounds)) {
+    const p = pts[Number(k)];
+    el("circle", { cx: x(p.i), cy: y(p.all), r: 4.5, fill: r.kept ? "var(--series-3)" : "var(--surface-1)", stroke: "var(--series-3)", "stroke-width": 2 }, svg);
+  }
+  const end = pts[12];
+  el("text", { x: W - R + 10, y: y(end.all) + 4, class: "lbl-strong" }, svg).textContent = `${usd(end.all)} with, + learning`;
+  el("text", { x: W - R + 10, y: y(end.w) + 4, class: "lbl" }, svg).textContent = `${usd(end.w)} with, agents`;
+  el("text", { x: W - R + 10, y: y(end.wo) + 4, class: "lbl" }, svg).textContent = `${usd(end.wo)} without`;
+  // Hover: crosshair + values at the nearest task.
+  const cross = el("line", { y1: T, y2: H - B, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" }, svg);
+  hit.addEventListener("mousemove", (ev) => {
+    const r = svg.getBoundingClientRect();
+    const sx = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(1, Math.min(12, Math.round(((sx - L) / (W - L - R)) * 12)));
+    const p = pts[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    const rd = rounds[i] ? `<div class="muted">learning round after this task: ${usd(rounds[i].usd)}, ${rounds[i].kept ? "kept" : "rejected"}</div>` : "";
+    showTip(ev, `<div class="t">After task ${i}: ${tasks[i - 1].name}</div><div class="row"><span>without</span><span>${usd(p.wo)}</span></div><div class="row"><span>with, agents</span><span>${usd(p.w)}</span></div><div class="row"><span>with, + learning</span><span>${usd(p.all)}</span></div>${rd}`);
+  });
+  hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+})();
+
+// Paired bars per task
+(() => {
+  const svg = document.getElementById("bars");
+  const W = 700, H = 260, L = 40, R = 6, T = 18, B = 44;
+  const ymax = 0.8;
+  const y = (v) => T + (1 - v / ymax) * (H - T - B);
+  const gw = (W - L - R) / 12, bw = Math.min(20, gw * 0.36);
+  for (let v = 0; v <= 0.8001; v += 0.2) {
+    el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1 }, svg);
+    el("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = "$" + v.toFixed(1);
+  }
+  const bar = (cx, v, color) => {
+    const top = y(v), base = y(0), r = 4;
+    const h = base - top;
+    const rr = Math.min(r, h / 2);
+    const d = `M${cx},${base}V${top + rr}Q${cx},${top} ${cx + rr},${top}H${cx + bw - rr}Q${cx + bw},${top} ${cx + bw},${top + rr}V${base}Z`;
+    return el("path", { d, fill: color }, svg);
+  };
+  for (const t of tasks) {
+    const gx = L + (t.i - 1) * gw + gw / 2;
+    bar(gx - bw - 1, t.wo, "var(--series-1)");
+    bar(gx + 1, t.w, "var(--series-2)");
+    el("text", { x: gx, y: H - 28, "text-anchor": "middle" }, svg).textContent = String(t.i);
+    el("text", { x: gx, y: H - 14, "text-anchor": "middle", "font-size": 10 }, svg).textContent = t.kind;
+    if (t.w < t.wo) el("text", { x: gx, y: y(Math.max(t.w, t.wo)) - 6, "text-anchor": "middle", class: "lbl-strong" }, svg).textContent = Math.round((t.w / t.wo - 1) * 100) + "%";
+    const hit = el("rect", { x: gx - gw / 2 + 2, y: T, width: gw - 4, height: H - T - B, fill: "transparent" }, svg);
+    hit.addEventListener("mousemove", (ev) => showTip(ev, `<div class="t">${t.i}. ${t.name} (${t.kind})</div><div class="row"><span>without</span><span>${usd(t.wo)}</span></div><div class="row"><span>with</span><span>${usd(t.w)} (${t.w >= t.wo ? "+" : ""}${Math.round((t.w / t.wo - 1) * 100)}%)</span></div><div class="muted">handed over: ${t.ho}</div>`));
+    hit.addEventListener("mouseleave", hideTip);
+  }
+  el("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: "var(--axis)", "stroke-width": 1 }, svg);
+})();
+
+// Table view
+(() => {
+  const body = document.querySelector("#tbl tbody");
+  for (const t of tasks) {
+    const d = Math.round((t.w / t.wo - 1) * 100);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="num">${t.i}</td><td>${t.name}</td><td>${t.kind}</td><td class="num">${usd(t.wo)}</td><td class="num">${usd(t.w)}</td><td class="num${d < 0 ? " cheaper" : ""}">${d > 0 ? "+" : ""}${d}%</td><td>${t.ho}</td>`;
+    body.appendChild(tr);
+  }
+  const sum = (k) => tasks.reduce((s, t) => s + t[k], 0);
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td></td><td><b>Agents, all 12</b></td><td></td><td class="num"><b>${usd(sum("wo"))}</b></td><td class="num"><b>${usd(sum("w"))}</b></td><td class="num"><b>+${Math.round((sum("w") / sum("wo") - 1) * 100)}%</b></td><td>plus learning $2.59 with singularity</td>`;
+  body.appendChild(tr);
+})();
+</script>
+</body>
+</html>

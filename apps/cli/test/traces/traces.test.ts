@@ -6,6 +6,7 @@ import {
   metricsToJson,
   parseSession,
   repeatReads,
+  reportsFailure,
   SHELL_WRITE,
   toolCallDuration,
   traceAgentIds,
@@ -184,4 +185,32 @@ describe("SHELL_WRITE", () => {
   it.each(shellCases)("%s -> %s", (command, writes) => {
     assert.strictEqual(SHELL_WRITE.test(command), writes)
   })
+})
+
+describe("reportsFailure", () => {
+  // What failing checks print, often through grep or tail, which hide their exit status.
+  const failing = [
+    "ℹ tests 1236\nℹ pass 1235\nℹ fail 1",
+    "▶ markdownlint-test-project.mjs\r\n  ✖ projectFiles (2.7125ms)\r\n",
+    "✖ failing tests:\n\ntest at test/markdownlint-test.mjs:1:1",
+    "Error: plan expected 142 assertions but received 144",
+    "ℹ Error: 99.88% branch coverage does not meet threshold of 100%.",
+    "  code: 'ERR_ASSERTION',",
+    "not ok 3 - MD061 is registered",
+    "  2 failing",
+    "✖ 5 problems (5 errors, 0 warnings)",
+    "npm error code 1\nnpm error command failed",
+    "--- FAIL: TestParse (0.00s)",
+    "test result: FAILED. 3 passed; 1 failed"
+  ]
+  const passing = [
+    "ℹ tests 1236\nℹ pass 1236\nℹ fail 0",
+    "  ✔ projectFiles (2.7125ms)",
+    "✖ 2 problems (0 errors, 2 warnings)",
+    "  0 failing",
+    "ok 3 - MD061 is registered",
+    "Test Files  139 passed (139)"
+  ]
+  it.each(failing)("sees a failure in %j", (output) => assert.isTrue(reportsFailure(output)))
+  it.each(passing)("sees none in %j", (output) => assert.isFalse(reportsFailure(output)))
 })

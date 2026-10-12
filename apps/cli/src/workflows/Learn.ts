@@ -5,7 +5,8 @@
  * the records (`workflows build`, then `workflows cues`); after that, every
  * few new changes, a learning round revises it and keeps the revision only
  * if, replayed over the changes, it fits them at least as well (`workflows
- * evolve`). One candidate per round, so a round is one version.
+ * evolve`). One candidate per round, so a round is one version; a revision
+ * that isn't kept still leaves its new pitfalls, as a version of their own.
  *
  * Memory keeps every repo's workflows in one store, but induction reads one
  * repo at a time: a repo is learned alone and merged back, and other repos'
@@ -18,8 +19,8 @@ import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import type { Subject } from "../records/Subjects.ts"
 import { writeCues } from "./CueWriter.ts"
-import { gatherEvidence } from "./Evidence.ts"
-import { handedTexts, passes, refine, replay } from "./Evolve.ts"
+import { gatherEvidence, withPlacesOf } from "./Evidence.ts"
+import { handedTexts, passes, refine, replay, withNewPitfalls } from "./Evolve.ts"
 import { withSnapshots } from "./Finish.ts"
 import { type InduceConfig, induce } from "./Induce.ts"
 import { END, START, type WorkflowMemory } from "./Models.ts"
@@ -85,6 +86,8 @@ export interface LearnConfig extends InduceConfig {
   readonly every: number
   /** Learn even with fewer new changes than `every` (at least one). */
   readonly now?: boolean | undefined
+  /** The tenant's directory, whose hand-over log says what each session was handed: a round tells what runs still looked up against it. */
+  readonly tenantDir?: string | undefined
 }
 
 export type LearnOutcome =
@@ -237,10 +240,12 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
     config,
     "cues",
     current,
-    evidence,
+    // A place counts every run that edited it, the ones memory learned from too.
+    withPlacesOf(evidence, before, current),
     new Map(state.unlearned.map((r) => [r.id, r])),
     rejected,
-    { repo: undefined, texts: yield* handedTexts(state.unlearned) }
+    // Memory's places are found in the repo each run's record names.
+    { repo: undefined, texts: yield* handedTexts(state.unlearned, config.tenantDir) }
   )
   const runs = [...before.runs, ...evidence.runs]
   const cued = yield* writeCues(config, withSnapshots(refined.memory, runs), runs)
@@ -253,7 +258,21 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
   const candidate = yield* propose(revision, records, refined.rationale, costUsd, [...refined.problems, ...cued.problems])
   if (!verdict.commit) {
     yield* store.reject(candidate.id, verdict.reason)
-    return { kind: "kept", subject: subject.id, reason: `kept the memory it had: the revision ${verdict.reason}`, costUsd } satisfies LearnOutcome
+    // What went wrong in the runs was checked against their failures, not their places: it stays.
+    const warned = withNewPitfalls(current, revision)
+    if (warned === undefined) {
+      return { kind: "kept", subject: subject.id, reason: `kept the memory it had: the revision ${verdict.reason}`, costUsd } satisfies LearnOutcome
+    }
+    const added = warned.pitfalls.length - current.pitfalls.length
+    // The new changes are left for the next round to learn from: this version holds only what memory learned before.
+    const kept = yield* propose(warned, state.learned.map((r) => r.id), `the new pitfalls of ${candidate.id}, rejected: ${verdict.reason}`, 0, [])
+    yield* store.commit(kept.id)
+    return {
+      kind: "kept",
+      subject: subject.id,
+      reason: `kept its workflows and added ${added} known mistake${added === 1 ? "" : "s"}: the revision ${verdict.reason}`,
+      costUsd
+    } satisfies LearnOutcome
   }
   const version = yield* store.commit(candidate.id)
   return {

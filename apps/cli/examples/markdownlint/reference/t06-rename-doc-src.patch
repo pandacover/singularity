@@ -1,0 +1,254 @@
+diff --git a/.npmignore b/.npmignore
+index 63c3487c..766f0a43 100644
+--- a/.npmignore
++++ b/.npmignore
+@@ -6,7 +6,7 @@
+ coverage
+ declaration
+ demo/*
+-doc-build
++doc-src
+ eslint.config.mjs
+ example
+ npm-debug.log
+diff --git a/doc-build/.markdownlint.jsonc b/doc-src/.markdownlint.jsonc
+similarity index 100%
+rename from doc-build/.markdownlint.jsonc
+rename to doc-src/.markdownlint.jsonc
+diff --git a/doc-build/build-rules.mjs b/doc-src/build-rules.mjs
+similarity index 100%
+rename from doc-build/build-rules.mjs
+rename to doc-src/build-rules.mjs
+diff --git a/doc-build/footing.md b/doc-src/footing.md
+similarity index 100%
+rename from doc-build/footing.md
+rename to doc-src/footing.md
+diff --git a/doc-build/heading.md b/doc-src/heading.md
+similarity index 100%
+rename from doc-build/heading.md
+rename to doc-src/heading.md
+diff --git a/doc-build/md001.md b/doc-src/md001.md
+similarity index 100%
+rename from doc-build/md001.md
+rename to doc-src/md001.md
+diff --git a/doc-build/md003.md b/doc-src/md003.md
+similarity index 100%
+rename from doc-build/md003.md
+rename to doc-src/md003.md
+diff --git a/doc-build/md004.md b/doc-src/md004.md
+similarity index 100%
+rename from doc-build/md004.md
+rename to doc-src/md004.md
+diff --git a/doc-build/md005.md b/doc-src/md005.md
+similarity index 100%
+rename from doc-build/md005.md
+rename to doc-src/md005.md
+diff --git a/doc-build/md007.md b/doc-src/md007.md
+similarity index 100%
+rename from doc-build/md007.md
+rename to doc-src/md007.md
+diff --git a/doc-build/md009.md b/doc-src/md009.md
+similarity index 100%
+rename from doc-build/md009.md
+rename to doc-src/md009.md
+diff --git a/doc-build/md010.md b/doc-src/md010.md
+similarity index 100%
+rename from doc-build/md010.md
+rename to doc-src/md010.md
+diff --git a/doc-build/md011.md b/doc-src/md011.md
+similarity index 100%
+rename from doc-build/md011.md
+rename to doc-src/md011.md
+diff --git a/doc-build/md012.md b/doc-src/md012.md
+similarity index 100%
+rename from doc-build/md012.md
+rename to doc-src/md012.md
+diff --git a/doc-build/md013.md b/doc-src/md013.md
+similarity index 100%
+rename from doc-build/md013.md
+rename to doc-src/md013.md
+diff --git a/doc-build/md014.md b/doc-src/md014.md
+similarity index 100%
+rename from doc-build/md014.md
+rename to doc-src/md014.md
+diff --git a/doc-build/md018.md b/doc-src/md018.md
+similarity index 100%
+rename from doc-build/md018.md
+rename to doc-src/md018.md
+diff --git a/doc-build/md019.md b/doc-src/md019.md
+similarity index 100%
+rename from doc-build/md019.md
+rename to doc-src/md019.md
+diff --git a/doc-build/md020.md b/doc-src/md020.md
+similarity index 100%
+rename from doc-build/md020.md
+rename to doc-src/md020.md
+diff --git a/doc-build/md021.md b/doc-src/md021.md
+similarity index 100%
+rename from doc-build/md021.md
+rename to doc-src/md021.md
+diff --git a/doc-build/md022.md b/doc-src/md022.md
+similarity index 100%
+rename from doc-build/md022.md
+rename to doc-src/md022.md
+diff --git a/doc-build/md023.md b/doc-src/md023.md
+similarity index 100%
+rename from doc-build/md023.md
+rename to doc-src/md023.md
+diff --git a/doc-build/md024.md b/doc-src/md024.md
+similarity index 100%
+rename from doc-build/md024.md
+rename to doc-src/md024.md
+diff --git a/doc-build/md025.md b/doc-src/md025.md
+similarity index 100%
+rename from doc-build/md025.md
+rename to doc-src/md025.md
+diff --git a/doc-build/md026.md b/doc-src/md026.md
+similarity index 100%
+rename from doc-build/md026.md
+rename to doc-src/md026.md
+diff --git a/doc-build/md027.md b/doc-src/md027.md
+similarity index 100%
+rename from doc-build/md027.md
+rename to doc-src/md027.md
+diff --git a/doc-build/md028.md b/doc-src/md028.md
+similarity index 100%
+rename from doc-build/md028.md
+rename to doc-src/md028.md
+diff --git a/doc-build/md029.md b/doc-src/md029.md
+similarity index 100%
+rename from doc-build/md029.md
+rename to doc-src/md029.md
+diff --git a/doc-build/md030.md b/doc-src/md030.md
+similarity index 100%
+rename from doc-build/md030.md
+rename to doc-src/md030.md
+diff --git a/doc-build/md031.md b/doc-src/md031.md
+similarity index 100%
+rename from doc-build/md031.md
+rename to doc-src/md031.md
+diff --git a/doc-build/md032.md b/doc-src/md032.md
+similarity index 100%
+rename from doc-build/md032.md
+rename to doc-src/md032.md
+diff --git a/doc-build/md033.md b/doc-src/md033.md
+similarity index 100%
+rename from doc-build/md033.md
+rename to doc-src/md033.md
+diff --git a/doc-build/md034.md b/doc-src/md034.md
+similarity index 100%
+rename from doc-build/md034.md
+rename to doc-src/md034.md
+diff --git a/doc-build/md035.md b/doc-src/md035.md
+similarity index 100%
+rename from doc-build/md035.md
+rename to doc-src/md035.md
+diff --git a/doc-build/md036.md b/doc-src/md036.md
+similarity index 100%
+rename from doc-build/md036.md
+rename to doc-src/md036.md
+diff --git a/doc-build/md037.md b/doc-src/md037.md
+similarity index 100%
+rename from doc-build/md037.md
+rename to doc-src/md037.md
+diff --git a/doc-build/md038.md b/doc-src/md038.md
+similarity index 100%
+rename from doc-build/md038.md
+rename to doc-src/md038.md
+diff --git a/doc-build/md039.md b/doc-src/md039.md
+similarity index 100%
+rename from doc-build/md039.md
+rename to doc-src/md039.md
+diff --git a/doc-build/md040.md b/doc-src/md040.md
+similarity index 100%
+rename from doc-build/md040.md
+rename to doc-src/md040.md
+diff --git a/doc-build/md041.md b/doc-src/md041.md
+similarity index 100%
+rename from doc-build/md041.md
+rename to doc-src/md041.md
+diff --git a/doc-build/md042.md b/doc-src/md042.md
+similarity index 100%
+rename from doc-build/md042.md
+rename to doc-src/md042.md
+diff --git a/doc-build/md043.md b/doc-src/md043.md
+similarity index 100%
+rename from doc-build/md043.md
+rename to doc-src/md043.md
+diff --git a/doc-build/md044.md b/doc-src/md044.md
+similarity index 100%
+rename from doc-build/md044.md
+rename to doc-src/md044.md
+diff --git a/doc-build/md045.md b/doc-src/md045.md
+similarity index 100%
+rename from doc-build/md045.md
+rename to doc-src/md045.md
+diff --git a/doc-build/md046.md b/doc-src/md046.md
+similarity index 100%
+rename from doc-build/md046.md
+rename to doc-src/md046.md
+diff --git a/doc-build/md047.md b/doc-src/md047.md
+similarity index 100%
+rename from doc-build/md047.md
+rename to doc-src/md047.md
+diff --git a/doc-build/md048.md b/doc-src/md048.md
+similarity index 100%
+rename from doc-build/md048.md
+rename to doc-src/md048.md
+diff --git a/doc-build/md049.md b/doc-src/md049.md
+similarity index 100%
+rename from doc-build/md049.md
+rename to doc-src/md049.md
+diff --git a/doc-build/md050.md b/doc-src/md050.md
+similarity index 100%
+rename from doc-build/md050.md
+rename to doc-src/md050.md
+diff --git a/doc-build/md051.md b/doc-src/md051.md
+similarity index 100%
+rename from doc-build/md051.md
+rename to doc-src/md051.md
+diff --git a/doc-build/md052.md b/doc-src/md052.md
+similarity index 100%
+rename from doc-build/md052.md
+rename to doc-src/md052.md
+diff --git a/doc-build/md053.md b/doc-src/md053.md
+similarity index 100%
+rename from doc-build/md053.md
+rename to doc-src/md053.md
+diff --git a/doc-build/md054.md b/doc-src/md054.md
+similarity index 100%
+rename from doc-build/md054.md
+rename to doc-src/md054.md
+diff --git a/doc-build/md055.md b/doc-src/md055.md
+similarity index 100%
+rename from doc-build/md055.md
+rename to doc-src/md055.md
+diff --git a/doc-build/md056.md b/doc-src/md056.md
+similarity index 100%
+rename from doc-build/md056.md
+rename to doc-src/md056.md
+diff --git a/doc-build/md058.md b/doc-src/md058.md
+similarity index 100%
+rename from doc-build/md058.md
+rename to doc-src/md058.md
+diff --git a/doc-build/md059.md b/doc-src/md059.md
+similarity index 100%
+rename from doc-build/md059.md
+rename to doc-src/md059.md
+diff --git a/doc-build/md060.md b/doc-src/md060.md
+similarity index 100%
+rename from doc-build/md060.md
+rename to doc-src/md060.md
+diff --git a/package.json b/package.json
+index e7a24ed5..44b10cd9 100644
+--- a/package.json
++++ b/package.json
+@@ -38,7 +38,7 @@
+     "build-config-schema": "node schema/build-config-schema.mjs",
+     "build-declaration": "tsc --project ./declaration/tsconfig.json && node scripts/index.mjs copy dts/lib/exports.d.mts lib/exports.d.mts && node scripts/index.mjs copy dts/lib/exports-async.d.mts lib/exports-async.d.mts && node scripts/index.mjs copy dts/lib/exports-promise.d.mts lib/exports-promise.d.mts && node scripts/index.mjs copy dts/lib/exports-sync.d.mts lib/exports-sync.d.mts && node scripts/index.mjs copy dts/lib/markdownlint.d.mts lib/markdownlint.d.mts && node scripts/index.mjs copy dts/lib/resolve-module.d.cts lib/resolve-module.d.cts && node scripts/index.mjs remove dts",
+     "build-demo": "node scripts/index.mjs copy node_modules/markdown-it/dist/markdown-it.min.js demo/markdown-it.min.js && cd demo && webpack --no-stats",
+-    "build-docs": "node doc-build/build-rules.mjs",
++    "build-docs": "node doc-src/build-rules.mjs",
+     "ci": "concurrently npm:build-demo npm:lint npm:serial-config-docs npm:serial-declaration npm:test npm:test-webpack && git diff --exit-code && echo PASS",
+     "clone-test-repos-dotnet-docs": "cd test-repos && git clone https://github.com/dotnet/docs dotnet-docs --depth 1 --no-tags --quiet",
+     "clone-test-repos-electron-electron": "cd test-repos && git clone https://github.com/electron/electron electron-electron --depth 1 --no-tags --quiet && cd electron-electron && node ../../scripts/index.mjs delete package.json && npm install --no-save --ignore-scripts @electron/lint-roller",

@@ -1,0 +1,32 @@
+2026-10-11T19:43:07.538Z [with] arm with, repo C:\singularity-workspaces\long\arm-with-2, tasks 1-12, memory home C:\singularity-workspaces\long\sg-home-2, memory code C:\singularity-workspaces\long\sg-app-2
+2026-10-11T19:43:07.579Z [with] task 1 t01-heading-max-level: start (HEAD 314ab18e, session 9edcbb65-e886-4142-ac22-531a96d7ecfd)
+2026-10-11T19:47:29.381Z [with] task 1 t01-heading-max-level: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types ok cost $0.419 turns 21 3.5 min, waited 0.4 min for singularity
+2026-10-11T19:47:29.411Z [with] task 2 t02-code-block-max-lines: start (HEAD eaa7c320, session 8f7c7926-af42-491e-af5d-3678fae9c0c0)
+2026-10-11T19:51:17.180Z [with] waiting for singularity: learning
+2026-10-11T19:53:40.236Z [with] task 2 t02-code-block-max-lines: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.614 turns 29 3.7 min, waited 2.1 min for singularity
+2026-10-11T19:53:40.264Z [with] task 3 t03-md024-ignore-case: start (HEAD ccb92045, session 81bc9fbb-c27d-4484-9706-6bbe1387a5b2)
+2026-10-11T19:56:09.187Z [with] task 3 t03-md024-ignore-case: FAILED {"hidden":true,"test":true,"lint":true,"regenerate":false} types errors cost $0.279 turns 18 1.7 min, waited 0.4 min for singularity
+2026-10-11T19:56:09.216Z [with] task 4 t04-list-max-depth: start (HEAD 9d0341a3, session 0feaabc0-4721-4c42-a7b9-1deed42bb359)
+2026-10-11T20:09:26.002Z [with] task 4 t04-list-max-depth: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.344 turns 1 12.5 min, waited 0.4 min for singularity
+2026-10-11T20:09:26.032Z [with] task 5 t05-get-rules: start (HEAD 873b3da3, session 7a00e692-b425-4547-ad20-2ef6798e0fe5)
+2026-10-11T20:11:06.936Z [with] waiting for singularity: learning
+2026-10-11T20:14:40.640Z [with] task 5 t05-get-rules: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.273 turns 16 1.6 min, waited 3.3 min for singularity
+2026-10-11T20:14:40.667Z [with] task 6 t06-rename-doc-src: start (HEAD faff358e, session e985a7f7-b5f3-490d-a54b-9fba1f025f6f)
+2026-10-11T20:16:13.573Z [with] task 6 t06-rename-doc-src: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.078 turns 6 0.7 min, waited 0.4 min for singularity
+2026-10-11T20:16:13.601Z [with] task 7 t07-link-url-scheme: start (HEAD b92cd21d, session befa52d6-0a96-4d4f-a28f-4ae00ac89240)
+2026-10-11T20:19:57.255Z [with] task 7 t07-link-url-scheme: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.450 turns 18 2.9 min, waited 0.4 min for singularity
+2026-10-11T20:19:57.284Z [with] task 8 t08-todo-comments-example: start (HEAD 90768cdf, session d64d7cca-882c-4049-a391-1593dd4634c2)
+2026-10-11T20:22:16.714Z [with] waiting for singularity: learning
+2026-10-11T20:27:01.278Z [with] task 8 t08-todo-comments-example: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.299 turns 28 2.2 min, waited 4.4 min for singularity
+2026-10-11T20:27:01.310Z [with] task 9 t09-md014-prompts: start (HEAD 2daf9c3a, session 591e01a0-f44e-4662-9ef3-8734d02be0fd)
+2026-10-11T21:47:38.759Z [with] arm with, repo C:\singularity-workspaces\long\arm-with-2, tasks 9-12, memory home C:\singularity-workspaces\long\sg-home-2, memory code C:\singularity-workspaces\long\sg-app-2
+2026-10-11T21:47:38.799Z [with] task 9 t09-md014-prompts: start (HEAD 2daf9c3a, session 3654c654-7100-4de1-9159-bbe2f7e67896)
+2026-10-11T21:52:48.120Z [with] task 9 t09-md014-prompts: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.482 turns 33 4.3 min, waited 0.4 min for singularity
+2026-10-11T21:52:48.153Z [with] task 10 t10-ol-delimiter-style: start (HEAD f0c66ca8, session c257768e-6221-4eea-9548-d1a153a4e455)
+2026-10-11T21:56:45.508Z [with] task 10 t10-ol-delimiter-style: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.475 turns 20 3.1 min, waited 0.4 min for singularity
+2026-10-11T21:56:45.538Z [with] task 11 t11-circular-extends: start (HEAD 2a3a6c20, session 1043da6e-ab34-4073-832b-44548255ae9a)
+2026-10-11T21:58:27.917Z [with] waiting for singularity: learning
+2026-10-11T22:04:24.517Z [with] task 11 t11-circular-extends: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.233 turns 18 1.6 min, waited 5.6 min for singularity
+2026-10-11T22:04:24.545Z [with] task 12 t12-no-empty-headings: start (HEAD 00582112, session a6a71c02-4742-4cc8-a431-49fc624c38ae)
+2026-10-11T22:07:48.642Z [with] task 12 t12-no-empty-headings: PASSED {"hidden":true,"test":true,"lint":true,"regenerate":true} types errors cost $0.341 turns 17 2.6 min, waited 0.4 min for singularity
+2026-10-11T22:07:48.642Z [with] done

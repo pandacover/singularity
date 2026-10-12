@@ -74,8 +74,8 @@ const stripCwd = (cwd: string | undefined) => {
   return (s: string) => s.replace(pattern, "")
 }
 
-/** A test snapshot (`.snap`, `__snapshots__/`): regenerated, not written. */
-export const isSnapshot = (path: string): boolean => path.endsWith(".snap") || path.includes("/__snapshots__/")
+/** A test snapshot (`.snap`, `__snapshots__/`, node's test runner's `.snapshot`): regenerated, not written. */
+export const isSnapshot = (path: string): boolean => path.endsWith(".snap") || path.endsWith(".snapshot") || path.includes("/__snapshots__/")
 
 /** A diff split by file: each file's path and its part of the diff, as lines (the `diff --git` line first). */
 export const diffFiles = (diff: string): Array<{ readonly path: string; readonly lines: ReadonlyArray<string> }> => {
@@ -112,15 +112,16 @@ export const parseDiff = (diff: string): Array<FileChange> => {
 }
 
 const TYPE_ERROR = /\berror TS\d+:/
+/** Vitest and Jest; node's test runner (its summary, a failing test, the list of failures, a plan or a coverage threshold not met); TAP; mocha. */
 const TEST_FAILURE =
-  /Failed Tests \d|\bFAIL\b|\(\d+ tests? \|[^)]*\d+ failed|(?<!\d)[1-9]\d* failed\b|AssertionError|Snapshot [`'"].*mismatched|✗|×/
+  /Failed Tests \d|\bFAIL\b|\(\d+ tests? \|[^)]*\d+ failed|(?<!\d)[1-9]\d* failed\b|AssertionError|ERR_ASSERTION|Snapshot [`'"].*mismatched|✗|×|^[ℹ#] fail [1-9]|^\s*✖ .*\(\d+(?:\.\d+)?m?s\)\s*$|✖ failing tests|plan expected \d+ assertions?|does not meet (?:\w+ )?threshold|^\s*not ok \d+|^\s*[1-9]\d* failing\s*$/m
 const NOT_FOUND =
   /is not recognized as|command not found|No such file|does not exist|Cannot find (module|path)|ENOENT|was not found|not found in file/i
 const SYMPTOM_LINE =
   /error|fail|✗|×|AssertionError|Expected|Received|not found|Unknown|Cannot|cannot|Invalid|invalid|denied|Exit code|matches of the string|Snapshot/i
 /** Lines that name the cause outright. */
 const STRONG_LINE =
-  /AssertionError|\bFAIL\b|×|✗|error TS\d+|\w*Error: |not found|not recognized|Unknown (option|command|argument)|Expected a single value|Cannot find|ENOENT|matches of the string|mismatched|(?<!\d)[1-9]\d* failed\b/
+  /AssertionError|\bFAIL\b|×|✗|error TS\d+|\w*Error: |not found|not recognized|Unknown (option|command|argument)|Expected a single value|Cannot find|ENOENT|matches of the string|mismatched|(?<!\d)[1-9]\d* failed\b|plan expected \d+ assertions?|does not meet (?:\w+ )?threshold|^\d+:\d+ error /
 /** Lines every failing yarn, PowerShell or Node command prints, which say nothing about the cause. */
 const GENERIC_LINE =
   /^(error Command failed with exit code \d+\.?|Exit code \d+|info Visit https:\/\/yarnpkg\.com.*|throw new Error\(|throw err;?|\^+|at .*|node:internal.*|\+ .*|At .*char:\d+|.*(CategoryInfo|FullyQualifiedErrorId|NativeCommandError).*|Snapshots? .*(updated|written|passed).*)$/

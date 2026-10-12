@@ -184,10 +184,12 @@ records use those keys.
   wired (other agents send Claude Code's format with their own event and tool
   names; `src/workflows/HookTool.ts` maps them). They must never break
   a session (errors go to `~/.singularity/hook-errors.log`, exit 0), and the
-  tool-call hook runs after every call, so `src/hook.ts` checks the session
-  file with plain `node:fs` and loads modules only for the event at hand.
-  Keep it fast (about 0.1 s without memory, 0.4 s with). Tests use a temporary
-  `SINGULARITY_HOME`, never the real one.
+  tool-call hook runs after every call, so `src/hook.ts` and
+  `src/workflows/hook.ts` check the session file with plain `node:fs` and
+  load modules only for the event at hand; v1's loads its trigger matching
+  only when a trigger's words appear in the call (`src/workflows/HookFilter.ts`).
+  Keep it fast (about 0.1 s a call; 0.4 s for the rare call that loads the
+  matching). Tests use a temporary `SINGULARITY_HOME`, never the real one.
 - Two memory homes. `~/.singularity` is our own: the memory of the sessions
   we work in, with singularity set up in our Claude Code. Evals and
   benchmarks have `runs/eval-home` (`EVAL_HOME` in `src/local/Home.ts`): the

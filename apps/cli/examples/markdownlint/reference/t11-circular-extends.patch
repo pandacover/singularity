@@ -1,0 +1,308 @@
+diff --git a/lib/markdownlint.mjs b/lib/markdownlint.mjs
+index 35f1ae86..f5d208ff 100644
+--- a/lib/markdownlint.mjs
++++ b/lib/markdownlint.mjs
+@@ -1017,6 +1017,20 @@ function resolveConfigExtendsSync(configFile, referenceId, fs) {
+   return resolvedExtendsFile;
+ }
+ 
++/**
++ * Creates the error for an "extends" chain that reaches a file again.
++ *
++ * @param {string} file Configuration file reached a second time.
++ * @param {string[]} chain Configuration files read so far (resolved paths).
++ * @returns {Error} Error object.
++ */
++function newCircularExtendsError(file, chain) {
++  return new Error(
++    `Unable to extend configuration: circular "extends" reaches "${file}" again ` +
++    `(${[ ...chain, file ].join(" -> ")}).`
++  );
++}
++
+ /**
+  * Extend specified configuration object.
+  *
+@@ -1024,39 +1038,63 @@ function resolveConfigExtendsSync(configFile, referenceId, fs) {
+  * @param {string} file Configuration file name.
+  * @param {ConfigurationParser[] | undefined} parsers Parsing function(s).
+  * @param {FsLike} fs File system implementation.
++ * @param {string[]} chain Configuration files read before this one (resolved paths).
+  * @param {ReadConfigCallback} callback Callback (err, result) function.
+  * @returns {void}
+  */
+-function extendConfig(config, file, parsers, fs, callback) {
++function extendConfigChain(config, file, parsers, fs, chain, callback) {
+   const configExtends = config.extends;
+   if (configExtends) {
++    const fileChain = [ ...chain, path.resolve(file) ];
+     return resolveConfigExtends(
+       file,
+       helpers.expandTildePath(configExtends, os),
+       fs,
+-      // eslint-disable-next-line no-use-before-define
+-      (_, resolvedExtends) => readConfigAsync(
++      (_, resolvedExtends) => {
+         // @ts-ignore
+-        resolvedExtends,
+-        parsers,
+-        fs,
+-        (err, extendsConfig) => {
+-          if (err) {
+-            return callback(err);
+-          }
+-          const result = {
+-            ...extendsConfig,
+-            ...config
+-          };
+-          delete result.extends;
+-          return callback(null, result);
++        if (fileChain.includes(resolvedExtends)) {
++          // @ts-ignore
++          return callback(newCircularExtendsError(resolvedExtends, fileChain));
+         }
+-      )
++        // eslint-disable-next-line no-use-before-define
++        return readConfigAsyncChain(
++          // @ts-ignore
++          resolvedExtends,
++          parsers,
++          fs,
++          fileChain,
++          (err, extendsConfig) => {
++            if (err) {
++              return callback(err);
++            }
++            const result = {
++              ...extendsConfig,
++              ...config
++            };
++            delete result.extends;
++            return callback(null, result);
++          }
++        );
++      }
+     );
+   }
+   return callback(null, config);
+ }
+ 
++/**
++ * Extend specified configuration object.
++ *
++ * @param {Configuration} config Configuration object.
++ * @param {string} file Configuration file name.
++ * @param {ConfigurationParser[] | undefined} parsers Parsing function(s).
++ * @param {FsLike} fs File system implementation.
++ * @param {ReadConfigCallback} callback Callback (err, result) function.
++ * @returns {void}
++ */
++function extendConfig(config, file, parsers, fs, callback) {
++  return extendConfigChain(config, file, parsers, fs, [], callback);
++}
++
+ /**
+  * Extend specified configuration object.
+  *
+@@ -1101,6 +1139,28 @@ export function readConfigAsync(file, parsers, fs, callback) {
+       parsers = null;
+     }
+   }
++  // eslint-disable-next-line no-use-before-define
++  return readConfigAsyncChain(
++    file,
++    // @ts-ignore
++    parsers,
++    fs,
++    [],
++    callback
++  );
++}
++
++/**
++ * Read specified configuration file as part of an "extends" chain.
++ *
++ * @param {string} file Configuration file name.
++ * @param {ConfigurationParser[] | undefined} parsers Parsing function(s).
++ * @param {FsLike | undefined} fs File system implementation.
++ * @param {string[]} chain Configuration files read before this one (resolved paths).
++ * @param {ReadConfigCallback} callback Callback (err, result) function.
++ * @returns {void}
++ */
++function readConfigAsyncChain(file, parsers, fs, chain, callback) {
+   /** @type {FsLike} */
+   // @ts-ignore
+   const fsLike = fs || nodeFs;
+@@ -1108,19 +1168,16 @@ export function readConfigAsync(file, parsers, fs, callback) {
+   file = helpers.expandTildePath(file, os);
+   fsLike.readFile(file, "utf8", (err, content) => {
+     if (err) {
+-      // @ts-ignore
+       return callback(err);
+     }
+     // Try to parse file
+-    // @ts-ignore
+     const { config, message } = parseConfiguration(file, content, parsers);
+     if (!config) {
+       // @ts-ignore
+       return callback(new Error(message));
+     }
+     // Extend configuration
+-    // @ts-ignore
+-    return extendConfig(config, file, parsers, fsLike, callback);
++    return extendConfigChain(config, file, parsers, fsLike, chain, callback);
+   });
+ }
+ 
+@@ -1153,6 +1210,20 @@ export function readConfigPromise(file, parsers, fs) {
+  * @returns {Configuration} Configuration object.
+  */
+ export function readConfigSync(file, parsers, fs) {
++  // eslint-disable-next-line no-use-before-define
++  return readConfigSyncChain(file, parsers, fs, []);
++}
++
++/**
++ * Read specified configuration file as part of an "extends" chain.
++ *
++ * @param {string} file Configuration file name.
++ * @param {ConfigurationParser[] | undefined} parsers Parsing function(s).
++ * @param {FsLike | undefined} fs File system implementation.
++ * @param {string[]} chain Configuration files read before this one (resolved paths).
++ * @returns {Configuration} Configuration object.
++ */
++function readConfigSyncChain(file, parsers, fs, chain) {
+   /** @type {FsLike} */
+   // @ts-ignore
+   const fsLike = fs || nodeFs;
+@@ -1169,13 +1240,17 @@ export function readConfigSync(file, parsers, fs) {
+   const configExtends = config.extends;
+   if (configExtends) {
+     delete config.extends;
++    const fileChain = [ ...chain, path.resolve(file) ];
+     const resolvedExtends = resolveConfigExtendsSync(
+       file,
+       helpers.expandTildePath(configExtends, os),
+       fsLike
+     );
++    if (fileChain.includes(resolvedExtends)) {
++      throw newCircularExtendsError(resolvedExtends, fileChain);
++    }
+     return {
+-      ...readConfigSync(resolvedExtends, parsers, fs),
++      ...readConfigSyncChain(resolvedExtends, parsers, fs, fileChain),
+       ...config
+     };
+   }
+diff --git a/test/config/config-circular-a.json b/test/config/config-circular-a.json
+new file mode 100644
+index 00000000..dbba7c8c
+--- /dev/null
++++ b/test/config/config-circular-a.json
+@@ -0,0 +1,4 @@
++{
++  "extends": "config-circular-b.json",
++  "MD001": false
++}
+diff --git a/test/config/config-circular-b.json b/test/config/config-circular-b.json
+new file mode 100644
+index 00000000..5a4eede9
+--- /dev/null
++++ b/test/config/config-circular-b.json
+@@ -0,0 +1,4 @@
++{
++  "extends": "./config-circular-a.json",
++  "MD003": false
++}
+diff --git a/test/config/config-circular-self.json b/test/config/config-circular-self.json
+new file mode 100644
+index 00000000..6089b50d
+--- /dev/null
++++ b/test/config/config-circular-self.json
+@@ -0,0 +1,4 @@
++{
++  "extends": "config-circular-self.json",
++  "MD004": false
++}
+diff --git a/test/markdownlint-test-config.mjs b/test/markdownlint-test-config.mjs
+index bed467d9..04ae2bcb 100644
+--- a/test/markdownlint-test-config.mjs
++++ b/test/markdownlint-test-config.mjs
+@@ -156,6 +156,29 @@ test.suite(import.meta.url.replace(/^.*?\/(?<name>[^/]*)$/u, "$<name>"), () => {
+       });
+   }));
+ 
++  test("configCircular", (t) => new Promise((resolve) => {
++    t.plan(3);
++    readConfigAsync("./test/config/config-circular-a.json",
++      function callback(err, result) {
++        t.assert.equal(err instanceof Error, true, "Error not instance of Error.");
++        // @ts-ignore
++        t.assert.match(err.message, /circular "extends" reaches ".*config-circular-a\.json" again/);
++        t.assert.equal(!result, true, "Got result for circular extends.");
++        resolve();
++      });
++  }));
++
++  test("configCircularSelf", (t) => new Promise((resolve) => {
++    t.plan(2);
++    readConfigAsync("./test/config/config-circular-self.json",
++      function callback(err, result) {
++        // @ts-ignore
++        t.assert.match(err.message, /circular "extends" reaches ".*config-circular-self\.json" again/);
++        t.assert.equal(!result, true, "Got result for circular extends.");
++        resolve();
++      });
++  }));
++
+   test("configBadChildPackage", (t) => new Promise((resolve) => {
+     t.plan(4);
+     readConfigAsync("./test/config/config-badchildpackage.json",
+@@ -326,6 +349,28 @@ test.suite(import.meta.url.replace(/^.*?\/(?<name>[^/]*)$/u, "$<name>"), () => {
+     );
+   });
+ 
++  test("configCircularSync", (t) => {
++    t.plan(2);
++    t.assert.throws(
++      function circularCall() {
++        readConfigSync("./test/config/config-circular-b.json");
++      },
++      {
++        "message": /circular "extends" reaches ".*config-circular-b\.json" again/
++      },
++      "Did not get correct exception for circular extends."
++    );
++    t.assert.throws(
++      function circularSelfCall() {
++        readConfigSync("./test/config/config-circular-self.json");
++      },
++      {
++        "message": /circular "extends" reaches ".*config-circular-self\.json" again/
++      },
++      "Did not get correct exception for circular extends."
++    );
++  });
++
+   test("configBadJsonSync", (t) => {
+     t.plan(1);
+     t.assert.throws(
+@@ -516,6 +561,18 @@ test.suite(import.meta.url.replace(/^.*?\/(?<name>[^/]*)$/u, "$<name>"), () => {
+       );
+   }));
+ 
++  test("configCircularPromise", (t) => new Promise((resolve) => {
++    t.plan(1);
++    readConfigPromise("./test/config/config-circular-a.json")
++      .then(
++        null,
++        (error) => {
++          t.assert.match(error.message, /circular "extends" reaches ".*config-circular-a\.json" again/);
++          resolve();
++        }
++      );
++  }));
++
+   test("extendSinglePromise", (t) => new Promise((resolve) => {
+     t.plan(1);
+     const expected = require("./config/config-child.json");

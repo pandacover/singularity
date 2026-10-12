@@ -14,6 +14,7 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { type Usage, usageToJson } from "../traces/index.ts"
 import { cueChoice, fillsOfChosen, hasCues, partsChoice } from "./Cues.ts"
 import { type DraftCall, draftChange, type DrafterConfig, renderDraft } from "./Draft.ts"
+import { repoFacts } from "./Finish.ts"
 import { END, START, type WorkflowMemory } from "./Models.ts"
 import { type CodeSource, locatePlaces, pathExists } from "./Locate.ts"
 import { MAX_HANDOVER_CHARS, renderHandover, type Shown } from "./Render.ts"
@@ -124,10 +125,13 @@ export const startTask = Effect.fn("startTask")(function*(
     .filter((p) => p !== undefined)
   const source: CodeSource = options.at === undefined ? { kind: "tree", root: repo.root } : { kind: "commit", repo: repo.root, commit: options.at }
   const located = yield* locatePlaces(source, needed)
+  // The checks are handed over only as they can run in this repo.
+  const repoNow = yield* repoFacts(source, selection.chosen.flatMap((c) => c.workflow.checks))
   const budget = options.budget ?? MAX_HANDOVER_CHARS
-  const handover = renderHandover(memory, selection.chosen, located, budget, fills, options.parts ?? 1, inParts)
-  let text = selection.chosen.length === 0 ? undefined : handover.text
-  let parts = selection.chosen.length === 0 ? [] : handover.parts
+  const handover = renderHandover(memory, selection.chosen, located, budget, fills, options.parts ?? 1, inParts, repoNow)
+  // Workflows whose only part is a command that can't run here leave nothing to hand over.
+  let text = selection.chosen.length === 0 || handover.text === "" ? undefined : handover.text
+  let parts = text === undefined ? [] : handover.parts
   let draft: DraftLog | null = null
   let draftUsage: Usage | undefined
   if (options.drafter !== undefined && selection.chosen.length > 0) {

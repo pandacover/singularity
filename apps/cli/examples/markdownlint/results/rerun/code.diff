@@ -1,0 +1,755 @@
+diff --git a/apps/cli/src/commands/Setup.ts b/apps/cli/src/commands/Setup.ts
+index fba4d15..9e60fc7 100644
+--- a/apps/cli/src/commands/Setup.ts
++++ b/apps/cli/src/commands/Setup.ts
+@@ -128,7 +128,7 @@ const learnQueued = Effect.fn("learnQueued")(function*(home: Home, subjectId: st
+     const short = budgetReason(roundUsd(state), yield* spentToday(), prefs.max_usd_per_day)
+     if (short !== undefined) return yield* log(`waits: ${short}`)
+     const learner = yield* resolveLearner(prefs.with, dirsOf())
+-    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)), every: prefs.every }).pipe(
++    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)), every: prefs.every, tenantDir: home.tenantDir }).pipe(
+       Effect.mapError((e) => new LearnerError({ message: withModelHint(e.message, learner.agent) }))
+     )
+     const s = makeStyle(false)
+@@ -240,7 +240,8 @@ const learn = Command.make(
+           learnSubject(subject, {
+             ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)),
+             every: prefs.every,
+-            now: true
++            now: true,
++            tenantDir: home.tenantDir
+           }).pipe(Effect.provide(stores), Effect.mapError((e) => new LearnerError({ message: withModelHint(e.message, learner.agent) }))),
+           interactive()
+         )
+diff --git a/apps/cli/src/commands/Workflows.ts b/apps/cli/src/commands/Workflows.ts
+index 83c070c..9dcc148 100644
+--- a/apps/cli/src/commands/Workflows.ts
++++ b/apps/cli/src/commands/Workflows.ts
+@@ -32,9 +32,9 @@ import { RecordStore } from "../records/RecordStore.ts"
+ import { commonPrompt, describeReadPlaces, learnCommon, MIN_TASKS, withKind } from "../workflows/Common.ts"
+ import { cuesPrompt, writeCues } from "../workflows/CueWriter.ts"
+ import { describeMemory } from "../workflows/Describe.ts"
+-import { gatherEvidence } from "../workflows/Evidence.ts"
++import { gatherEvidence, withPlacesOf } from "../workflows/Evidence.ts"
+ import { hasCues } from "../workflows/Cues.ts"
+-import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord } from "../workflows/Evolve.ts"
++import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord, withNewPitfalls } from "../workflows/Evolve.ts"
+ import { withSnapshots } from "../workflows/Finish.ts"
+ import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL, induce } from "../workflows/Induce.ts"
+ import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
+@@ -237,7 +237,7 @@ const evolve = Command.make(
+         return shown === undefined ? [] : [{ run, shown }]
+       })
+       return yield* Console.log(`
+-${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(newRecords))}`)
++${yield* lookupsText(yield* store.memory(), handed, (run) => repo ?? newRecords.find((x) => x.id === run.record)?.run.repo ?? undefined, yield* handedTexts(newRecords))}`)
+     }
+     const before = yield* gatherEvidence(learned, { repo })
+     const cwd = path.join(defaultWorkspaces(), "_learner")
+@@ -252,7 +252,8 @@ ${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(new
+       { cli: claudeCli(claude), cwd, model: args.model, effort: args.effort },
+       selector,
+       current,
+-      evidence,
++      // A place counts every run that edited it, the ones memory learned from too.
++      withPlacesOf(evidence, before),
+       new Map(newRecords.map((r) => [r.id, r])),
+       yield* store.candidates("rejected"),
+       { repo, texts: yield* handedTexts(newRecords) }
+@@ -284,7 +285,20 @@ ${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(new
+     })
+     if (!verdict.commit) {
+       yield* store.reject(candidate.id, verdict.reason)
+-      return yield* Console.log(`rejected ${candidate.id}: ${verdict.reason}`)
++      yield* Console.log(`rejected ${candidate.id}: ${verdict.reason}`)
++      // Its new pitfalls stay, checked against the runs' failures; the new runs are left for the next round.
++      const warned = withNewPitfalls(current, revision)
++      if (warned === undefined) return
++      const kept = yield* store.propose(warned, {
++        baseVersion,
++        rationale: `the new pitfalls of ${candidate.id}, rejected: ${verdict.reason}`,
++        records: learned.map((r) => r.id),
++        model: args.model,
++        costUsd: 0,
++        report: { problems: [], replay: null }
++      })
++      const version = yield* store.commit(kept.id)
++      return yield* Console.log(`kept its ${warned.pitfalls.length - current.pitfalls.length} new pitfalls as version ${version}`)
+     }
+     // The runs it learned from become this home's records, so later rounds know them.
+     for (const r of newRecords) if (!(yield* own.has(r.id))) yield* own.put(r)
+diff --git a/apps/cli/src/layer/Api.ts b/apps/cli/src/layer/Api.ts
+index a1ab6be..067b46f 100644
+--- a/apps/cli/src/layer/Api.ts
++++ b/apps/cli/src/layer/Api.ts
+@@ -230,7 +230,7 @@ export const learn = (req: LearnRequest): Promise<Readonly<Record<string, unknow
+         const { DEFAULT_EVERY, learnSubject } = yield* Effect.promise(() => import("../workflows/Learn.ts"))
+         const subject = (yield* (yield* RecordStore).subjects()).find((s) => s.id === req.subject)
+         if (subject === undefined) return { kind: "waiting", subject: req.subject, reason: "no such subject" }
+-        return (yield* learnSubject(subject, { ...req.config, every: req.config.every ?? DEFAULT_EVERY })) as unknown as Readonly<Record<string, unknown>>
++        return (yield* learnSubject(subject, { ...req.config, every: req.config.every ?? DEFAULT_EVERY, tenantDir: h.tenantDir })) as unknown as Readonly<Record<string, unknown>>
+       }).pipe(Effect.provide(layer))
+     }).pipe(Effect.provide(NodeServices.layer))
+   )
+diff --git a/apps/cli/src/records/Extract.ts b/apps/cli/src/records/Extract.ts
+index 429e56d..dbdb065 100644
+--- a/apps/cli/src/records/Extract.ts
++++ b/apps/cli/src/records/Extract.ts
+@@ -74,8 +74,8 @@ const stripCwd = (cwd: string | undefined) => {
+   return (s: string) => s.replace(pattern, "")
+ }
+ 
+-/** A test snapshot (`.snap`, `__snapshots__/`): regenerated, not written. */
+-export const isSnapshot = (path: string): boolean => path.endsWith(".snap") || path.includes("/__snapshots__/")
++/** A test snapshot (`.snap`, `__snapshots__/`, node's test runner's `.snapshot`): regenerated, not written. */
++export const isSnapshot = (path: string): boolean => path.endsWith(".snap") || path.endsWith(".snapshot") || path.includes("/__snapshots__/")
+ 
+ /** A diff split by file: each file's path and its part of the diff, as lines (the `diff --git` line first). */
+ export const diffFiles = (diff: string): Array<{ readonly path: string; readonly lines: ReadonlyArray<string> }> => {
+@@ -112,15 +112,16 @@ export const parseDiff = (diff: string): Array<FileChange> => {
+ }
+ 
+ const TYPE_ERROR = /\berror TS\d+:/
++/** Vitest and Jest; node's test runner (its summary, a failing test, the list of failures, a plan or a coverage threshold not met); TAP; mocha. */
+ const TEST_FAILURE =
+-  /Failed Tests \d|\bFAIL\b|\(\d+ tests? \|[^)]*\d+ failed|(?<!\d)[1-9]\d* failed\b|AssertionError|Snapshot [`'"].*mismatched|✗|×/
++  /Failed Tests \d|\bFAIL\b|\(\d+ tests? \|[^)]*\d+ failed|(?<!\d)[1-9]\d* failed\b|AssertionError|ERR_ASSERTION|Snapshot [`'"].*mismatched|✗|×|^[ℹ#] fail [1-9]|^\s*✖ .*\(\d+(?:\.\d+)?m?s\)\s*$|✖ failing tests|plan expected \d+ assertions?|does not meet (?:\w+ )?threshold|^\s*not ok \d+|^\s*[1-9]\d* failing\s*$/m
+ const NOT_FOUND =
+   /is not recognized as|command not found|No such file|does not exist|Cannot find (module|path)|ENOENT|was not found|not found in file/i
+ const SYMPTOM_LINE =
+   /error|fail|✗|×|AssertionError|Expected|Received|not found|Unknown|Cannot|cannot|Invalid|invalid|denied|Exit code|matches of the string|Snapshot/i
+ /** Lines that name the cause outright. */
+ const STRONG_LINE =
+-  /AssertionError|\bFAIL\b|×|✗|error TS\d+|\w*Error: |not found|not recognized|Unknown (option|command|argument)|Expected a single value|Cannot find|ENOENT|matches of the string|mismatched|(?<!\d)[1-9]\d* failed\b/
++  /AssertionError|\bFAIL\b|×|✗|error TS\d+|\w*Error: |not found|not recognized|Unknown (option|command|argument)|Expected a single value|Cannot find|ENOENT|matches of the string|mismatched|(?<!\d)[1-9]\d* failed\b|plan expected \d+ assertions?|does not meet (?:\w+ )?threshold|^\d+:\d+ error /
+ /** Lines every failing yarn, PowerShell or Node command prints, which say nothing about the cause. */
+ const GENERIC_LINE =
+   /^(error Command failed with exit code \d+\.?|Exit code \d+|info Visit https:\/\/yarnpkg\.com.*|throw new Error\(|throw err;?|\^+|at .*|node:internal.*|\+ .*|At .*char:\d+|.*(CategoryInfo|FullyQualifiedErrorId|NativeCommandError).*|Snapshots? .*(updated|written|passed).*)$/
+diff --git a/apps/cli/src/setup/Setup.ts b/apps/cli/src/setup/Setup.ts
+index 11bccab..9742fdd 100644
+--- a/apps/cli/src/setup/Setup.ts
++++ b/apps/cli/src/setup/Setup.ts
+@@ -269,7 +269,8 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
+       learnSubject(subject, {
+         ...learnerConfig(learner, learnCwd, model),
+         every: prefs.every,
+-        now: true
++        now: true,
++        tenantDir: home.tenantDir
+       }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
+       o.interactive
+     )
+diff --git a/apps/cli/src/traces/Failure.ts b/apps/cli/src/traces/Failure.ts
+index d717f80..b8cc859 100644
+--- a/apps/cli/src/traces/Failure.ts
++++ b/apps/cli/src/traces/Failure.ts
+@@ -6,13 +6,45 @@
+ const ANSI = /\x1b\[[0-9;]*m/g
+ const FAILURE = /\bexit(?:ed with)? (?:code|status) [1-9]|\bnpm ERR!|\berror TS\d+:|(?<!\d)[1-9]\d* failed\b/i
+ 
++/**
++ * What test runners and linters print, in their own case, only when something
++ * failed: npm 7 and later; node's test runner (its summary, a failing test,
++ * the list of failures, a plan or a coverage threshold not met, an assertion);
++ * TAP; mocha; ESLint; Go; Rust.
++ */
++const REPORTED_FAILURE = new RegExp(
++  [
++    String.raw`^npm error\b`,
++    String.raw`^[ℹ#] fail [1-9]`,
++    String.raw`^\s*✖ .*\(\d+(?:\.\d+)?m?s\)\s*$`,
++    String.raw`✖ failing tests`,
++    String.raw`plan expected \d+ assertions? but received \d+`,
++    String.raw`does not meet (?:\w+ )?threshold`,
++    String.raw`AssertionError \[ERR_ASSERTION\]`,
++    String.raw`code: 'ERR_ASSERTION'`,
++    String.raw`^\s*not ok \d+`,
++    String.raw`^\s*[1-9]\d* failing\s*$`,
++    String.raw`✖ [1-9]\d* problems? \([1-9]\d* errors?`,
++    String.raw`ESLint found too many warnings`,
++    String.raw`^--- FAIL: `,
++    String.raw`^FAIL\s`,
++    String.raw`test result: FAILED`
++  ].join("|"),
++  "m"
++)
++
+ /**
+  * Whether a command's output says that something in it failed: a nonzero exit
+- * code, an npm error, a TypeScript error or failed tests. A pipeline exits with
+- * its last command's status, so `yarn test:update --watch=false 2>&1 | tail`
+- * succeeds even though yarn failed, but the output still says so.
++ * code, an npm error, a TypeScript error, failed tests or a linter's errors. A
++ * pipeline exits with its last command's status, so
++ * `yarn test:update --watch=false 2>&1 | tail` succeeds even though yarn
++ * failed, and `npm test 2>&1 | grep "^ℹ fail"` even though tests did: the
++ * output still says so.
+  */
+-export const reportsFailure = (output: string): boolean => FAILURE.test(output.replace(ANSI, ""))
++export const reportsFailure = (output: string): boolean => {
++  const text = output.replace(ANSI, "")
++  return FAILURE.test(text) || REPORTED_FAILURE.test(text)
++}
+ 
+ /** Output without terminal colour codes. */
+ export const stripAnsi = (text: string): string => text.replace(ANSI, "")
+diff --git a/apps/cli/src/workflows/Evidence.ts b/apps/cli/src/workflows/Evidence.ts
+index 8b949ea..c32b0be 100644
+--- a/apps/cli/src/workflows/Evidence.ts
++++ b/apps/cli/src/workflows/Evidence.ts
+@@ -19,7 +19,7 @@ import { EDIT_TOOLS, type ToolCall } from "../traces/index.ts"
+ import { editsOfDiff, placeOfEdit } from "./Edits.ts"
+ import { type Looking, lookingOf } from "./Lookups.ts"
+ import type { Place } from "./Models.ts"
+-import { placeKey, placesOfRead, type PlaceShape, sharedNameStart } from "./Places.ts"
++import { isKindStart, placeKey, placesOfRead, type PlaceShape, sharedNameStart } from "./Places.ts"
+ import { linesOfSpan, MAX_SEARCH_PLACES, type ReadSpan, readSpans } from "./Reads.ts"
+ 
+ export interface PlaceUse {
+@@ -80,7 +80,20 @@ const newFileKey = (dir: string, prefix: string, ext: string) => JSON.stringify(
+ 
+ const clip = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s)
+ 
+-export const taskLabel = (r: WorkflowRecord): string => r.run.task_id ?? r.task.prompt.trim().replace(/\s+/g, " ").slice(0, 60)
++const MAX_LABEL = 60
++
++/**
++ * The task a run did: the eval task, or the start of its prompt. Tasks in a
++ * repo often start alike ("This is our fork of markdownlint. Add a new
++ * built-in rule:"), so a prompt cut short ends with a hash of all of it:
++ * different tasks never share a label, and the runs of one task always do.
++ */
++export const taskLabel = (r: WorkflowRecord): string => {
++  if (r.run.task_id !== null) return r.run.task_id
++  const prompt = r.task.prompt.trim().replace(/\s+/g, " ")
++  if (prompt.length <= MAX_LABEL) return prompt
++  return `${prompt.slice(0, MAX_LABEL).trimEnd()}… #${createHash("sha256").update(prompt).digest("hex").slice(0, 6)}`
++}
+ 
+ /** The run's change: its eval diff, or the session's commits. */
+ const diffOf = Effect.fnUntraced(function*(r: WorkflowRecord, repo: string | undefined) {
+@@ -151,6 +164,12 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
+ const IDENT = /[A-Za-z_$][\w$]{3,}/g
+ const LITERAL = /^(true|false|null|undefined|this|that|with|from|import|export|const|return)$/i
+ 
++/** Prose: Markdown and plain text, whose words are English. Only what it puts in backticks is code. */
++const PROSE = /\.(md|mdx|markdown|txt|rst|adoc)$/i
++
++const codeIn = (file: string, text: string): string =>
++  PROSE.test(file) ? [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).join("\n") : text
++
+ /** What a task's prompt names as its own: what it quotes or puts in backticks, and the keys it names (Alt+M). */
+ export const promptValues = (prompt: string): Array<string> => {
+   const values = new Set<string>()
+@@ -164,18 +183,19 @@ export const promptValues = (prompt: string): Array<string> => {
+ 
+ /**
+  * Names a task's change may have brought into the code: those its edits added
+- * to a file that didn't have them, and the names of the files it created and
+- * what they export. Which of them are new to the repo is up to git
++ * to a file that didn't have them (in prose, only in backticks: a doc's new
++ * sentence brings words, not names), and the names of the files it created
++ * and what they export. Which of them are new to the repo is up to git
+  * (`existingNames`): `Keyboard` is new to one test file, not to the repo.
+  */
+ export const newNames = (
+-  edits: ReadonlyArray<{ readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }>,
++  edits: ReadonlyArray<{ readonly file: string; readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }>,
+   created: ReadonlyArray<{ readonly file: string; readonly content: string }>
+ ): Array<string> => {
+   const names = new Set<string>()
+   for (const e of edits) {
+     const before = new Set((e.before ?? []).join("\n").match(IDENT) ?? [])
+-    for (const name of e.added.join("\n").match(IDENT) ?? []) if (!before.has(name) && !LITERAL.test(name)) names.add(name)
++    for (const name of codeIn(e.file, e.added.join("\n")).match(IDENT) ?? []) if (!before.has(name) && !LITERAL.test(name)) names.add(name)
+   }
+   for (const c of created) {
+     names.add(splitName(c.file).stem)
+@@ -184,57 +204,42 @@ export const newNames = (
+   return [...names]
+ }
+ 
++/**
++ * Searches run side by side. One word per search: git grep prints every line
++ * that matches, and with many words that takes minutes in a repo with large
++ * files (a hundred words: over three minutes in markdownlint, against a tenth
++ * of a second for one), past the time git is given.
++ */
++const SEARCHES = 4
++
+ /** Which of `names` occur as whole words anywhere in the repo at `commit`. */
+ const existingNames = Effect.fnUntraced(function*(repo: string, commit: string, names: ReadonlyArray<string>) {
+-  const found = new Set<string>()
+-  for (let i = 0; i < names.length; i += 100) {
+-    const chunk = names.slice(i, i + 100)
+-    // git grep exits 1 when nothing matches.
+-    const out = yield* git(repo, ["grep", "-h", "-o", "-w", "-F", ...chunk.flatMap((n) => ["-e", n]), commit, "--"]).pipe(
+-      Effect.orElseSucceed(() => "")
+-    )
+-    for (const l of out.split(/\r?\n/)) if (l.trim() !== "") found.add(l.trim())
+-  }
+-  return found
++  // git grep -q stops at the first match, and exits 1 when nothing matches.
++  const found = yield* Effect.forEach(
++    names,
++    (n) => git(repo, ["grep", "-q", "-I", "-w", "-F", "-e", n, commit, "--"]).pipe(Effect.as(true), Effect.orElseSucceed(() => false)),
++    { concurrency: SEARCHES }
++  )
++  return new Set(names.filter((_, i) => found[i]))
+ })
+ 
+ /** Values no file can use as a word: long ones and ones across lines are a task's own wording. */
+ const MAX_WORD_VALUE = 120
+ 
+-/** git grep's patterns in groups: at most 100, and short enough for a Windows command line. */
+-const patternGroups = (values: ReadonlyArray<string>): Array<Array<string>> => {
+-  const groups: Array<Array<string>> = []
+-  let group: Array<string> = []
+-  let chars = 0
+-  for (const v of values) {
+-    if (group.length === 100 || chars + v.length > 8000) {
+-      groups.push(group)
+-      group = []
+-      chars = 0
+-    }
+-    group.push(v)
+-    chars += v.length + 4
+-  }
+-  if (group.length > 0) groups.push(group)
+-  return groups
+-}
+-
+ /** The files that use each of `values` at `commit`, as a whole word in any case, by the value in lower case. */
+ const filesUsing = Effect.fnUntraced(function*(repo: string, commit: string, values: ReadonlyArray<string>) {
++  const unique = [...new Set(values.map((v) => v.toLowerCase()))]
++  // git grep exits 1 when nothing matches.
++  const found = yield* Effect.forEach(
++    unique,
++    (v) => git(repo, ["grep", "-I", "-i", "-l", "-w", "-F", "-z", "-e", v, commit, "--"]).pipe(Effect.orElseSucceed(() => "")),
++    { concurrency: SEARCHES }
++  )
+   const files = new Map<string, Set<string>>()
+-  for (const group of patternGroups(values)) {
+-    // git grep exits 1 when nothing matches.
+-    const out = yield* git(repo, ["grep", "-I", "-i", "-o", "-w", "-F", "-z", ...group.flatMap((v) => ["-e", v]), commit, "--"]).pipe(
+-      Effect.orElseSucceed(() => "")
+-    )
+-    for (const line of out.split(/\r?\n/)) {
+-      const nul = line.indexOf("\u0000")
+-      if (nul < 0) continue
+-      const file = line.slice(line.startsWith(`${commit}:`) ? commit.length + 1 : 0, nul)
+-      const value = line.slice(nul + 1).toLowerCase()
+-      files.set(value, (files.get(value) ?? new Set<string>()).add(file))
+-    }
+-  }
++  unique.forEach((v, i) => {
++    const used = found[i].split("\u0000").map((f) => f.trim()).filter((f) => f !== "")
++    if (used.length > 0) files.set(v, new Set(used.map((f) => (f.startsWith(`${commit}:`) ? f.slice(commit.length + 1) : f))))
++  })
+   return files
+ })
+ 
+@@ -288,13 +293,13 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
+   const skipped: Array<string> = []
+   const families = new Map<string, string>()
+   const checkedFamily = new Set<string>()
+-  /** Whether a file is one of several in its directory named alike: at least two others share a start of 4 letters or more. */
++  /** Whether a file is one of several in its directory named alike: at least two others share a start that makes a kind (`isKindStart`). */
+   const noteFamily = Effect.fnUntraced(function*(repo: string, base: string, file: string) {
+     if (checkedFamily.has(file)) return
+     checkedFamily.add(file)
+     const { dir, stem } = splitName(file)
+     const others = (yield* namesAt(repo, base, dir)).map((n) => splitName(n).stem).filter((n) => n !== stem)
+-    const starts = others.map((n) => sharedNameStart(stem, n)).filter((s) => s.length >= 4)
++    const starts = others.map((n) => sharedNameStart(stem, n)).filter((s) => isKindStart(stem, s))
+     const best = starts.reduce((a, b) => (b.length > a.length ? b : a), "")
+     // The longest start at least two others share.
+     const shared = [...new Set(starts)].filter((s) => starts.filter((t) => t.startsWith(s)).length >= 2).sort((a, b) => b.length - a.length)[0]
+@@ -336,11 +341,11 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
+     const uses: Array<PlaceUse & { readonly order: number }> = []
+     const { order, readFirst, spans, calls, cwd, looking } = yield* fromTranscript(r, d.created.map((c) => c.file))
+     const orderOf = (file: string, fallback: number) => order.get(file) ?? 1000 + fallback
+-    const before: Array<{ readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
++    const before: Array<{ readonly file: string; readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
+ 
+     for (const [i, e] of d.edits.entries()) {
+       const lines = yield* linesAt(e.file)
+-      before.push({ added: e.added, before: lines })
++      before.push({ file: e.file, added: e.added, before: lines })
+       if (lines === undefined) continue
+       yield* noteFamily(repo, base, e.file)
+       const shape = placeOfEdit(lines, e)
+@@ -353,7 +358,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
+       const { dir, stem, ext } = splitName(c.file)
+       const names = (yield* namesAt(repo, base, dir)).map((n) => splitName(n).stem)
+       const prefix = names.map((n) => sharedNameStart(stem, n)).reduce((a, b) => (b.length > a.length ? b : a), "")
+-      const kept = prefix.length >= 4 ? prefix : ""
++      const kept = isKindStart(stem, prefix) ? prefix : ""
+       const id = placeIdOf(r.subject, newFileKey(dir, kept, ext))
+       if (!shapes.has(id)) shapes.set(id, { subject: r.subject, shape: { file: dir, chain: [], group: null }, newFile: { dir, prefix: kept, ext } })
+       note(id, "create")
+@@ -451,3 +456,27 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
+ 
+ /** A place as a PlaceShape, for finding it in code. */
+ export const shapeOf = (p: Place): PlaceShape => ({ file: p.file, chain: p.chain, group: p.group })
++
++/**
++ * The evidence of new runs, with each place counting the runs memory learned
++ * from too (`learned`, other runs). A learning round reads the new runs only,
++ * a few changes in daily use; read alone, a place three tasks edited is one
++ * run's when one new run edited it, and can't carry a step.
++ */
++export const withPlacesOf = (evidence: Evidence, learned: Evidence): Evidence => {
++  const pooled = new Map(learned.places.map((p) => [p.id, p]))
++  for (const p of evidence.places) {
++    const had = pooled.get(p.id)
++    pooled.set(
++      p.id,
++      had === undefined ? p : {
++        ...p,
++        evidence: [...new Set([...had.evidence, ...p.evidence])].sort(),
++        tasks: [...new Set([...had.tasks, ...p.tasks])].sort(),
++        edits: { add: had.edits.add + p.edits.add, change: had.edits.change + p.edits.change, create: had.edits.create + p.edits.create }
++      }
++    )
++  }
++  const places = [...pooled.values()].sort((a, b) => b.evidence.length - a.evidence.length || a.file.localeCompare(b.file) || a.id.localeCompare(b.id))
++  return { ...evidence, places, families: new Map([...learned.families, ...evidence.families]) }
++}
+diff --git a/apps/cli/src/workflows/Evolve.ts b/apps/cli/src/workflows/Evolve.ts
+index 2d1f02c..8c9f5c3 100644
+--- a/apps/cli/src/workflows/Evolve.ts
++++ b/apps/cli/src/workflows/Evolve.ts
+@@ -15,7 +15,10 @@
+  * 3. Gate. The revision is kept only if, replayed over the runs (the new ones
+  *    and those memory already learned from), it shows at least as many of the
+  *    places runs edited, less the places they left alone, as the current
+- *    memory does. Otherwise it is rejected, with the reason, for next time.
++ *    memory does, a place edited counting twice one left alone. Otherwise it
++ *    is rejected, with the reason, for next time; its new pitfalls stay
++ *    (`withNewPitfalls`): each comes from a failure the runs had, checked
++ *    against it, and says nothing about places.
+  *    Memory picked by cues is replayed with cues: they are written again for
+  *    the revision first (CueWriter.ts), so the gate judges what tasks will get.
+  */
+@@ -26,8 +29,9 @@ import type { Evidence, RunEvidence } from "./Evidence.ts"
+ import { describePlace, type InduceConfig, induce } from "./Induce.ts"
+ import { type CodeSource, type Located, locatePlaces } from "./Locate.ts"
+ import { describeLookup } from "./Lookups.ts"
+-import { isReadPlace, type Place, withShow, type WorkflowMemory } from "./Models.ts"
++import { isReadPlace, type Place, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
+ import { selectWorkflows, type SelectorConfig, wordChoice } from "./Select.ts"
++import { handedAtStart } from "./Session.ts"
+ import type { ReplayNumbers, WorkflowCandidate } from "./WorkflowStore.ts"
+ 
+ export { withShow }
+@@ -148,14 +152,41 @@ export const replay = Effect.fn("replayWorkflows")(function*(memory: WorkflowMem
+   return { runs: runs.length, edited, shown_and_edited: shownAndEdited, shown_unused: shownUnused, workflows, costUsd } satisfies Replayed
+ })
+ 
+-/** The gate: at least as many edited places shown, less those left alone, as the current memory; never fewer shown places that runs edited by more than it gains. */
++/**
++ * What a place runs edited counts in the gate, against a place shown and left
++ * alone: a place memory misses costs the agent a search, one it shows for
++ * nothing a few lines of reading.
++ */
++export const EDITED_WEIGHT = 2
++
++/** The gate: edited places shown (each counting `EDITED_WEIGHT`), less those left alone, at least as many as the current memory's. */
+ export const passes = (candidate: ReplayNumbers, current: ReplayNumbers): { readonly commit: boolean; readonly reason: string } => {
+-  const score = (r: ReplayNumbers) => r.shown_and_edited - r.shown_unused
++  const score = (r: ReplayNumbers) => EDITED_WEIGHT * r.shown_and_edited - r.shown_unused
+   const describe = (r: ReplayNumbers) => `${r.shown_and_edited} edited places shown, ${r.shown_unused} shown and left alone`
+   if (score(candidate) < score(current)) return { commit: false, reason: `fits the runs worse: ${describe(candidate)}, against ${describe(current)}` }
+   return { commit: true, reason: `${describe(candidate)}, against ${describe(current)}` }
+ }
+ 
++/**
++ * The current memory with the pitfalls a rejected revision learned: those it
++ * has and memory doesn't, each in the current workflows that do what the
++ * revision's workflows listing it do (the same id, or a step at the same
++ * place). Undefined when it learned none.
++ */
++export const withNewPitfalls = (current: WorkflowMemory, revision: WorkflowMemory): WorkflowMemory | undefined => {
++  const known = new Set(current.pitfalls.map((p) => p.id))
++  const fresh = revision.pitfalls.filter((p) => !known.has(p.id))
++  if (fresh.length === 0) return undefined
++  const placesOf = (w: Workflow) => new Set(w.steps.flatMap((s) => (s.place === null ? [] : [s.place])))
++  const workflows = current.workflows.map((w) => {
++    const mine = placesOf(w)
++    const alike = revision.workflows.filter((o) => o.id === w.id || [...placesOf(o)].some((p) => mine.has(p)))
++    const added = fresh.filter((p) => alike.some((o) => o.pitfalls.includes(p.id))).map((p) => p.id)
++    return added.length === 0 ? w : { ...w, pitfalls: [...w.pitfalls, ...added] }
++  })
++  return { ...current, workflows, pitfalls: [...current.pitfalls, ...fresh] }
++}
++
+ export interface EvolveResult {
+   readonly memory: WorkflowMemory
+   readonly problems: ReadonlyArray<string>
+@@ -176,7 +207,11 @@ export const refine = Effect.fn("refine")(function*(
+   evidence: Evidence,
+   records: ReadonlyMap<string, WorkflowRecord>,
+   rejected: ReadonlyArray<WorkflowCandidate>,
+-  /** To tell what runs looked up: a clone to find memory's places in at each run's base commit, and the hand-over texts runs got, by record. */
++  /**
++   * To tell what runs looked up: a clone to find memory's places in at each
++   * run's base commit (without one, the repo each run's record names), and
++   * the hand-over texts runs got, by record.
++   */
+   looked?: { readonly repo: string | undefined; readonly texts: ReadonlyMap<string, string> }
+ ) {
+   let costUsd = 0
+@@ -207,7 +242,8 @@ export const refine = Effect.fn("refine")(function*(
+   const shows = new Set(current.places.filter((p) => p.show === "entry").map((p) => p.id))
+   const places = new Map([...current.places, ...evidence.places].map((p) => [p.id, withShow(p, shows.has(p.id))]))
+   const merged: Evidence = { ...evidence, places: [...places.values()] }
+-  const lookups = looked === undefined ? "" : yield* lookupsText(current, results, looked.repo, looked.texts)
++  const repoOf = (run: RunEvidence) => looked?.repo ?? records.get(run.record)?.run.repo ?? undefined
++  const lookups = looked === undefined ? "" : yield* lookupsText(current, results, repoOf, looked.texts)
+   const notes = [resultsText(results, places, current), lookups, rejectionsText(rejected)].filter((t) => t !== "")
+   const induced = yield* induce(config, merged, current.tenant, current, notes)
+   // A workflow that keeps its id keeps the runs it was learned from, and the kind of task it serves.
+@@ -280,12 +316,13 @@ const LOOKUPS_INTRO = [
+ /**
+  * What the new runs that were handed memory still looked up before their
+  * first edit, each lookup told against memory's places (found in the code at
+- * the run's base commit) and the lines of them the run's hand-over showed.
++ * the run's base commit, in the repo `repoOf` says) and the lines of them the
++ * run's hand-over showed.
+  */
+ export const lookupsText = Effect.fn("lookupsText")(function*(
+   memory: WorkflowMemory,
+   runs: ReadonlyArray<{ readonly run: RunEvidence; readonly shown: Shown }>,
+-  repo: string | undefined,
++  repoOf: (run: RunEvidence) => string | undefined,
+   texts: ReadonlyMap<string, string>
+ ) {
+   const handed = runs.filter((x) => x.shown.handed && x.run.looking !== null && x.run.looking.lookups.length > 0)
+@@ -295,6 +332,7 @@ export const lookupsText = Effect.fn("lookupsText")(function*(
+   for (const { run, shown } of handed) {
+     const looking = run.looking!
+     let located: ReadonlyMap<string, Located> = new Map()
++    const repo = repoOf(run)
+     if (repo !== undefined && run.base !== null) {
+       const cached = byBase.get(run.base)
+       const source: CodeSource = { kind: "commit", repo, commit: run.base }
+@@ -321,13 +359,22 @@ export const lookupsText = Effect.fn("lookupsText")(function*(
+   return lines.join("\n")
+ })
+ 
+-/** The hand-over each eval run got, by record: the text its run directory keeps (injected.md). */
+-export const handedTexts = Effect.fn("handedTexts")(function*(records: ReadonlyArray<WorkflowRecord>) {
++/**
++ * The hand-over each run got, by record: for an eval run, the text its run
++ * directory keeps (injected.md); for a session in daily use, what the
++ * hand-over log in `tenantDir` has for its start.
++ */
++export const handedTexts = Effect.fn("handedTexts")(function*(records: ReadonlyArray<WorkflowRecord>, tenantDir?: string) {
+   const fs = yield* FileSystem.FileSystem
+   const path = yield* Path.Path
+   const out = new Map<string, string>()
++  const logged = tenantDir === undefined ? new Map<string, string>() : yield* handedAtStart(tenantDir).pipe(Effect.orElseSucceed(() => new Map<string, string>()))
+   for (const r of records) {
+-    if (r.run.run_dir === null || r.run.run_id === null) continue
++    if (r.run.run_dir === null || r.run.run_id === null) {
++      const text = r.run.session_id === null ? undefined : logged.get(r.run.session_id)
++      if (text !== undefined) out.set(r.id, text)
++      continue
++    }
+     const file = path.join(r.run.run_dir, "runs", r.run.run_id, "injected.md")
+     const text = yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""))
+     if (text !== "") out.set(r.id, text)
+diff --git a/apps/cli/src/workflows/Induce.ts b/apps/cli/src/workflows/Induce.ts
+index 0bb5fed..62a28ba 100644
+--- a/apps/cli/src/workflows/Induce.ts
++++ b/apps/cli/src/workflows/Induce.ts
+@@ -364,8 +364,10 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
+       continue
+     }
+     const where = `workflow ${id}`
+-    const texts = [w.name, w.use_when, ...w.blanks.map((b) => b.meaning), ...w.checks]
++    const texts = [w.name, w.use_when, ...w.blanks.map((b) => b.meaning)]
+     if (texts.some((t) => leak(where, t))) continue
++    // A check that names a task's own value (the task's own test) is that task's: it goes, its workflow stays.
++    const checks = w.checks.map((c) => c.trim()).filter((c) => c !== "" && !leak(`check ${JSON.stringify(c)} of ${id}`, c))
+     const steps = w.steps.flatMap((s, i) => {
+       if (leak(`step ${i + 1} of ${id}`, s.do) || leak(`step ${i + 1} of ${id}`, s.when)) return []
+       if (s.place === null) return [s]
+@@ -401,7 +403,7 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
+       blanks: w.blanks.map((b) => ({ name: b.name.replace(/^\{+|\}+$/g, "").trim(), meaning: b.meaning.trim() })),
+       steps,
+       only_if_asked: w.only_if_asked,
+-      checks: w.checks.map((c) => c.trim()).filter((c) => c !== ""),
++      checks,
+       pitfalls: w.pitfalls.map(slug).filter((p) => pitfallIds.has(p)),
+       evidence,
+       tasks
+diff --git a/apps/cli/src/workflows/Learn.ts b/apps/cli/src/workflows/Learn.ts
+index 24a5074..d59cc1e 100644
+--- a/apps/cli/src/workflows/Learn.ts
++++ b/apps/cli/src/workflows/Learn.ts
+@@ -5,7 +5,8 @@
+  * the records (`workflows build`, then `workflows cues`); after that, every
+  * few new changes, a learning round revises it and keeps the revision only
+  * if, replayed over the changes, it fits them at least as well (`workflows
+- * evolve`). One candidate per round, so a round is one version.
++ * evolve`). One candidate per round, so a round is one version; a revision
++ * that isn't kept still leaves its new pitfalls, as a version of their own.
+  *
+  * Memory keeps every repo's workflows in one store, but induction reads one
+  * repo at a time: a repo is learned alone and merged back, and other repos'
+@@ -18,8 +19,8 @@ import type { WorkflowRecord } from "../records/Models.ts"
+ import { RecordStore } from "../records/RecordStore.ts"
+ import type { Subject } from "../records/Subjects.ts"
+ import { writeCues } from "./CueWriter.ts"
+-import { gatherEvidence } from "./Evidence.ts"
+-import { handedTexts, passes, refine, replay } from "./Evolve.ts"
++import { gatherEvidence, withPlacesOf } from "./Evidence.ts"
++import { handedTexts, passes, refine, replay, withNewPitfalls } from "./Evolve.ts"
+ import { withSnapshots } from "./Finish.ts"
+ import { type InduceConfig, induce } from "./Induce.ts"
+ import { END, START, type WorkflowMemory } from "./Models.ts"
+@@ -85,6 +86,8 @@ export interface LearnConfig extends InduceConfig {
+   readonly every: number
+   /** Learn even with fewer new changes than `every` (at least one). */
+   readonly now?: boolean | undefined
++  /** The tenant's directory, whose hand-over log says what each session was handed: a round tells what runs still looked up against it. */
++  readonly tenantDir?: string | undefined
+ }
+ 
+ export type LearnOutcome =
+@@ -237,10 +240,12 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
+     config,
+     "cues",
+     current,
+-    evidence,
++    // A place counts every run that edited it, the ones memory learned from too.
++    withPlacesOf(evidence, before),
+     new Map(state.unlearned.map((r) => [r.id, r])),
+     rejected,
+-    { repo: undefined, texts: yield* handedTexts(state.unlearned) }
++    // Memory's places are found in the repo each run's record names.
++    { repo: undefined, texts: yield* handedTexts(state.unlearned, config.tenantDir) }
+   )
+   const runs = [...before.runs, ...evidence.runs]
+   const cued = yield* writeCues(config, withSnapshots(refined.memory, runs), runs)
+@@ -253,7 +258,21 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
+   const candidate = yield* propose(revision, records, refined.rationale, costUsd, [...refined.problems, ...cued.problems])
+   if (!verdict.commit) {
+     yield* store.reject(candidate.id, verdict.reason)
+-    return { kind: "kept", subject: subject.id, reason: `kept the memory it had: the revision ${verdict.reason}`, costUsd } satisfies LearnOutcome
++    // What went wrong in the runs was checked against their failures, not their places: it stays.
++    const warned = withNewPitfalls(current, revision)
++    if (warned === undefined) {
++      return { kind: "kept", subject: subject.id, reason: `kept the memory it had: the revision ${verdict.reason}`, costUsd } satisfies LearnOutcome
++    }
++    const added = warned.pitfalls.length - current.pitfalls.length
++    // The new changes are left for the next round to learn from: this version holds only what memory learned before.
++    const kept = yield* propose(warned, state.learned.map((r) => r.id), `the new pitfalls of ${candidate.id}, rejected: ${verdict.reason}`, 0, [])
++    yield* store.commit(kept.id)
++    return {
++      kind: "kept",
++      subject: subject.id,
++      reason: `kept its workflows and added ${added} known mistake${added === 1 ? "" : "s"}: the revision ${verdict.reason}`,
++      costUsd
++    } satisfies LearnOutcome
+   }
+   const version = yield* store.commit(candidate.id)
+   return {
+diff --git a/apps/cli/src/workflows/Places.ts b/apps/cli/src/workflows/Places.ts
+index dedac94..42f41b4 100644
+--- a/apps/cli/src/workflows/Places.ts
++++ b/apps/cli/src/workflows/Places.ts
+@@ -209,12 +209,18 @@ export const sharedStart = (x: string, y: string): string | null => {
+   return prefix
+ }
+ 
+-/** The start two file names share, in whole camel-case parts: `actionToggle` from `actionToggleZenMode` and `actionToggleRulers`. */
++/**
++ * The start two file names share, in whole camel-case parts: `actionToggle`
++ * from `actionToggleZenMode` and `actionToggleRulers`; for numbered names, what
++ * comes before the number: `md` from `md061` and `md066`.
++ */
+ export const sharedNameStart = (a: string, b: string): string => {
+   let n = 0
+   while (n < a.length && n < b.length && a[n] === b[n]) n++
+   const prefix = a.slice(0, n)
+   if (n === a.length || n === b.length) return prefix
++  // Inside a number: the part before it.
++  if (/[0-9]/.test(a[n]) && /[0-9]/.test(b[n])) return prefix.replace(/[0-9]+$/, "")
+   // Inside a camel-case part: keep only the parts shared whole.
+   if (/[a-z0-9]/.test(a[n]) || /[a-z0-9]/.test(b[n])) {
+     for (let k = prefix.length - 1; k > 0; k--) if (/[A-Z]/.test(prefix[k])) return prefix.slice(0, k)
+@@ -223,6 +229,14 @@ export const sharedNameStart = (a: string, b: string): string => {
+   return prefix
+ }
+ 
++/**
++ * Whether names that start with `start` are a kind of file: a start of four
++ * letters or more (`actionToggle`), or the letters before a number
++ * (`md` of `md061`, a numbered series).
++ */
++export const isKindStart = (name: string, start: string): boolean =>
++  start.length >= 4 || (/^[A-Za-z]{2,}$/.test(start) && /^[0-9]/.test(name.slice(start.length)))
++
+ /** Statement starts at the top level (indent 0), as line numbers. */
+ const topStatements = (lines: ReadonlyArray<string>): Array<number> => {
+   const out: Array<number> = []
+diff --git a/apps/cli/src/workflows/Render.ts b/apps/cli/src/workflows/Render.ts
+index 75b9dbe..54e3fbd 100644
+--- a/apps/cli/src/workflows/Render.ts
++++ b/apps/cli/src/workflows/Render.ts
+@@ -144,7 +144,8 @@ const renderPlace = (p: Place, at: Located, max: number): Rendered => {
+   if (at.kind === "new-file") {
+     const short = [...at.siblings].sort((a, b) => a.lines.length - b.lines.length)
+     const names = short.slice(0, 6).map((f) => `${f.name} (${f.lines.length} lines)`).join(", ")
+-    const header = `a new file in ${code(at.dir + "/")}, named like the ${at.siblings.length} there that start with ${code(at.prefix)}; shortest first: ${names}`
++    const like = at.prefix === "" ? `the ${at.siblings.length} there` : `the ${at.siblings.length} there that start with ${code(at.prefix)}`
++    const header = `a new file in ${code(at.dir + "/")}, named like ${like}; shortest first: ${names}`
+     const first = short[0]
+     if (!entry || first === undefined || max <= 0) return { header, excerpt: [], shown: { place: p.id, file: at.dir, from: 0, to: 0 } }
+     const all: Array<Row> = first.lines.map((_, i) => i).filter((i) => i < first.lines.length - 1 || first.lines[i].trim() !== "")
+diff --git a/apps/cli/src/workflows/Session.ts b/apps/cli/src/workflows/Session.ts
+index 57fc09b..0f9eb3b 100644
+--- a/apps/cli/src/workflows/Session.ts
++++ b/apps/cli/src/workflows/Session.ts
+@@ -10,7 +10,7 @@
+  * Fired pitfalls are appended rather than written into the session file:
+  * hooks for tool calls made in parallel run at the same time.
+  */
+-import { Effect, FileSystem, Option, Path, Schema } from "effect"
++import { Effect, FileSystem, Option, Path, Predicate, Schema } from "effect"
+ import { writeFileWhole } from "../local/Files.ts"
+ import { Pitfall } from "./Models.ts"
+ 
+@@ -98,6 +98,29 @@ export const appendFired = Effect.fn("workflows.appendFired")(function*(tenantDi
+   yield* fs.writeFileString(path.join(dir, `${safeId(sessionId)}.fired.jsonl`), fired.map((f) => JSON.stringify(f)).join("\n") + "\n", { flag: "a" })
+ })
+ 
++/** What learning reads of a line of the hand-over log. */
++const LoggedHandover = Schema.Struct({
++  session_id: Schema.String,
++  moment: Schema.String,
++  text: Schema.optionalKey(Schema.NullOr(Schema.String))
++})
++
++/** The text each session was handed at its start, by session id, from the hand-over log. */
++export const handedAtStart = Effect.fn("workflows.handedAtStart")(function*(tenantDir: string) {
++  const fs = yield* FileSystem.FileSystem
++  const path = yield* Path.Path
++  const file = path.join(tenantDir, "workflows", "handovers.jsonl")
++  const out = new Map<string, string>()
++  if (!(yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false)))) return out
++  for (const line of (yield* fs.readFileString(file)).split(/\r?\n/)) {
++    const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(LoggedHandover))(line)
++    if (Option.isNone(decoded)) continue
++    const { session_id, moment, text } = decoded.value
++    if (moment === "start" && Predicate.isString(text) && text !== "") out.set(session_id, text)
++  }
++  return out
++})
++
+ /** One line of the hand-over log. */
+ export const logHandover = Effect.fn("workflows.logHandover")(function*(tenantDir: string, entry: Readonly<Record<string, unknown>>) {
+   const fs = yield* FileSystem.FileSystem

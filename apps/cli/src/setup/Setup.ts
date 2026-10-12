@@ -269,7 +269,8 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       learnSubject(subject, {
         ...learnerConfig(learner, learnCwd, model),
         every: prefs.every,
-        now: true
+        now: true,
+        tenantDir: home.tenantDir
       }).pipe(Effect.provide(layers), Effect.result, Effect.ensuring(Effect.sync(() => releaseLearning(home.root)))),
       o.interactive
     )

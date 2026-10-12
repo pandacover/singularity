@@ -83,6 +83,22 @@ describe("extractMechanical", () => {
     assert.deepStrictEqual([d.failed.call, d.fixed.call, d.failures], [0, 3, 2])
   })
 
+  it("finds failing tests and lint errors that a pipe hid, from what node's test runner and ESLint print", () => {
+    const lint = `${CWD}\\test\\x.mjs\n  195:40  error  Unexpected space before function parentheses  space-before-function-paren\n\n✖ 1 problem (1 error, 0 warnings)`
+    const trace = session("Add a rule", [
+      [bash(`npm test 2>&1 | grep -E "^ℹ (pass|fail)"`, "ℹ pass 1235\nℹ fail 1")],
+      [edit(`${CWD}\\test\\markdownlint-test.mjs`, "t.plan(144);")],
+      [bash(`npm test 2>&1 | grep -E "^ℹ (pass|fail)"`, "ℹ pass 1236\nℹ fail 0")],
+      [bash("npm run lint 2>&1 | tail -5", lint)],
+      [edit(`${CWD}\\test\\x.mjs`, "async(t) => {")],
+      [bash("npm run lint 2>&1 | tail -5", "> eslint --max-warnings 0")]
+    ])
+    const m = extractMechanical(trace, DIFF)
+    assert.deepStrictEqual(m.detours.map((d) => [d.kind, d.failed.call, d.fixed.call]), [["test_failure", 0, 2], ["command_error", 3, 5]])
+    assert.strictEqual(m.detours[1].symptom.split("\n")[0], "195:40 error Unexpected space before function parentheses space-before-function-paren")
+    assert.deepStrictEqual(m.commands.map((c) => c.ok), [false, true, false, true])
+  })
+
   it("finds edits that didn't apply and the edit that did", () => {
     const file = `${CWD}\\src\\App.tsx`
     const trace = session("Add a menu item", [

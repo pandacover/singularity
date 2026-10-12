@@ -11,6 +11,7 @@ import { sourceFiles } from "../../src/records/Models.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
 import { commitRecordId } from "../../src/records/Build.ts"
 import { branchCommits, storePast } from "../../src/workflows/Commits.ts"
+import { gatherEvidence } from "../../src/workflows/Evidence.ts"
 import { pastSessions, projectDirName } from "../../src/workflows/Transcripts.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, learnSubject, mergeSubject, type PastRound, pastRounds, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
@@ -161,6 +162,38 @@ describe("past sessions", () => {
     expect(again.stored).toEqual([])
     expect(again.existing).toEqual(result.stored)
   }, 60_000)
+
+  it("describes a stored change by its commit's title and every prompt typed for it, not by its first prompt alone", async () => {
+    const root = tempDir()
+    const claudeHome = join(root, "claude")
+    const homeDir = join(root, "home")
+    const repo = makeRepo(root, "app", [5])
+    writeTranscript(claudeHome, repo, "aaaaaaa1-0000-0000-0000-000000000001", 0, "yes, do it", "pass")
+    const home = await run(loadHome(homeDir))
+    await run(storePast(repo, { claude: claudeHome }, home.tenantDir).pipe(Effect.provide(storesFor(homeDir))))
+    const evidence = await run(Effect.gen(function*() {
+      return yield* gatherEvidence(yield* (yield* RecordStore).find({ subject: "app" }), {})
+    }).pipe(Effect.provide(storesFor(homeDir))))
+    expect(evidence.runs.map((r) => [r.prompt, r.task])).toEqual([["change 0\n\nyes, do it", "change 0 yes, do it"]])
+  }, 60_000)
+
+  it("finds a session whose first and last prompts hold pasted images, lines longer than the start and end it peeks at", async () => {
+    const root = tempDir()
+    const claudeHome = join(root, "claude")
+    const repo = makeRepo(root, "app", [5])
+    const sessionId = "aaaaaaa1-0000-0000-0000-000000000001"
+    writeTranscript(claudeHome, repo, sessionId, 0, "What does each of these commands do?", "pass")
+    // A pasted screenshot is kept in its prompt's line.
+    const file = join(claudeHome, "projects", projectDirName(repo), `${sessionId}.jsonl`)
+    const image = { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0K".repeat(20_000) } }
+    const lines = readFileSync(file, "utf-8").trimEnd().split("\n").map((l) => JSON.parse(l))
+    lines[0].message.content = [image, { type: "text", text: lines[0].message.content }]
+    lines.push({ type: "user", timestamp: at(20), cwd: repo, sessionId, message: { role: "user", content: [image, { type: "text", text: "And this one?" }] } })
+    writeFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n")
+
+    const sessions = await run(pastSessions(repo, { claude: claudeHome }))
+    expect(sessions.map((s) => [s.sessionId, s.cwd, s.first, s.last])).toEqual([[sessionId, repo, T0, T0 + 20_000]])
+  })
 })
 
 describe("learning repo by repo", () => {
@@ -314,10 +347,12 @@ describe("learning repo by repo", () => {
     expect(after.memory.workflows.every((w) => w.cues?.any.includes("colors"))).toBe(true)
     expect(after.waiting).toMatchObject({ kind: "waiting", reason: "0 of 3 new changes stored" })
     expect(after.stateA.learned).toHaveLength(2)
-    // (A workflow with no place and only checks is folded into the one finishing command.)
-    expect(after.handed.text).toContain("When all your edits are in, run once: `npm test`")
+    // (A workflow with no place and only checks is folded into the one finishing command, which is checked against
+    // the repo: without a package.json, `npm test` can't run, and with nothing else to say, nothing is handed over.)
+    expect(after.handed.text).toBeUndefined()
+    writeFileSync(join(a.repo, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }))
 
-    // Gemini CLI's hook gets the same hand-over, under its own event's name.
+    // Gemini CLI's hook gets the same hand-over, under its own event's name, with the command now that the repo has the script.
     const hook = spawnSync(process.execPath, [HOOK_SCRIPT, "user-prompt-submit"], {
       input: JSON.stringify({ session_id: "gemini-1", cwd: a.repo, hook_event_name: "BeforeAgent", prompt: "Make the colors darker" }),
       encoding: "utf-8",

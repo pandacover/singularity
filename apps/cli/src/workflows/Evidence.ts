@@ -18,8 +18,8 @@ import { classifyKey } from "../records/Shell.ts"
 import { EDIT_TOOLS, type ToolCall } from "../traces/index.ts"
 import { editsOfDiff, placeOfEdit } from "./Edits.ts"
 import { type Looking, lookingOf } from "./Lookups.ts"
-import type { Place } from "./Models.ts"
-import { placeKey, placesOfRead, type PlaceShape, sharedNameStart } from "./Places.ts"
+import type { Place, WorkflowMemory } from "./Models.ts"
+import { isKindStart, placeKey, placesOfRead, type PlaceShape, sharedNameStart } from "./Places.ts"
 import { linesOfSpan, MAX_SEARCH_PLACES, type ReadSpan, readSpans } from "./Reads.ts"
 
 export interface PlaceUse {
@@ -36,6 +36,7 @@ export interface RunEvidence {
   readonly subject: string
   /** The eval task, or the start of the prompt. */
   readonly task: string
+  /** What the run was asked to do: its prompt, or for a change in daily use, its commit titles and prompts (`promptOf`). */
   readonly prompt: string
   readonly base: string | null
   readonly tokens: number | null
@@ -80,7 +81,49 @@ const newFileKey = (dir: string, prefix: string, ext: string) => JSON.stringify(
 
 const clip = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s)
 
-export const taskLabel = (r: WorkflowRecord): string => r.run.task_id ?? r.task.prompt.trim().replace(/\s+/g, " ").slice(0, 60)
+const MAX_LABEL = 60
+
+/**
+ * The task a run did: the eval task, or the start of its prompt (`promptOf`).
+ * Tasks in a repo often start alike ("This is our fork of markdownlint. Add a
+ * new built-in rule:"), so a prompt cut short ends with a hash of all of it:
+ * different tasks never share a label, and the runs of one task always do.
+ */
+export const taskLabel = (r: WorkflowRecord, prompt: string = r.task.prompt): string => {
+  if (r.run.task_id !== null) return r.run.task_id
+  const text = prompt.trim().replace(/\s+/g, " ")
+  if (text.length <= MAX_LABEL) return text
+  return `${text.slice(0, MAX_LABEL).trimEnd()}… #${createHash("sha256").update(text).digest("hex").slice(0, 6)}`
+}
+
+/** A change's commit titles, at most, in its description: a command that made more is one change all the same. */
+const MAX_TITLES = 5
+/** Each prompt in a change's description is cut to this, and the description to the next: a pasted log or spec takes no round's room. */
+const MAX_ASK = 400
+const MAX_DESCRIPTION = 1500
+
+const clipTo = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s)
+
+/** A change in daily use as `promptOf` describes it: its commit titles, then the prompts typed for it. */
+export const describeChange = (titles: ReadonlyArray<string>, prompts: ReadonlyArray<string>): string =>
+  clipTo(
+    [...titles.slice(0, MAX_TITLES), ...prompts.map((p) => clipTo(p.trim(), MAX_ASK))].map((s) => s.trim()).filter((s) => s !== "").join("\n\n"),
+    MAX_DESCRIPTION
+  )
+
+/**
+ * What a run was asked to do: an eval run's prompt, or a session's stored
+ * whole. A change stored in daily use (`run.segment`) is described by the
+ * part of its session since the previous commit: the titles of its commits,
+ * then every prompt typed in that time. Its first prompt alone is often no
+ * ask at all: "commit and open a PR" while the last change's pull request
+ * was still being opened, or "yes, do it" after a plan.
+ */
+const promptOf = Effect.fnUntraced(function*(r: WorkflowRecord, repo: string) {
+  if (r.run.segment === undefined || r.run.base_commit === null || r.run.head_commit === null) return r.task.prompt
+  const log = yield* git(repo, ["log", "--reverse", "--format=%s", `${r.run.base_commit}..${r.run.head_commit}`]).pipe(Effect.orElseSucceed(() => ""))
+  return describeChange(log.split(/\r?\n/), [r.task.prompt, ...r.task.followups])
+})
 
 /** The run's change: its eval diff, or the session's commits. */
 const diffOf = Effect.fnUntraced(function*(r: WorkflowRecord, repo: string | undefined) {
@@ -151,6 +194,12 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
 const IDENT = /[A-Za-z_$][\w$]{3,}/g
 const LITERAL = /^(true|false|null|undefined|this|that|with|from|import|export|const|return)$/i
 
+/** Prose: Markdown and plain text, whose words are English. Only what it puts in backticks is code. */
+const PROSE = /\.(md|mdx|markdown|txt|rst|adoc)$/i
+
+const codeIn = (file: string, text: string): string =>
+  PROSE.test(file) ? [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).join("\n") : text
+
 /** What a task's prompt names as its own: what it quotes or puts in backticks, and the keys it names (Alt+M). */
 export const promptValues = (prompt: string): Array<string> => {
   const values = new Set<string>()
@@ -164,18 +213,19 @@ export const promptValues = (prompt: string): Array<string> => {
 
 /**
  * Names a task's change may have brought into the code: those its edits added
- * to a file that didn't have them, and the names of the files it created and
- * what they export. Which of them are new to the repo is up to git
+ * to a file that didn't have them (in prose, only in backticks: a doc's new
+ * sentence brings words, not names), and the names of the files it created
+ * and what they export. Which of them are new to the repo is up to git
  * (`existingNames`): `Keyboard` is new to one test file, not to the repo.
  */
 export const newNames = (
-  edits: ReadonlyArray<{ readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }>,
+  edits: ReadonlyArray<{ readonly file: string; readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }>,
   created: ReadonlyArray<{ readonly file: string; readonly content: string }>
 ): Array<string> => {
   const names = new Set<string>()
   for (const e of edits) {
     const before = new Set((e.before ?? []).join("\n").match(IDENT) ?? [])
-    for (const name of e.added.join("\n").match(IDENT) ?? []) if (!before.has(name) && !LITERAL.test(name)) names.add(name)
+    for (const name of codeIn(e.file, e.added.join("\n")).match(IDENT) ?? []) if (!before.has(name) && !LITERAL.test(name)) names.add(name)
   }
   for (const c of created) {
     names.add(splitName(c.file).stem)
@@ -184,57 +234,42 @@ export const newNames = (
   return [...names]
 }
 
+/**
+ * Searches run side by side. One word per search: git grep prints every line
+ * that matches, and with many words that takes minutes in a repo with large
+ * files (a hundred words: over three minutes in markdownlint, against a tenth
+ * of a second for one), past the time git is given.
+ */
+const SEARCHES = 4
+
 /** Which of `names` occur as whole words anywhere in the repo at `commit`. */
 const existingNames = Effect.fnUntraced(function*(repo: string, commit: string, names: ReadonlyArray<string>) {
-  const found = new Set<string>()
-  for (let i = 0; i < names.length; i += 100) {
-    const chunk = names.slice(i, i + 100)
-    // git grep exits 1 when nothing matches.
-    const out = yield* git(repo, ["grep", "-h", "-o", "-w", "-F", ...chunk.flatMap((n) => ["-e", n]), commit, "--"]).pipe(
-      Effect.orElseSucceed(() => "")
-    )
-    for (const l of out.split(/\r?\n/)) if (l.trim() !== "") found.add(l.trim())
-  }
-  return found
+  // git grep -q stops at the first match, and exits 1 when nothing matches.
+  const found = yield* Effect.forEach(
+    names,
+    (n) => git(repo, ["grep", "-q", "-I", "-w", "-F", "-e", n, commit, "--"]).pipe(Effect.as(true), Effect.orElseSucceed(() => false)),
+    { concurrency: SEARCHES }
+  )
+  return new Set(names.filter((_, i) => found[i]))
 })
 
 /** Values no file can use as a word: long ones and ones across lines are a task's own wording. */
 const MAX_WORD_VALUE = 120
 
-/** git grep's patterns in groups: at most 100, and short enough for a Windows command line. */
-const patternGroups = (values: ReadonlyArray<string>): Array<Array<string>> => {
-  const groups: Array<Array<string>> = []
-  let group: Array<string> = []
-  let chars = 0
-  for (const v of values) {
-    if (group.length === 100 || chars + v.length > 8000) {
-      groups.push(group)
-      group = []
-      chars = 0
-    }
-    group.push(v)
-    chars += v.length + 4
-  }
-  if (group.length > 0) groups.push(group)
-  return groups
-}
-
 /** The files that use each of `values` at `commit`, as a whole word in any case, by the value in lower case. */
 const filesUsing = Effect.fnUntraced(function*(repo: string, commit: string, values: ReadonlyArray<string>) {
+  const unique = [...new Set(values.map((v) => v.toLowerCase()))]
+  // git grep exits 1 when nothing matches.
+  const found = yield* Effect.forEach(
+    unique,
+    (v) => git(repo, ["grep", "-I", "-i", "-l", "-w", "-F", "-z", "-e", v, commit, "--"]).pipe(Effect.orElseSucceed(() => "")),
+    { concurrency: SEARCHES }
+  )
   const files = new Map<string, Set<string>>()
-  for (const group of patternGroups(values)) {
-    // git grep exits 1 when nothing matches.
-    const out = yield* git(repo, ["grep", "-I", "-i", "-o", "-w", "-F", "-z", ...group.flatMap((v) => ["-e", v]), commit, "--"]).pipe(
-      Effect.orElseSucceed(() => "")
-    )
-    for (const line of out.split(/\r?\n/)) {
-      const nul = line.indexOf("\u0000")
-      if (nul < 0) continue
-      const file = line.slice(line.startsWith(`${commit}:`) ? commit.length + 1 : 0, nul)
-      const value = line.slice(nul + 1).toLowerCase()
-      files.set(value, (files.get(value) ?? new Set<string>()).add(file))
-    }
-  }
+  unique.forEach((v, i) => {
+    const used = found[i].split("\u0000").map((f) => f.trim()).filter((f) => f !== "")
+    if (used.length > 0) files.set(v, new Set(used.map((f) => (f.startsWith(`${commit}:`) ? f.slice(commit.length + 1) : f))))
+  })
   return files
 })
 
@@ -288,13 +323,13 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
   const skipped: Array<string> = []
   const families = new Map<string, string>()
   const checkedFamily = new Set<string>()
-  /** Whether a file is one of several in its directory named alike: at least two others share a start of 4 letters or more. */
+  /** Whether a file is one of several in its directory named alike: at least two others share a start that makes a kind (`isKindStart`). */
   const noteFamily = Effect.fnUntraced(function*(repo: string, base: string, file: string) {
     if (checkedFamily.has(file)) return
     checkedFamily.add(file)
     const { dir, stem } = splitName(file)
     const others = (yield* namesAt(repo, base, dir)).map((n) => splitName(n).stem).filter((n) => n !== stem)
-    const starts = others.map((n) => sharedNameStart(stem, n)).filter((s) => s.length >= 4)
+    const starts = others.map((n) => sharedNameStart(stem, n)).filter((s) => isKindStart(stem, s))
     const best = starts.reduce((a, b) => (b.length > a.length ? b : a), "")
     // The longest start at least two others share.
     const shared = [...new Set(starts)].filter((s) => starts.filter((t) => t.startsWith(s)).length >= 2).sort((a, b) => b.length - a.length)[0]
@@ -323,7 +358,8 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       if (!files.has(key)) files.set(key, (yield* fileAt(repo, base, file))?.split("\n"))
       return files.get(key)
     })
-    const label = taskLabel(r)
+    const prompt = yield* promptOf(r, repo)
+    const label = taskLabel(r, prompt)
     const note = (id: string, kind: PlaceUse["kind"]) => {
       const p = pooled.get(id) ?? { evidence: new Set<string>(), tasks: new Set<string>(), add: 0, change: 0, create: 0 }
       p.evidence.add(r.id)
@@ -336,11 +372,11 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
     const uses: Array<PlaceUse & { readonly order: number }> = []
     const { order, readFirst, spans, calls, cwd, looking } = yield* fromTranscript(r, d.created.map((c) => c.file))
     const orderOf = (file: string, fallback: number) => order.get(file) ?? 1000 + fallback
-    const before: Array<{ readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
+    const before: Array<{ readonly file: string; readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
 
     for (const [i, e] of d.edits.entries()) {
       const lines = yield* linesAt(e.file)
-      before.push({ added: e.added, before: lines })
+      before.push({ file: e.file, added: e.added, before: lines })
       if (lines === undefined) continue
       yield* noteFamily(repo, base, e.file)
       const shape = placeOfEdit(lines, e)
@@ -353,7 +389,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       const { dir, stem, ext } = splitName(c.file)
       const names = (yield* namesAt(repo, base, dir)).map((n) => splitName(n).stem)
       const prefix = names.map((n) => sharedNameStart(stem, n)).reduce((a, b) => (b.length > a.length ? b : a), "")
-      const kept = prefix.length >= 4 ? prefix : ""
+      const kept = isKindStart(stem, prefix) ? prefix : ""
       const id = placeIdOf(r.subject, newFileKey(dir, kept, ext))
       if (!shapes.has(id)) shapes.set(id, { subject: r.subject, shape: { file: dir, chain: [], group: null }, newFile: { dir, prefix: kept, ext } })
       note(id, "create")
@@ -392,12 +428,12 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
     const checks = [...shortest.entries()].map(([key, line]) => ({ key, line: line.trim().replace(/\s+/g, " ") }))
     const candidates = newNames(before, d.created)
     const existing = yield* existingNames(repo, base, candidates)
-    const values = [...new Set([...promptValues(r.task.prompt), ...candidates.filter((n) => !existing.has(n))])].sort()
+    const values = [...new Set([...promptValues(prompt), ...candidates.filter((n) => !existing.has(n))])].sort()
     runs.push({
       record: r.id,
       subject: r.subject,
       task: label,
-      prompt: r.task.prompt,
+      prompt,
       base,
       tokens: r.run.tokens,
       turns: r.run.turns,
@@ -451,3 +487,31 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
 
 /** A place as a PlaceShape, for finding it in code. */
 export const shapeOf = (p: Place): PlaceShape => ({ file: p.file, chain: p.chain, group: p.group })
+
+/**
+ * The evidence of new runs, with each place counting the runs memory learned
+ * from too (`learned`, other runs). A learning round reads the new runs only,
+ * a few changes in daily use; read alone, a place three tasks edited is one
+ * run's when one new run edited it, and can't carry a step. Only the places
+ * the new runs edited and those `memory` has are listed: every place earlier
+ * runs edited is hundreds in a repo used for a while, most of each round's
+ * prompts, and earlier rounds already weighed them.
+ */
+export const withPlacesOf = (evidence: Evidence, learned: Evidence, memory: Pick<WorkflowMemory, "places">): Evidence => {
+  const listed = new Set([...evidence.places, ...memory.places].map((p) => p.id))
+  const pooled = new Map(learned.places.filter((p) => listed.has(p.id)).map((p) => [p.id, p]))
+  for (const p of evidence.places) {
+    const had = pooled.get(p.id)
+    pooled.set(
+      p.id,
+      had === undefined ? p : {
+        ...p,
+        evidence: [...new Set([...had.evidence, ...p.evidence])].sort(),
+        tasks: [...new Set([...had.tasks, ...p.tasks])].sort(),
+        edits: { add: had.edits.add + p.edits.add, change: had.edits.change + p.edits.change, create: had.edits.create + p.edits.create }
+      }
+    )
+  }
+  const places = [...pooled.values()].sort((a, b) => b.evidence.length - a.evidence.length || a.file.localeCompare(b.file) || a.id.localeCompare(b.id))
+  return { ...evidence, places, families: new Map([...learned.families, ...evidence.families]) }
+}

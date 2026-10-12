@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { WorkflowRecord } from "../../src/records/Models.ts"
 import type { Evidence, RunEvidence } from "../../src/workflows/Evidence.ts"
-import { fit, passes, resultsText, shownInRecord } from "../../src/workflows/Evolve.ts"
+import { fit, passes, resultsText, shownInRecord, withNewPitfalls } from "../../src/workflows/Evolve.ts"
 import { feedbackOf } from "../../src/workflows/Feedback.ts"
 import { checkAnswer, type InductionAnswer, namedValue, placeProblem } from "../../src/workflows/Induce.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
@@ -106,6 +106,13 @@ describe("checking an induced answer", () => {
     assert.isTrue(problems.some((p) => p.includes("that task's own file")))
     assert.isTrue(problems.some((p) => p.includes("only one run edited")))
     assert.isTrue(problems.some((p) => p.includes("isn't a listed place")))
+  })
+
+  it("drops a check that names a task's own value, and keeps its workflow", () => {
+    const a = answer({ workflows: [{ ...answer().workflows[0], checks: ["yarn test", "yarn vitest run minimapEnabled.test.tsx"] }] })
+    const { memory, problems } = checkAnswer(a, evidence, "local")
+    assert.deepStrictEqual(memory.workflows.map((w) => [w.id, w.checks]), [["add-key-code", ["yarn test"]]])
+    assert.isTrue(problems.some((p) => p.includes(`check "yarn vitest run minimapEnabled.test.tsx" of add-key-code names a task's own value "minimapEnabled"`)))
   })
 
   it("keeps pitfalls only from real detours", () => {
@@ -250,6 +257,29 @@ describe("learning from results", () => {
     assert.isTrue(passes(r(16, 4), r(15, 4)).commit)
     assert.isFalse(passes(r(14, 4), r(15, 4)).commit)
     assert.include(passes(r(14, 4), r(15, 4)).reason, "fits the runs worse")
+    // A place it misses counts twice one it shows for nothing: 3 more edited places shown outweigh 5 more left alone, not 7.
+    assert.isTrue(passes(r(18, 9), r(15, 4)).commit)
+    assert.isFalse(passes(r(18, 11), r(15, 4)).commit)
+    assert.isFalse(passes(r(15, 7), r(15, 4)).commit)
+  })
+
+  it("keeps a rejected revision's new pitfalls, in the workflows that do what its own did", () => {
+    const current = memoryWith()
+    const pitfall = (id: string) => ({ id, subject: "repo", text: `Don't ${id}.`, trigger: null, evidence: ["r3"], cost_tokens: 1000 })
+    const revision = memoryWith({
+      workflows: [
+        // Renamed, at the same place as current's "a"; and a workflow current memory doesn't have.
+        { ...current.workflows[0], id: "a-renamed", pitfalls: ["flag", "stale-count"] },
+        { ...current.workflows[1], id: "c", steps: [{ do: "Elsewhere.", place: "p-9", when: null }], pitfalls: ["lint-style"] }
+      ],
+      pitfalls: [...current.pitfalls, pitfall("stale-count"), pitfall("lint-style")]
+    })
+    const kept = withNewPitfalls(current, revision)!
+    assert.deepStrictEqual(kept.pitfalls.map((p) => p.id), ["flag", "stale-count", "lint-style"])
+    assert.deepStrictEqual(kept.workflows.map((w) => [w.id, w.pitfalls]), [["a", ["flag", "stale-count"]], ["b", ["flag"]]])
+    // Its workflows, places and graph are the current memory's.
+    assert.deepStrictEqual([kept.places, kept.edges], [current.places, current.edges])
+    assert.isUndefined(withNewPitfalls(current, memoryWith({ workflows: [] })))
   })
 
   it("reads what v1 showed a run from its record", () => {

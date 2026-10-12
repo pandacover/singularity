@@ -209,12 +209,18 @@ export const sharedStart = (x: string, y: string): string | null => {
   return prefix
 }
 
-/** The start two file names share, in whole camel-case parts: `actionToggle` from `actionToggleZenMode` and `actionToggleRulers`. */
+/**
+ * The start two file names share, in whole camel-case parts: `actionToggle`
+ * from `actionToggleZenMode` and `actionToggleRulers`; for numbered names, what
+ * comes before the number: `md` from `md061` and `md066`.
+ */
 export const sharedNameStart = (a: string, b: string): string => {
   let n = 0
   while (n < a.length && n < b.length && a[n] === b[n]) n++
   const prefix = a.slice(0, n)
   if (n === a.length || n === b.length) return prefix
+  // Inside a number: the part before it.
+  if (/[0-9]/.test(a[n]) && /[0-9]/.test(b[n])) return prefix.replace(/[0-9]+$/, "")
   // Inside a camel-case part: keep only the parts shared whole.
   if (/[a-z0-9]/.test(a[n]) || /[a-z0-9]/.test(b[n])) {
     for (let k = prefix.length - 1; k > 0; k--) if (/[A-Z]/.test(prefix[k])) return prefix.slice(0, k)
@@ -222,6 +228,14 @@ export const sharedNameStart = (a: string, b: string): string => {
   }
   return prefix
 }
+
+/**
+ * Whether names that start with `start` are a kind of file: a start of four
+ * letters or more (`actionToggle`), or the letters before a number
+ * (`md` of `md061`, a numbered series).
+ */
+export const isKindStart = (name: string, start: string): boolean =>
+  start.length >= 4 || (/^[A-Za-z]{2,}$/.test(start) && /^[0-9]/.test(name.slice(start.length)))
 
 /** Statement starts at the top level (indent 0), as line numbers. */
 const topStatements = (lines: ReadonlyArray<string>): Array<number> => {

@@ -1,0 +1,501 @@
+diff --git a/README.md b/README.md
+index b8873f70..bcdd18b9 100644
+--- a/README.md
++++ b/README.md
+@@ -151,6 +151,7 @@ playground for learning and exploring.
+ - **[MD058](doc/md058.md)** *blanks-around-tables* - Tables should be surrounded by blank lines
+ - **[MD059](doc/md059.md)** *descriptive-link-text* - Link text should be descriptive
+ - **[MD060](doc/md060.md)** *table-column-style* - Table column style
++- **[MD061](doc/md061.md)** *heading-max-level* - Heading level should not exceed the maximum
+ 
+ <!-- markdownlint-restore -->
+ 
+@@ -180,7 +181,8 @@ rules at once.
+ - **`emphasis`** - `MD036`, `MD037`, `MD049`, `MD050`
+ - **`hard_tab`** - `MD010`
+ - **`headings`** - `MD001`, `MD003`, `MD018`, `MD019`, `MD020`, `MD021`,
+-  `MD022`, `MD023`, `MD024`, `MD025`, `MD026`, `MD036`, `MD041`, `MD043`
++  `MD022`, `MD023`, `MD024`, `MD025`, `MD026`, `MD036`, `MD041`, `MD043`,
++  `MD061`
+ - **`hr`** - `MD035`
+ - **`html`** - `MD033`
+ - **`images`** - `MD045`, `MD052`, `MD053`, `MD054`
+diff --git a/doc-build/md061.md b/doc-build/md061.md
+new file mode 100644
+index 00000000..e04dfa8b
+--- /dev/null
++++ b/doc-build/md061.md
+@@ -0,0 +1,26 @@
++This rule is triggered when a heading's level is greater than the maximum
++heading level allowed by the `maximum` parameter:
++
++```markdown
++# Heading
++
++## Heading
++
++#### Heading
++```
++
++To fix this, restructure the document so headings are no deeper than the
++maximum level (for example, with `maximum` set to `3`):
++
++```markdown
++# Heading
++
++## Heading
++
++### Heading
++```
++
++Note: With the default value of `6`, this rule never reports a violation.
++
++Rationale: Deeply nested headings can be a sign that a document should be
++split into smaller documents or restructured.
+diff --git a/doc/Rules.md b/doc/Rules.md
+index 2dc5fdc9..4a0421c1 100644
+--- a/doc/Rules.md
++++ b/doc/Rules.md
+@@ -2858,6 +2858,45 @@ Rationale: Consistent formatting makes it easier to understand a document.
+ [gfm-table-060]: https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-tables
+ [latin-script]: https://wikipedia.org/wiki/Latin_script
+ 
++<a name="md061"></a>
++
++## `MD061` - Heading level should not exceed the maximum
++
++Tags: `headings`
++
++Aliases: `heading-max-level`
++
++Parameters:
++
++- `maximum`: Maximum heading level (`integer`, default `6`)
++
++This rule is triggered when a heading's level is greater than the maximum
++heading level allowed by the `maximum` parameter:
++
++```markdown
++# Heading
++
++## Heading
++
++#### Heading
++```
++
++To fix this, restructure the document so headings are no deeper than the
++maximum level (for example, with `maximum` set to `3`):
++
++```markdown
++# Heading
++
++## Heading
++
++### Heading
++```
++
++Note: With the default value of `6`, this rule never reports a violation.
++
++Rationale: Deeply nested headings can be a sign that a document should be
++split into smaller documents or restructured.
++
+ <!-- markdownlint-configure-file {
+   "no-inline-html": {
+     "allowed_elements": [
+diff --git a/doc/md061.md b/doc/md061.md
+new file mode 100644
+index 00000000..b5f7aad4
+--- /dev/null
++++ b/doc/md061.md
+@@ -0,0 +1,36 @@
++# `MD061` - Heading level should not exceed the maximum
++
++Tags: `headings`
++
++Aliases: `heading-max-level`
++
++Parameters:
++
++- `maximum`: Maximum heading level (`integer`, default `6`)
++
++This rule is triggered when a heading's level is greater than the maximum
++heading level allowed by the `maximum` parameter:
++
++```markdown
++# Heading
++
++## Heading
++
++#### Heading
++```
++
++To fix this, restructure the document so headings are no deeper than the
++maximum level (for example, with `maximum` set to `3`):
++
++```markdown
++# Heading
++
++## Heading
++
++### Heading
++```
++
++Note: With the default value of `6`, this rule never reports a violation.
++
++Rationale: Deeply nested headings can be a sign that a document should be
++split into smaller documents or restructured.
+diff --git a/lib/configuration-strict.d.ts b/lib/configuration-strict.d.ts
+index f9bc600c..6a8f9270 100644
+--- a/lib/configuration-strict.d.ts
++++ b/lib/configuration-strict.d.ts
+@@ -2319,7 +2319,47 @@ export interface ConfigurationStrict {
+         aligned_delimiter?: boolean;
+       };
+   /**
+-   * headings : MD001, MD003, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD036, MD041, MD043
++   * MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md
++   */
++  MD061?:
++    | boolean
++    | ("error" | "warning")
++    | {
++        /**
++         * Whether to enable the rule
++         */
++        enabled?: boolean;
++        /**
++         * Rule severity
++         */
++        severity?: "error" | "warning";
++        /**
++         * Maximum heading level
++         */
++        maximum?: number;
++      };
++  /**
++   * MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md
++   */
++  "heading-max-level"?:
++    | boolean
++    | ("error" | "warning")
++    | {
++        /**
++         * Whether to enable the rule
++         */
++        enabled?: boolean;
++        /**
++         * Rule severity
++         */
++        severity?: "error" | "warning";
++        /**
++         * Maximum heading level
++         */
++        maximum?: number;
++      };
++  /**
++   * headings : MD001, MD003, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD036, MD041, MD043, MD061
+    */
+   headings?: boolean | ("error" | "warning");
+   /**
+diff --git a/lib/md061.mjs b/lib/md061.mjs
+new file mode 100644
+index 00000000..944637e3
+--- /dev/null
++++ b/lib/md061.mjs
+@@ -0,0 +1,27 @@
++// @ts-check
++
++import { addErrorDetailIf } from "../helpers/helpers.cjs";
++import { getHeadingLevel } from "../helpers/micromark-helpers.cjs";
++import { filterByTypesCached } from "./cache.mjs";
++
++/** @type {import("markdownlint").Rule} */
++export default {
++  "names": [ "MD061", "heading-max-level" ],
++  "description": "Heading level should not exceed the maximum",
++  "tags": [ "headings" ],
++  "parser": "micromark",
++  "function": function MD061(params, onError) {
++    const maximum = Number(params.config.maximum || 6);
++    for (const heading of filterByTypesCached([ "atxHeading", "setextHeading" ])) {
++      const level = getHeadingLevel(heading);
++      if (level > maximum) {
++        addErrorDetailIf(
++          onError,
++          heading.startLine,
++          `h${maximum}`,
++          `h${level}`
++        );
++      }
++    }
++  }
++};
+diff --git a/lib/rules.mjs b/lib/rules.mjs
+index 18148a41..72d53a2e 100644
+--- a/lib/rules.mjs
++++ b/lib/rules.mjs
+@@ -55,6 +55,7 @@ import md056 from "./md056.mjs";
+ import md058 from "./md058.mjs";
+ import md059 from "./md059.mjs";
+ import md060 from "./md060.mjs";
++import md061 from "./md061.mjs";
+ 
+ const rules = [
+   md001,
+@@ -112,7 +113,8 @@ const rules = [
+   // md057: See https://github.com/markdownlint/markdownlint
+   md058,
+   md059,
+-  md060
++  md060,
++  md061
+ ];
+ for (const rule of rules) {
+   const name = rule.names[0].toLowerCase();
+diff --git a/schema/.markdownlint.jsonc b/schema/.markdownlint.jsonc
+index 005359a1..7968a31e 100644
+--- a/schema/.markdownlint.jsonc
++++ b/schema/.markdownlint.jsonc
+@@ -345,5 +345,11 @@
+     "style": "any",
+     // Aligned delimiter columns
+     "aligned_delimiter": false
++  },
++
++  // MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md
++  "MD061": {
++    // Maximum heading level
++    "maximum": 6
+   }
+ }
+\ No newline at end of file
+diff --git a/schema/.markdownlint.yaml b/schema/.markdownlint.yaml
+index 6ec3147a..921e40ad 100644
+--- a/schema/.markdownlint.yaml
++++ b/schema/.markdownlint.yaml
+@@ -308,3 +308,8 @@ MD060:
+   style: any
+   # Aligned delimiter columns
+   aligned_delimiter: false
++
++# MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md
++MD061:
++  # Maximum heading level
++  maximum: 6
+diff --git a/schema/build-config-schema.mjs b/schema/build-config-schema.mjs
+index a3df0886..790ceace 100644
+--- a/schema/build-config-schema.mjs
++++ b/schema/build-config-schema.mjs
+@@ -658,6 +658,16 @@ for (const rule of rules) {
+         "default": false
+       };
+       break;
++    case "MD061":
++      // @ts-ignore
++      subscheme.properties.maximum = {
++        "description": "Maximum heading level",
++        "type": "integer",
++        "minimum": 1,
++        "maximum": 6,
++        "default": 6
++      };
++      break;
+     default:
+       break;
+   }
+diff --git a/schema/markdownlint-config-schema-strict.json b/schema/markdownlint-config-schema-strict.json
+index b883ddd0..a2a091a8 100644
+--- a/schema/markdownlint-config-schema-strict.json
++++ b/schema/markdownlint-config-schema-strict.json
+@@ -4773,8 +4773,92 @@
+       ],
+       "default": true
+     },
++    "MD061": {
++      "description": "MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md",
++      "oneOf": [
++        {
++          "type": "boolean"
++        },
++        {
++          "enum": [
++            "error",
++            "warning"
++          ]
++        },
++        {
++          "type": "object",
++          "additionalProperties": false,
++          "properties": {
++            "enabled": {
++              "description": "Whether to enable the rule",
++              "type": "boolean",
++              "default": true
++            },
++            "severity": {
++              "description": "Rule severity",
++              "type": "string",
++              "enum": [
++                "error",
++                "warning"
++              ],
++              "default": "error"
++            },
++            "maximum": {
++              "description": "Maximum heading level",
++              "type": "integer",
++              "minimum": 1,
++              "maximum": 6,
++              "default": 6
++            }
++          }
++        }
++      ],
++      "default": true
++    },
++    "heading-max-level": {
++      "description": "MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md",
++      "oneOf": [
++        {
++          "type": "boolean"
++        },
++        {
++          "enum": [
++            "error",
++            "warning"
++          ]
++        },
++        {
++          "type": "object",
++          "additionalProperties": false,
++          "properties": {
++            "enabled": {
++              "description": "Whether to enable the rule",
++              "type": "boolean",
++              "default": true
++            },
++            "severity": {
++              "description": "Rule severity",
++              "type": "string",
++              "enum": [
++                "error",
++                "warning"
++              ],
++              "default": "error"
++            },
++            "maximum": {
++              "description": "Maximum heading level",
++              "type": "integer",
++              "minimum": 1,
++              "maximum": 6,
++              "default": 6
++            }
++          }
++        }
++      ],
++      "default": true
++    },
+     "headings": {
+-      "description": "headings : MD001, MD003, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD036, MD041, MD043",
++      "description": "headings : MD001, MD003, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD036, MD041, MD043, MD061",
+       "oneOf": [
+         {
+           "type": "boolean"
+diff --git a/schema/markdownlint-config-schema.json b/schema/markdownlint-config-schema.json
+index 2e2027c9..03fde260 100644
+--- a/schema/markdownlint-config-schema.json
++++ b/schema/markdownlint-config-schema.json
+@@ -4773,8 +4773,92 @@
+       ],
+       "default": true
+     },
++    "MD061": {
++      "description": "MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md",
++      "oneOf": [
++        {
++          "type": "boolean"
++        },
++        {
++          "enum": [
++            "error",
++            "warning"
++          ]
++        },
++        {
++          "type": "object",
++          "additionalProperties": false,
++          "properties": {
++            "enabled": {
++              "description": "Whether to enable the rule",
++              "type": "boolean",
++              "default": true
++            },
++            "severity": {
++              "description": "Rule severity",
++              "type": "string",
++              "enum": [
++                "error",
++                "warning"
++              ],
++              "default": "error"
++            },
++            "maximum": {
++              "description": "Maximum heading level",
++              "type": "integer",
++              "minimum": 1,
++              "maximum": 6,
++              "default": 6
++            }
++          }
++        }
++      ],
++      "default": true
++    },
++    "heading-max-level": {
++      "description": "MD061/heading-max-level : Heading level should not exceed the maximum : https://github.com/DavidAnson/markdownlint/blob/v0.41.1/doc/md061.md",
++      "oneOf": [
++        {
++          "type": "boolean"
++        },
++        {
++          "enum": [
++            "error",
++            "warning"
++          ]
++        },
++        {
++          "type": "object",
++          "additionalProperties": false,
++          "properties": {
++            "enabled": {
++              "description": "Whether to enable the rule",
++              "type": "boolean",
++              "default": true
++            },
++            "severity": {
++              "description": "Rule severity",
++              "type": "string",
++              "enum": [
++                "error",
++                "warning"
++              ],
++              "default": "error"
++            },
++            "maximum": {
++              "description": "Maximum heading level",
++              "type": "integer",
++              "minimum": 1,
++              "maximum": 6,
++              "default": 6
++            }
++          }
++        }
++      ],
++      "default": true
++    },
+     "headings": {
+-      "description": "headings : MD001, MD003, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD036, MD041, MD043",
++      "description": "headings : MD001, MD003, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD036, MD041, MD043, MD061",
+       "oneOf": [
+         {
+           "type": "boolean"

@@ -47,18 +47,22 @@ const MAX_CANDIDATES = 5
 
 const inside = (file: string) => file !== "" && !file.startsWith("/") && !/^[A-Za-z]:/.test(file) && !file.split(/[\\/]/).includes("..")
 
+/** A file's text in the code read from `source`, line ends as `\n`; undefined when there is no such file. */
+export const textAt = Effect.fn("textAt")(function*(source: CodeSource, file: string) {
+  if (!inside(file)) return undefined
+  if (source.kind === "commit") return yield* fileAt(source.repo, source.commit, file)
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  return Option.getOrUndefined(yield* fs.readFileString(path.join(source.root, file)).pipe(Effect.option))?.replace(/\r\n?/g, "\n")
+})
+
 export const locatePlaces = Effect.fn("locatePlaces")(function*(source: CodeSource, places: ReadonlyArray<Place>) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const texts = new Map<string, ReadonlyArray<string> | undefined>()
   const linesOf = Effect.fnUntraced(function*(file: string) {
     if (!inside(file)) return undefined
-    if (!texts.has(file)) {
-      const text = source.kind === "commit"
-        ? yield* fileAt(source.repo, source.commit, file)
-        : Option.getOrUndefined(yield* fs.readFileString(path.join(source.root, file)).pipe(Effect.option))?.replace(/\r\n?/g, "\n")
-      texts.set(file, text?.split("\n"))
-    }
+    if (!texts.has(file)) texts.set(file, (yield* textAt(source, file))?.split("\n"))
     return texts.get(file)
   })
   const repo = source.kind === "commit" ? source.repo : source.root

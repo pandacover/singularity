@@ -1,0 +1,768 @@
+{
+  "rows": [
+    {
+      "index": 1,
+      "task": "t01-heading-max-level",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3724948,
+        "tokens": {
+          "input": 40,
+          "write": 35589,
+          "read": 823644,
+          "output": 6533,
+          "total": 865806
+        },
+        "turns": 20,
+        "min": 2.81155
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.418762,
+        "tokens": {
+          "input": 42,
+          "write": 40245,
+          "read": 938790,
+          "output": 6994,
+          "total": 986071
+        },
+        "turns": 21,
+        "min": 3.5269833333333334,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 0.44221666666666665
+      }
+    },
+    {
+      "index": 2,
+      "task": "t02-code-block-max-lines",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.4915648,
+        "tokens": {
+          "input": 52,
+          "write": 38366,
+          "read": 1128534,
+          "output": 11229,
+          "total": 1178181
+        },
+        "turns": 26,
+        "min": 3.57775
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.6138934000000004,
+        "tokens": {
+          "input": 58,
+          "write": 49570,
+          "read": 1423487,
+          "output": 13080,
+          "total": 1486195
+        },
+        "turns": 29,
+        "min": 3.7104333333333335,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 2.09845
+      }
+    },
+    {
+      "index": 3,
+      "task": "t03-md024-ignore-case",
+      "kind": "rule-option",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.22383779999999998,
+        "tokens": {
+          "input": 22,
+          "write": 26177,
+          "read": 379179,
+          "output": 4325,
+          "total": 409703
+        },
+        "turns": 15,
+        "min": 1.78435
+      },
+      "with": {
+        "passed": false,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": false
+        },
+        "usd": 0.2788936,
+        "tokens": {
+          "input": 28,
+          "write": 30617,
+          "read": 520398,
+          "output": 5229,
+          "total": 556272
+        },
+        "turns": 18,
+        "min": 1.6699166666666667,
+        "handover_chars": 9717,
+        "workflows": [
+          "add-rule-docs-readme",
+          "add-rule-config-schema",
+          "update-test-counts"
+        ],
+        "waited_min": 0.4313
+      }
+    },
+    {
+      "index": 4,
+      "task": "t04-list-max-depth",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.2394704,
+        "tokens": {
+          "input": 20,
+          "write": 28274,
+          "read": 370472,
+          "output": 5224,
+          "total": 403990
+        },
+        "turns": 10,
+        "min": 2.0007
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3435022000000001,
+        "tokens": {
+          "input": 32,
+          "write": 34905,
+          "read": 654941,
+          "output": 7283,
+          "total": 697161
+        },
+        "turns": 1,
+        "min": 12.474283333333334,
+        "handover_chars": 14564,
+        "workflows": [
+          "add-rule-implementation",
+          "add-rule-docs-readme",
+          "add-rule-config-schema",
+          "add-rule-test-fixtures",
+          "update-test-counts"
+        ],
+        "waited_min": 0.43056666666666665
+      }
+    },
+    {
+      "index": 5,
+      "task": "t05-get-rules",
+      "kind": "one-off",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.216629,
+        "tokens": {
+          "input": 20,
+          "write": 25458,
+          "read": 322635,
+          "output": 5023,
+          "total": 353136
+        },
+        "turns": 15,
+        "min": 1.23815
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.27331659999999997,
+        "tokens": {
+          "input": 24,
+          "write": 31126,
+          "read": 458373,
+          "output": 5709,
+          "total": 495232
+        },
+        "turns": 16,
+        "min": 1.5959666666666668,
+        "handover_chars": 11282,
+        "workflows": [
+          "add-rule-implementation",
+          "add-rule-docs-readme",
+          "add-rule-test-fixtures",
+          "update-test-counts"
+        ],
+        "waited_min": 3.2659333333333334
+      }
+    },
+    {
+      "index": 6,
+      "task": "t06-rename-doc-src",
+      "kind": "update",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.07438420000000001,
+        "tokens": {
+          "input": 10,
+          "write": 10123,
+          "read": 121211,
+          "output": 963,
+          "total": 132307
+        },
+        "turns": 6,
+        "min": 0.627
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.07787200000000001,
+        "tokens": {
+          "input": 10,
+          "write": 10637,
+          "read": 122120,
+          "output": 1088,
+          "total": 133855
+        },
+        "turns": 6,
+        "min": 0.7470833333333333,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 0.43405
+      }
+    },
+    {
+      "index": 7,
+      "task": "t07-link-url-scheme",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.40028779999999997,
+        "tokens": {
+          "input": 32,
+          "write": 43565,
+          "read": 716819,
+          "output": 8260,
+          "total": 768676
+        },
+        "turns": 16,
+        "min": 2.2319166666666668
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.45030079999999995,
+        "tokens": {
+          "input": 34,
+          "write": 46321,
+          "read": 832394,
+          "output": 9847,
+          "total": 888596
+        },
+        "turns": 18,
+        "min": 2.9211833333333335,
+        "handover_chars": 15373,
+        "workflows": [
+          "add-rule-implementation",
+          "add-rule-docs-readme",
+          "add-rule-config-schema",
+          "add-rule-test-fixtures",
+          "update-test-counts"
+        ],
+        "waited_min": 0.43025
+      }
+    },
+    {
+      "index": 8,
+      "task": "t08-todo-comments-example",
+      "kind": "look-alike",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.4871668,
+        "tokens": {
+          "input": 60,
+          "write": 34213,
+          "read": 1184374,
+          "output": 11332,
+          "total": 1229979
+        },
+        "turns": 31,
+        "min": 3.7432166666666666
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.2991588,
+        "tokens": {
+          "input": 36,
+          "write": 25138,
+          "read": 632624,
+          "output": 7201,
+          "total": 664999
+        },
+        "turns": 28,
+        "min": 2.2385,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 4.433766666666667
+      }
+    },
+    {
+      "index": 9,
+      "task": "t09-md014-prompts",
+      "kind": "rule-option",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3875888,
+        "tokens": {
+          "input": 38,
+          "write": 36704,
+          "read": 791834,
+          "output": 8233,
+          "total": 836809
+        },
+        "turns": 28,
+        "min": 2.1184
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.4816742,
+        "tokens": {
+          "input": 50,
+          "write": 40711,
+          "read": 1085551,
+          "output": 10162,
+          "total": 1136474
+        },
+        "turns": 33,
+        "min": 4.3123,
+        "handover_chars": 5958,
+        "workflows": [
+          "add-rule-parameter"
+        ],
+        "waited_min": 0.43115
+      }
+    },
+    {
+      "index": 10,
+      "task": "t10-ol-delimiter-style",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.49076959999999986,
+        "tokens": {
+          "input": 48,
+          "write": 42142,
+          "read": 1105378,
+          "output": 10103,
+          "total": 1157671
+        },
+        "turns": 24,
+        "min": 2.9013333333333335
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.4754442,
+        "tokens": {
+          "input": 40,
+          "write": 48335,
+          "read": 1041621,
+          "output": 7370,
+          "total": 1097366
+        },
+        "turns": 20,
+        "min": 3.1159333333333334,
+        "handover_chars": 15598,
+        "workflows": [
+          "add-rule-implementation",
+          "add-rule-docs-readme",
+          "add-rule-config-schema",
+          "add-rule-test-fixtures",
+          "update-test-counts"
+        ],
+        "waited_min": 0.4310333333333333
+      }
+    },
+    {
+      "index": 11,
+      "task": "t11-circular-extends",
+      "kind": "one-off",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.21645300000000003,
+        "tokens": {
+          "input": 22,
+          "write": 22295,
+          "read": 351795,
+          "output": 5687,
+          "total": 379799
+        },
+        "turns": 11,
+        "min": 1.3864833333333333
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.23257280000000002,
+        "tokens": {
+          "input": 20,
+          "write": 25459,
+          "read": 330434,
+          "output": 6461,
+          "total": 362374
+        },
+        "turns": 18,
+        "min": 1.6210333333333333,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 5.6037333333333335
+      }
+    },
+    {
+      "index": 12,
+      "task": "t12-no-empty-headings",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.330358,
+        "tokens": {
+          "input": 36,
+          "write": 31423,
+          "read": 709220,
+          "output": 6275,
+          "total": 746954
+        },
+        "turns": 18,
+        "min": 2.3602666666666665
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3414594,
+        "tokens": {
+          "input": 34,
+          "write": 35093,
+          "read": 724097,
+          "output": 5620,
+          "total": 764844
+        },
+        "turns": 17,
+        "min": 2.558666666666667,
+        "handover_chars": 17581,
+        "workflows": [
+          "add-rule-implementation",
+          "add-rule-docs-readme",
+          "add-rule-config-schema",
+          "add-rule-test-fixtures",
+          "update-test-counts"
+        ],
+        "waited_min": 0.4303
+      }
+    }
+  ],
+  "all": {
+    "without": {
+      "failed": 0,
+      "usd": 3.931005,
+      "tokens": 8463011,
+      "turns": 220,
+      "min": 26.781116666666673
+    },
+    "with": {
+      "failed": 1,
+      "usd": 4.28685,
+      "tokens": 9269439,
+      "turns": 225,
+      "min": 40.49228333333333
+    }
+  },
+  "reach": {
+    "without": {
+      "failed": 0,
+      "usd": 3.0669453999999994,
+      "tokens": 6419024,
+      "turns": 174,
+      "min": 20.391816666666667
+    },
+    "with": {
+      "failed": 1,
+      "usd": 3.2541946000000004,
+      "tokens": 6797173,
+      "turns": 175,
+      "min": 33.25486666666667
+    }
+  },
+  "learnUsd": 2.6285798,
+  "rounds": [
+    {
+      "id": "c000001",
+      "created_at": "2026-10-11T19:52:54.036Z",
+      "cost_usd": 0.3396228,
+      "status": "committed",
+      "records": [
+        "markdownlint-eaa7c320d84d",
+        "markdownlint-ccb92045aad3"
+      ],
+      "workflows": [
+        "add-rule-implementation",
+        "add-rule-docs-readme",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts"
+      ]
+    },
+    {
+      "id": "c000002",
+      "created_at": "2026-10-11T20:13:51.149Z",
+      "cost_usd": 0.5713724,
+      "status": "committed",
+      "records": [
+        "markdownlint-eaa7c320d84d",
+        "markdownlint-ccb92045aad3",
+        "markdownlint-9d0341a36654",
+        "markdownlint-873b3da355a3",
+        "markdownlint-faff358eda41"
+      ],
+      "workflows": [
+        "add-rule-implementation",
+        "add-rule-docs-readme",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "add-rule-parameter",
+        "add-public-api-function"
+      ]
+    },
+    {
+      "id": "c000003",
+      "created_at": "2026-10-11T20:26:07.069Z",
+      "cost_usd": 0.7310084,
+      "status": "rejected",
+      "records": [
+        "markdownlint-eaa7c320d84d",
+        "markdownlint-ccb92045aad3",
+        "markdownlint-9d0341a36654",
+        "markdownlint-873b3da355a3",
+        "markdownlint-faff358eda41",
+        "markdownlint-b92cd21dc134",
+        "markdownlint-90768cdf8ff6",
+        "markdownlint-2daf9c3ad3ee"
+      ],
+      "workflows": [
+        "add-rule-implementation",
+        "add-rule-docs-readme",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "add-rule-parameter",
+        "add-public-api-function",
+        "rename-source-folder",
+        "add-custom-rule-example"
+      ]
+    },
+    {
+      "id": "c000004",
+      "created_at": "2026-10-11T20:26:07.087Z",
+      "cost_usd": 0,
+      "status": "committed",
+      "records": [
+        "markdownlint-eaa7c320d84d",
+        "markdownlint-ccb92045aad3",
+        "markdownlint-9d0341a36654",
+        "markdownlint-873b3da355a3",
+        "markdownlint-faff358eda41"
+      ],
+      "workflows": [
+        "add-rule-implementation",
+        "add-rule-docs-readme",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "add-rule-parameter",
+        "add-public-api-function"
+      ]
+    },
+    {
+      "id": "c000005",
+      "created_at": "2026-10-11T22:03:34.127Z",
+      "cost_usd": 0.9865761999999999,
+      "status": "committed",
+      "records": [
+        "markdownlint-eaa7c320d84d",
+        "markdownlint-ccb92045aad3",
+        "markdownlint-9d0341a36654",
+        "markdownlint-873b3da355a3",
+        "markdownlint-faff358eda41",
+        "markdownlint-b92cd21dc134",
+        "markdownlint-90768cdf8ff6",
+        "markdownlint-2daf9c3ad3ee",
+        "markdownlint-f0c66ca8efb6",
+        "markdownlint-2a3a6c20ddf6",
+        "markdownlint-005821123ab3"
+      ],
+      "workflows": [
+        "add-rule-implementation",
+        "add-rule-docs-readme",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "add-rule-parameter",
+        "add-public-api-function",
+        "add-custom-rule-example",
+        "rename-source-folder",
+        "change-config-extends-reading"
+      ]
+    }
+  ],
+  "skipped": [
+    {
+      "at": "2026-10-11T19:43:10.897Z",
+      "subject": "markdownlint",
+      "commit": "314ab18e719d52a911939012524d61651d2f171f",
+      "session": null,
+      "reason": "no session made it or wrote it"
+    }
+  ],
+  "stored": [
+    "markdownlint/markdownlint-005821123ab3.json",
+    "markdownlint/markdownlint-2a3a6c20ddf6.json",
+    "markdownlint/markdownlint-2bd20736e985.json",
+    "markdownlint/markdownlint-2daf9c3ad3ee.json",
+    "markdownlint/markdownlint-873b3da355a3.json",
+    "markdownlint/markdownlint-90768cdf8ff6.json",
+    "markdownlint/markdownlint-9d0341a36654.json",
+    "markdownlint/markdownlint-b92cd21dc134.json",
+    "markdownlint/markdownlint-ccb92045aad3.json",
+    "markdownlint/markdownlint-eaa7c320d84d.json",
+    "markdownlint/markdownlint-f0c66ca8efb6.json",
+    "markdownlint/markdownlint-faff358eda41.json"
+  ]
+}

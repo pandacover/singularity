@@ -230,7 +230,7 @@ export const learn = (req: LearnRequest): Promise<Readonly<Record<string, unknow
         const { DEFAULT_EVERY, learnSubject } = yield* Effect.promise(() => import("../workflows/Learn.ts"))
         const subject = (yield* (yield* RecordStore).subjects()).find((s) => s.id === req.subject)
         if (subject === undefined) return { kind: "waiting", subject: req.subject, reason: "no such subject" }
-        return (yield* learnSubject(subject, { ...req.config, every: req.config.every ?? DEFAULT_EVERY })) as unknown as Readonly<Record<string, unknown>>
+        return (yield* learnSubject(subject, { ...req.config, every: req.config.every ?? DEFAULT_EVERY, tenantDir: h.tenantDir })) as unknown as Readonly<Record<string, unknown>>
       }).pipe(Effect.provide(layer))
     }).pipe(Effect.provide(NodeServices.layer))
   )

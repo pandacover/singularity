@@ -1,0 +1,95 @@
+diff --git a/test/markdownlint-test-custom-rules.mjs b/test/markdownlint-test-custom-rules.mjs
+index c8b21a27..25b04f3f 100644
+--- a/test/markdownlint-test-custom-rules.mjs
++++ b/test/markdownlint-test-custom-rules.mjs
+@@ -1703,6 +1703,38 @@ test.suite(import.meta.url.replace(/^.*?\/(?<name>[^/]*)$/u, "$<name>"), () => {
+     });
+   }));
+ 
++  test("customRulesTodoComments", (t) => {
++    t.plan(1);
++    /** @type {import("markdownlint").Options} */
++    const options = {
++      "config": {
++        "default": false,
++        "todo-comments": true
++      },
++      "customRules": [ customRules.todoComments ],
++      "strings": {
++        "string": [
++          "# Heading TODO",
++          "",
++          "TODO: first FIXME second TODO",
++          "Lowercase todo, TODOs and PREFIXME are not notes",
++          "A note (FIXME) here.",
++          ""
++        ].join("\n")
++      }
++    };
++    const actual = lintSync(options);
++    const expected = [
++      [ 1, [ 11, 4 ], "Found TODO" ],
++      [ 3, [ 1, 4 ], "Found TODO" ],
++      [ 5, [ 9, 5 ], "Found FIXME" ]
++    ];
++    t.assert.deepEqual(
++      actual.string.map((error) => [ error.lineNumber, error.errorRange, error.errorDetail ]),
++      expected
++    );
++  });
++
+   test("customRulesValidateJson", (t) => new Promise((resolve) => {
+     t.plan(3);
+     /** @type {import("markdownlint").Options} */
+diff --git a/test/rules/rules.cjs b/test/rules/rules.cjs
+index b344b63b..acf8e4a8 100644
+--- a/test/rules/rules.cjs
++++ b/test/rules/rules.cjs
+@@ -17,6 +17,9 @@ module.exports.lettersEX = lettersEX;
+ const lintJavaScript = require("./lint-javascript.cjs");
+ module.exports.lintJavaScript = lintJavaScript;
+ 
++const todoComments = require("./todo-comments.cjs");
++module.exports.todoComments = todoComments;
++
+ const validateJson = require("./validate-json.cjs");
+ module.exports.validateJson = validateJson;
+ 
+@@ -26,5 +29,6 @@ module.exports.all = [
+   firstLine,
+   lettersEX,
+   lintJavaScript,
++  todoComments,
+   validateJson
+ ];
+diff --git a/test/rules/todo-comments.cjs b/test/rules/todo-comments.cjs
+new file mode 100644
+index 00000000..172b89a8
+--- /dev/null
++++ b/test/rules/todo-comments.cjs
+@@ -0,0 +1,25 @@
++// @ts-check
++
++"use strict";
++
++const todoFixmeRe = /\b(?:TODO|FIXME)\b/;
++
++/** @type {import("markdownlint").Rule} */
++module.exports = {
++  "names": [ "todo-comments" ],
++  "description": "Rule that reports TODO and FIXME notes",
++  "tags": [ "test" ],
++  "parser": "none",
++  "function": (params, onError) => {
++    for (const [ index, line ] of params.lines.entries()) {
++      const match = todoFixmeRe.exec(line);
++      if (match) {
++        onError({
++          "lineNumber": index + 1,
++          "detail": "Found " + match[0],
++          "range": [ match.index + 1, match[0].length ]
++        });
++      }
++    }
++  }
++};

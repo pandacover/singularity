@@ -1,0 +1,23 @@
+2026-10-11T19:51:08.665Z markdownlint: ✓ Learned 5 workflows and 3 known mistakes from 2 changes ($0.34):
+2026-10-11T19:51:08.665Z markdownlint: · Create a built-in rule module and register it
+2026-10-11T19:51:08.665Z markdownlint: · Document a new rule (doc sources, Rules.md, README)
+2026-10-11T19:51:08.665Z markdownlint: · Add a new rule to the config schema and generated config files
+2026-10-11T19:51:08.665Z markdownlint: · Add test fixture markdown files for a new rule
+2026-10-11T19:51:08.665Z markdownlint: · Update hard-coded test counts after adding a rule
+2026-10-11T20:11:00.657Z markdownlint: ✓ Now knows 7 workflows and 5 known mistakes from 3 changes ($0.57):
+2026-10-11T20:11:00.657Z markdownlint: · Create a built-in rule module and register it
+2026-10-11T20:11:00.657Z markdownlint: · Document a new rule (doc sources, Rules.md, README)
+2026-10-11T20:11:00.657Z markdownlint: · Add a new rule to the config schema and generated config files
+2026-10-11T20:11:00.657Z markdownlint: · Add test fixture markdown files for a new rule
+2026-10-11T20:11:00.657Z markdownlint: · Update hard-coded test counts after adding a rule
+2026-10-11T20:11:00.657Z markdownlint: · Add a parameter to an existing rule
+2026-10-11T20:11:00.657Z markdownlint: · and 1 more
+2026-10-11T20:22:09.853Z markdownlint: · kept its workflows and added 4 known mistakes: the revision fits the runs worse: 76 edited places shown, 7 shown and left alone, against 77 edited places shown, 6 shown and left alone ($0.73)
+2026-10-11T21:58:21.631Z markdownlint: ✓ Now knows 10 workflows and 12 known mistakes from 6 changes ($0.99):
+2026-10-11T21:58:21.631Z markdownlint: · Create a built-in rule module and register it
+2026-10-11T21:58:21.631Z markdownlint: · Document a new rule (doc sources, Rules.md, README)
+2026-10-11T21:58:21.631Z markdownlint: · Add a new rule to the config schema and generated config files
+2026-10-11T21:58:21.631Z markdownlint: · Add test fixture markdown files for a new rule
+2026-10-11T21:58:21.631Z markdownlint: · Update hard-coded test counts after adding a rule
+2026-10-11T21:58:21.631Z markdownlint: · Add a parameter to an existing rule
+2026-10-11T21:58:21.631Z markdownlint: · and 4 more
