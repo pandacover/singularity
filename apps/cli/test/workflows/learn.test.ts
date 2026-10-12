@@ -17,7 +17,9 @@ import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, learnSubject, mergeSubject, type PastRound, pastRounds, roundUsd, waitReason } from "../../src/workflows/Learn.ts"
 import { CLI, learningQueue, lockHeld, markLock, queueLearning, releaseLock, takeLock } from "../../src/setup/Background.ts"
 import { learnerConfig } from "../../src/setup/Learner.ts"
+import { COMMAND } from "../../src/setup/Launcher.ts"
 import { writeLearn } from "../../src/setup/Preferences.ts"
+import { gatherStatus, renderStatus } from "../../src/setup/Status.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { emptyMemory, type WorkflowMemory } from "../../src/workflows/Models.ts"
 import { forSubject, startTask } from "../../src/workflows/Start.ts"
@@ -361,6 +363,26 @@ describe("learning repo by repo", () => {
     const out = JSON.parse(hook.stdout).hookSpecificOutput
     expect(out.hookEventName).toBe("BeforeAgent")
     expect(out.additionalContext).toContain("run once: `npm test`")
+
+    // What an agent reads with --json: the same hand-over, and what memory knows of each repo.
+    const recall = spawnSync(process.execPath, [COMMAND, "recall", "Make the colors darker", "--json"], {
+      cwd: a.repo,
+      encoding: "utf-8",
+      env: { ...process.env, SINGULARITY_HOME: homeDir }
+    })
+    const recalled = JSON.parse(recall.stdout)
+    expect(recalled).toMatchObject({ repo: { name: "alpha" }, handed_over: true })
+    expect(recalled.text).toContain("run once: `npm test`")
+    const status = await run(gatherStatus({ home: root, env: {}, cwd: a.repo, memoryHome: homeDir }))
+    expect(status).toMatchObject({ agents: [], here: { name: "alpha", stored: true }, learning: { with: null, spent_today_usd: 0.06 } })
+    expect(status.repos.map((r) => [r.name, r.here, r.workflows, r.changes_stored, r.learned_from, r.next])).toEqual([
+      ["alpha", true, 1, 2, 2, { state: "waiting", reason: "0 of 3 new changes stored" }],
+      ["beta", false, 1, 2, 2, { state: "waiting", reason: "0 of 3 new changes stored" }]
+    ])
+    // The screen is drawn from the same data.
+    const screen = renderStatus(status, { home: root, color: false }).join("\n")
+    expect(screen).toMatch(/alpha {3}1 workflow, 0 known mistakes · 2 changes stored, 2 learned from · learned \w+ \d+ ← here/)
+    expect(screen).toContain("learning needs Claude Code, Codex or Hermes Agent, and none is on this machine")
   }, 60_000)
 
   it("revises memory from what changes, and keeps a round that fails with what it spent, not to try it again", async () => {

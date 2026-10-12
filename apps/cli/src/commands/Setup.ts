@@ -2,8 +2,8 @@
  * Daily use of local memory, for anyone:
  *
  *     singularity setup [--yes] [--agent ID ...] [--learn-with ID] [--learn-model M] [--no-path]   set memory up in this machine's coding agents
- *     singularity status                                       what memory knows, and where it is set up
- *     singularity recall TASK...                               what a task here would be handed
+ *     singularity status [--json]                              what memory knows, and where it is set up
+ *     singularity recall TASK... [--json]                      what a task here would be handed
  *     singularity learn [--past] [--all] [--with ID] [--dry-run]   learn from the changes stored now
  *     singularity update [--no-fetch]                          the latest code, and setup brought up to date with it
  *     singularity uninstall [--purge]                          take memory out of every agent
@@ -11,7 +11,7 @@
  * `learn --auto` is the background rounds storing changes asks for, one
  * repo at a time from a queue (src/setup/AutoLearn.ts).
  */
-import { Console, DateTime, Effect, FileSystem, Layer, Option, Path } from "effect"
+import { Console, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { homedir } from "node:os"
 import { claudeCli, MODEL_AGENTS } from "../eval/Llm.ts"
@@ -37,6 +37,13 @@ import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, learnSubject, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
 import { startTask } from "../workflows/Start.ts"
 import { homeFlag } from "./Common.ts"
+
+/** A recall asked for in a folder that isn't there. */
+export class RecallError extends Schema.TaggedError<RecallError>()("RecallError", {
+  message: Schema.String
+}) {}
+
+const jsonFlag = Flag.Boolean("json").pipe(Flag.withDefault(false), Flag.withDescription("print it as JSON, for agents and scripts"))
 
 const interactive = () => process.stdin.isTTY === true && process.stdout.isTTY === true
 
@@ -78,9 +85,9 @@ const setup = Command.make(
 
 const status = Command.make(
   "status",
-  { home: homeFlag },
+  { home: homeFlag, json: jsonFlag },
   Effect.fn(function*(args) {
-    yield* runStatus({ home: homedir(), env: process.env, cwd: process.cwd(), color: wantsColor(), memoryHome: Option.getOrUndefined(args.home) })
+    yield* runStatus({ home: homedir(), env: process.env, cwd: process.cwd(), color: wantsColor(), json: args.json, memoryHome: Option.getOrUndefined(args.home) })
   })
 ).pipe(Command.withDescription("which agents have memory, what it knows in each repo, and how learning goes"))
 
@@ -89,18 +96,36 @@ const recall = Command.make(
   {
     task: Argument.String("task").pipe(Argument.atLeast(1), Argument.withDescription("the task, as it was asked")),
     cwd: Flag.String("cwd").pipe(Flag.optional, Flag.withDescription("the repo (default: here)")),
-    home: homeFlag
+    home: homeFlag,
+    json: jsonFlag
   },
   Effect.fn(function*(args) {
+    const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const home = yield* loadHome(Option.getOrUndefined(args.home))
     const cwd = path.resolve(Option.getOrElse(args.cwd, () => process.cwd()))
+    const info = yield* fs.stat(cwd).pipe(Effect.option)
+    if (Option.isNone(info) || info.value.type !== "Directory") {
+      return yield* new RecallError({ message: `${cwd} ${Option.isNone(info) ? "doesn't exist" : "isn't a directory"}` })
+    }
     const result = yield* startTask(
       { sessionId: "recall", prompt: args.task.join(" "), cwd },
       { tenantDir: home.tenantDir, cues: true, persist: false, parts: 1 }
     ).pipe(Effect.provide(storesOf(home, path)))
-    if (result.text !== undefined) return yield* Console.log(result.text)
     const repo = yield* identifyRepo(cwd)
+    if (args.json) {
+      return yield* Console.log(JSON.stringify(
+        {
+          repo: repo === undefined ? null : { name: path.basename(repo.root), root: repo.root },
+          handed_over: result.text !== undefined,
+          text: result.text ?? null,
+          places: result.shown.map((p) => ({ place: p.place, file: p.file, from: p.from, to: p.to }))
+        },
+        null,
+        2
+      ))
+    }
+    if (result.text !== undefined) return yield* Console.log(result.text)
     yield* Console.log(
       repo === undefined
         ? `singularity: ${cwd} isn't in a git repository, so memory has nothing for it.`

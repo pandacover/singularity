@@ -2,9 +2,10 @@
  * `singularity status`: which agents have memory and how, what memory knows
  * in each repo and which of its sessions' commits it left out and why,
  * whether learning runs on its own, and whether hooks have been failing.
- * One screen.
+ * One screen, or with --json the same as data for agents and scripts.
  */
 import { Console, DateTime, Effect, FileSystem, Layer, Path } from "effect"
+import type { ModelAgent } from "../eval/Llm.ts"
 import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
 import { commitRecordId } from "../records/Build.ts"
@@ -74,40 +75,85 @@ const clock = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" })
 }
 
-export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly color: boolean; readonly memoryHome?: string | undefined }) {
-  const s = makeStyle(o.color)
+/** What a repo's next learning round waits on. */
+export type NextRound =
+  | { readonly state: "learning"; readonly since: string }
+  | { readonly state: "queued"; readonly after_running: boolean }
+  | { readonly state: "waiting"; readonly reason: string }
+  | { readonly state: "ready"; readonly short: string | null }
+
+/**
+ * What `status` shows, as data: the text is drawn from it, and `status
+ * --json` prints it for agents and scripts.
+ */
+export interface StatusReport {
+  readonly version: string
+  readonly memory_home: string
+  readonly agents: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly set_up: boolean
+    readonly reach: Reach
+    /** What memory put in the agent: "hooks" or "plugin", and "skill". */
+    readonly parts: ReadonlyArray<string>
+    /** Memory's hooks Codex skips until the user trusts them; 0 for other agents. */
+    readonly untrusted_hooks: number
+  }>
+  /** The repo the command ran in, when it ran in one. */
+  readonly here: { readonly name: string; readonly root: string; readonly stored: boolean } | null
+  readonly repos: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly here: boolean
+    readonly workflows: number
+    readonly known_mistakes: number
+    readonly changes_stored: number
+    readonly learned_from: number
+    readonly last_learned: string | null
+    readonly next: NextRound
+    readonly left_out: ReadonlyArray<{ readonly reason: string; readonly count: number }>
+  }>
+  readonly learning: {
+    readonly auto: boolean
+    /** The agent that learns, when it can be found. */
+    readonly with: ModelAgent | null
+    readonly model: string | null
+    readonly every: number
+    readonly spent_today_usd: number
+    readonly max_usd_per_day: number
+    /** Why the agent that learns can't be used, when it can't. */
+    readonly problem: string | null
+    readonly last_failure: { readonly repo: string; readonly reason: string } | null
+  }
+  readonly hook_errors: { readonly this_week: number; readonly last: string | null; readonly log: string }
+}
+
+export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly memoryHome?: string | undefined }) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
-  const say = (line = "") => Console.log(line)
   const home = yield* loadHome(o.memoryHome)
-  yield* say()
-  yield* say(`  ${s.magenta("◆")} ${s.bold("singularity")} ${VERSION}  ${s.dim(`memory in ${tilde(home.root, o.home)}`)}`)
 
   // Agents found here or holding memory.
   const dirs: AgentDirs = { home: o.home, env: o.env }
   const found = yield* detectAgents(dirs, (c) => findExecutable(c, o.env).pipe(Effect.map((p) => p !== undefined)))
   const states = (yield* agentStates(found, dirs)).filter((a) => a.found || a.hookEvents.length > 0 || a.skill)
-  yield* say(`\n  ${s.bold("Agents")}`)
-  if (states.length === 0) yield* say(`    ${s.dim("no coding agent found")}`)
-  const width = Math.max(0, ...states.map((a) => a.agent.name.length)) + 3
-  let missing = 0
+  const agents: Array<StatusReport["agents"][number]> = []
   for (const a of states) {
-    const wired = a.hookEvents.length > 0 || (a.agent.hooks === undefined && a.agent.plugin === undefined && a.skill)
-    const parts = [...(a.hookEvents.length > 0 ? [a.agent.plugin === undefined ? "hooks" : "plugin"] : []), ...(a.skill ? ["skill"] : [])].join(" · ")
-    if (!wired) missing++
-    yield* say(
-      wired
-        ? `    ${s.green("✓")} ${a.agent.name.padEnd(width)}${REACH[a.agent.reach].padEnd(42)}${s.dim(parts)}`
-        : `    ${s.dim("·")} ${a.agent.name.padEnd(width)}${s.dim("not set up")}`
-    )
+    let untrusted = 0
     if (a.agent.id === "codex" && a.hookEvents.length > 0) {
       const codex = yield* findCommand("codex", o.env)
       const hooks = codex === undefined ? undefined : yield* codexHooks(codex, dirs)
-      const untrusted = hooks?.filter((h) => !h.trusted).length ?? 0
-      if (untrusted > 0) yield* say(`      ${" ".repeat(width)}${s.yellow(`${plural(untrusted, "hook")} waiting for your trust, so Codex skips ${untrusted === 1 ? "it" : "them"}: type /hooks in Codex`)}`)
+      untrusted = hooks?.filter((h) => !h.trusted).length ?? 0
     }
+    agents.push({
+      id: a.agent.id,
+      name: a.agent.name,
+      set_up: a.hookEvents.length > 0 || (a.agent.hooks === undefined && a.agent.plugin === undefined && a.skill),
+      reach: a.agent.reach,
+      parts: [...(a.hookEvents.length > 0 ? [a.agent.plugin === undefined ? "hooks" : "plugin"] : []), ...(a.skill ? ["skill"] : [])],
+      untrusted_hooks: untrusted
+    })
   }
-  if (missing > 0) yield* say(`    ${s.dim("set up with")} ${s.cyan("singularity setup")}`)
 
   // Repos.
   const layers = Layer.merge(
@@ -117,60 +163,127 @@ export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: st
   const prefs = yield* readLearn(home.root)
   const repo = yield* identifyRepo(o.cwd)
   const skips = yield* readSkips(home.tenantDir)
-  const lines = yield* Effect.gen(function*() {
+  const { repos, spent, hereStored } = yield* Effect.gen(function*() {
     const subjects = yield* (yield* RecordStore).subjects()
     const here = repo === undefined ? undefined : matchSubject(subjects, repo)
     const committed = yield* (yield* WorkflowStore).candidates("committed")
     const spent = yield* spentToday()
     const running = lockInfo(home.root)
     const queued = learningQueue(home.root)
-    const out: Array<string> = []
-    const w = Math.max(0, ...subjects.map((x) => x.name.length)) + 3
+    const repos: Array<StatusReport["repos"][number]> = []
     for (const subject of subjects) {
       const state = yield* learnState(subject.id)
       const ids = new Set(state.records.map((r) => r.id))
       const last = committed.filter((c) => c.records.some((r) => ids.has(r))).map((c) => c.created_at).sort().at(-1)
-      const knows = state.memory.workflows.length > 0
-        ? `${plural(state.memory.workflows.length, "workflow")}, ${plural(state.memory.pitfalls.length, "known mistake")}`
-        : "no workflows yet"
-      const changes = `${plural(state.records.length, "change")} stored${state.learned.length > 0 ? `, ${state.learned.length} learned from` : ""}`
       const waiting = waitReason(state, prefs.every, false)
       const short = prefs.auto ? budgetReason(roundUsd(state), spent, prefs.max_usd_per_day) : undefined
-      const next = running?.subject === subject.id
-        ? s.yellow(`learning now, since ${clock(running.at)}`)
+      const next: NextRound = running?.subject === subject.id
+        ? { state: "learning", since: running.at }
         : queued.includes(subject.id)
-        ? s.yellow(running === undefined ? "queued to learn" : "queued to learn after the round running now")
+        ? { state: "queued", after_running: running !== undefined }
         : waiting !== undefined
-        ? s.dim(waiting)
-        : short === undefined
-        ? s.yellow("ready to learn")
-        : `${s.yellow("ready to learn with singularity learn")}${s.dim(`: ${short}`)}`
-      const mark = here?.id === subject.id ? s.cyan(" ← here") : ""
-      out.push(`    ${subject.name.padEnd(w)}${knows} · ${changes}${last === undefined ? "" : ` · learned ${shortDate(last)}`}${mark}`)
-      out.push(`    ${" ".repeat(w)}${next}`)
-      const missed = leftOut(skips, subject.id, ids)
-      if (missed.length > 0) out.push(`    ${" ".repeat(w)}${s.dim(`left out: ${missed.map(([reason, n]) => `${n} ${reason}`).join("; ")}`)}`)
+        ? { state: "waiting", reason: waiting }
+        : { state: "ready", short: short ?? null }
+      repos.push({
+        id: subject.id,
+        name: subject.name,
+        here: here?.id === subject.id,
+        workflows: state.memory.workflows.length,
+        known_mistakes: state.memory.pitfalls.length,
+        changes_stored: state.records.length,
+        learned_from: state.learned.length,
+        last_learned: last ?? null,
+        next,
+        left_out: leftOut(skips, subject.id, ids).map(([reason, count]) => ({ reason, count }))
+      })
     }
-    if (repo !== undefined && here === undefined) out.push(`    ${s.dim(`${path.basename(repo.root)} (here): no changes stored yet`)}`)
-    return { out, spent }
+    return { repos, spent, hereStored: here !== undefined }
   }).pipe(Effect.provide(layers))
-  yield* say(`\n  ${s.bold("Repos")}`)
-  if (lines.out.length === 0) yield* say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)
-  for (const l of lines.out) yield* say(l)
 
   // Learning and hooks.
   const learner = yield* Effect.result(resolveLearner(prefs.with, dirs))
-  const model = learner._tag === "Success" ? modelFor(prefs, learner.success.agent) : undefined
-  const through = learner._tag === "Success" ? ` with ${LEARNER_NAMES[learner.success.agent]}${model === undefined ? "" : ` (${model})`}` : ""
-  yield* say(`\n  ${s.bold("Learning")}  ${prefs.auto
-    ? `on its own${through}, every ${plural(prefs.every, "new change")} · ${usd(lines.spent)} of ${usd(prefs.max_usd_per_day)} spent today ${s.dim("(the limit: singularity setup --daily-limit)")}`
-    : `when you run ${s.cyan("singularity learn")}${through}${lines.spent > 0 ? ` · ${usd(lines.spent)} spent today` : ""}`}`)
-  if (learner._tag === "Failure") yield* say(`            ${s.yellow(learner.failure.message)}`)
   const failed = lastLearnFailure(yield* fs.readFileString(path.join(home.root, "learn.log")).pipe(Effect.orElseSucceed(() => "")))
-  if (failed !== undefined) yield* say(`            ${s.yellow(`the last round, of ${failed.subject}, failed: ${failed.reason.slice(0, 240)}`)}`)
   const errors = yield* recentHookErrors(home)
-  yield* say(`  ${s.bold("Hooks")}     ${errors.count === 0
+  const report: StatusReport = {
+    version: VERSION,
+    memory_home: home.root,
+    agents,
+    here: repo === undefined ? null : { name: path.basename(repo.root), root: repo.root, stored: hereStored },
+    repos,
+    learning: {
+      auto: prefs.auto,
+      with: learner._tag === "Success" ? learner.success.agent : null,
+      model: (learner._tag === "Success" ? modelFor(prefs, learner.success.agent) : undefined) ?? null,
+      every: prefs.every,
+      spent_today_usd: spent,
+      max_usd_per_day: prefs.max_usd_per_day,
+      problem: learner._tag === "Failure" ? learner.failure.message : null,
+      last_failure: failed === undefined ? null : { repo: failed.subject, reason: failed.reason }
+    },
+    hook_errors: { this_week: errors.count, last: errors.last ?? null, log: path.join(home.root, "hook-errors.log") }
+  }
+  return report
+})
+
+/** The status screen, drawn from what `gatherStatus` found. */
+export const renderStatus = (r: StatusReport, o: { readonly home: string; readonly color: boolean }): Array<string> => {
+  const s = makeStyle(o.color)
+  const out: Array<string> = []
+  const say = (line = "") => void out.push(line)
+  say()
+  say(`  ${s.magenta("◆")} ${s.bold("singularity")} ${r.version}  ${s.dim(`memory in ${tilde(r.memory_home, o.home)}`)}`)
+
+  say(`\n  ${s.bold("Agents")}`)
+  if (r.agents.length === 0) say(`    ${s.dim("no coding agent found")}`)
+  const width = Math.max(0, ...r.agents.map((a) => a.name.length)) + 3
+  for (const a of r.agents) {
+    say(
+      a.set_up
+        ? `    ${s.green("✓")} ${a.name.padEnd(width)}${REACH[a.reach].padEnd(42)}${s.dim(a.parts.join(" · "))}`
+        : `    ${s.dim("·")} ${a.name.padEnd(width)}${s.dim("not set up")}`
+    )
+    const n = a.untrusted_hooks
+    if (n > 0) say(`      ${" ".repeat(width)}${s.yellow(`${plural(n, "hook")} waiting for your trust, so Codex skips ${n === 1 ? "it" : "them"}: type /hooks in Codex`)}`)
+  }
+  if (r.agents.some((a) => !a.set_up)) say(`    ${s.dim("set up with")} ${s.cyan("singularity setup")}`)
+
+  say(`\n  ${s.bold("Repos")}`)
+  const w = Math.max(0, ...r.repos.map((x) => x.name.length)) + 3
+  for (const x of r.repos) {
+    const knows = x.workflows > 0 ? `${plural(x.workflows, "workflow")}, ${plural(x.known_mistakes, "known mistake")}` : "no workflows yet"
+    const changes = `${plural(x.changes_stored, "change")} stored${x.learned_from > 0 ? `, ${x.learned_from} learned from` : ""}`
+    const next = x.next.state === "learning"
+      ? s.yellow(`learning now, since ${clock(x.next.since)}`)
+      : x.next.state === "queued"
+      ? s.yellow(x.next.after_running ? "queued to learn after the round running now" : "queued to learn")
+      : x.next.state === "waiting"
+      ? s.dim(x.next.reason)
+      : x.next.short === null
+      ? s.yellow("ready to learn")
+      : `${s.yellow("ready to learn with singularity learn")}${s.dim(`: ${x.next.short}`)}`
+    say(`    ${x.name.padEnd(w)}${knows} · ${changes}${x.last_learned === null ? "" : ` · learned ${shortDate(x.last_learned)}`}${x.here ? s.cyan(" ← here") : ""}`)
+    say(`    ${" ".repeat(w)}${next}`)
+    if (x.left_out.length > 0) say(`    ${" ".repeat(w)}${s.dim(`left out: ${x.left_out.map((m) => `${m.count} ${m.reason}`).join("; ")}`)}`)
+  }
+  if (r.here !== null && !r.here.stored) say(`    ${s.dim(`${r.here.name} (here): no changes stored yet`)}`)
+  if (r.repos.length === 0 && (r.here === null || r.here.stored)) say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)
+
+  const l = r.learning
+  const through = l.with === null ? "" : ` with ${LEARNER_NAMES[l.with]}${l.model === null ? "" : ` (${l.model})`}`
+  say(`\n  ${s.bold("Learning")}  ${l.auto
+    ? `on its own${through}, every ${plural(l.every, "new change")} · ${usd(l.spent_today_usd)} of ${usd(l.max_usd_per_day)} spent today ${s.dim("(the limit: singularity setup --daily-limit)")}`
+    : `when you run ${s.cyan("singularity learn")}${through}${l.spent_today_usd > 0 ? ` · ${usd(l.spent_today_usd)} spent today` : ""}`}`)
+  if (l.problem !== null) say(`            ${s.yellow(l.problem)}`)
+  if (l.last_failure !== null) say(`            ${s.yellow(`the last round, of ${l.last_failure.repo}, failed: ${l.last_failure.reason.slice(0, 240)}`)}`)
+  const e = r.hook_errors
+  say(`  ${s.bold("Hooks")}     ${e.this_week === 0
     ? s.green("no errors this week")
-    : `${s.yellow(`${plural(errors.count, "error")} this week`)}, last: ${errors.last ?? ""} ${s.dim(`(${tilde(path.join(home.root, "hook-errors.log"), o.home)})`)}`}`)
-  yield* say()
+    : `${s.yellow(`${plural(e.this_week, "error")} this week`)}, last: ${e.last ?? ""} ${s.dim(`(${tilde(e.log, o.home)})`)}`}`)
+  say()
+  return out
+}
+
+export const runStatus = Effect.fn("runStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly color: boolean; readonly json: boolean; readonly memoryHome?: string | undefined }) {
+  const report = yield* gatherStatus(o)
+  yield* Console.log(o.json ? JSON.stringify(report, null, 2) : renderStatus(report, o).join("\n"))
 })

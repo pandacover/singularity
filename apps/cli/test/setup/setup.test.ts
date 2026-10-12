@@ -184,6 +184,18 @@ describe("the singularity command", () => {
     expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["learn", "record"]))
   })
 
+  it("fails a recall in a folder that isn't there, and says nothing is handed over as JSON in one with no memory", () => {
+    const env = { ...process.env, SINGULARITY_HOME: join(tempDir(), "home") }
+    const recall = (...args: Array<string>) => spawnSync(process.execPath, [COMMAND, "recall", "add a color", ...args], { encoding: "utf-8", env })
+    const missing = join(tempDir(), "gone")
+    const failed = recall("--cwd", missing)
+    expect(failed.status).toBe(2)
+    expect(failed.stderr.trim()).toBe(`error: ${missing} doesn't exist`)
+    const empty = recall("--cwd", tempDir(), "--json")
+    expect(empty.status).toBe(0)
+    expect(JSON.parse(empty.stdout)).toEqual({ repo: null, handed_over: false, text: null, places: [] })
+  })
+
   it("knows whether a directory is on PATH, and puts one line in the shell's startup file", () => {
     expect(onPath("C:\\Users\\a\\.singularity\\bin", "C:\\Windows;c:/users/a/.singularity/bin/", "win32")).toBe(true)
     expect(onPath("/home/a/.singularity/bin", "/usr/bin:/bin", "linux")).toBe(false)
