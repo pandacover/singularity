@@ -122,6 +122,50 @@ describe("the finish in one command", () => {
   })
 })
 
+describe("what edges say in the hand-over", () => {
+  const guided = (edges: WorkflowMemory["edges"]): WorkflowMemory => ({ ...memory([field, menu, snapshots]), edges })
+  const edge = (from: string, to: string, over: Partial<WorkflowMemory["edges"][number]> = {}): WorkflowMemory["edges"][number] =>
+    ({ from, to, relation: "LEADS_TO", condition: null, guidance: null, pitfalls: null, ...over })
+  const all = [field, menu, snapshots].map((w) => ({ workflow: w, skip: [], why: "" }))
+
+  it("says how to go on and what to avoid between workflows handed over, under the one the edge leaves", () => {
+    const m = guided([
+      edge(START, "add-field", { guidance: "Start from the app state." }),
+      edge("add-field", "add-menu-item", { guidance: "The item reads the new field.", pitfalls: "Don't add it to the view-mode menu." }),
+      edge("add-field", "update-snapshots", { relation: "TRIGGERS", guidance: "A new field changes snapshots." }),
+      edge("add-menu-item", "update-snapshots", { relation: "PROVIDES_INPUT_FOR", pitfalls: "Run it once." }),
+      edge("update-snapshots", END, { guidance: "Done." })
+    ])
+    const text = renderHandover(m, all, new Map()).text
+    const first = text.slice(text.indexOf("## 1."), text.indexOf("## 2."))
+    assert.include(first, "On to 2 (Do add-menu-item): The item reads the new field. Avoid there: Don't add it to the view-mode menu.")
+    assert.include(first, "This makes 3 (Do update-snapshots) needed: A new field changes snapshots.")
+    assert.include(text, "This feeds 3 (Do update-snapshots). Avoid there: Run it once.")
+    // Edges from start, to end, or that say nothing are left out.
+    assert.notInclude(text, "Start from the app state.")
+    assert.notInclude(text, "Done.")
+    assert.notInclude(renderHandover(guided([edge("add-field", "add-menu-item")]), all, new Map()).text, "On to")
+  })
+
+  it("leaves out edges to workflows not handed over, and points those to a folded finish at the last section", () => {
+    const m = guided([
+      edge("add-field", "add-menu-item", { guidance: "The item reads the new field." }),
+      edge("add-field", "update-snapshots", { relation: "TRIGGERS", guidance: "A new field changes snapshots." })
+    ])
+    const withoutMenu = renderHandover(m, [all[0], all[2]], new Map()).text
+    assert.notInclude(withoutMenu, "The item reads the new field.")
+    const folded = renderHandover({ ...m, workflows: [{ ...field, snapshots: ["b.snap"] }, menu, { ...snapshots, snapshots: [] }], edges: [...m.edges, edge("update-snapshots", END)] }, all, new Map()).text
+    assert.include(folded, "## Last: check it all with one command")
+    assert.include(folded, "This makes the last section needed: A new field changes snapshots.")
+  })
+
+  it("fills the task's values into what an edge says", () => {
+    const m = guided([edge("add-field", "add-menu-item", { guidance: "The item toggles {field}." })])
+    const text = renderHandover(m, all, new Map(), undefined, new Map([["add-field", new Map([["{field}", "showRulers"]])]])).text
+    assert.include(text, "On to 2 (Do add-menu-item): The item toggles showRulers.")
+  })
+})
+
 describe("the finish checked against the repo", () => {
   const facts = (scripts: Record<string, string> | undefined, more: Partial<RepoFacts> = {}): RepoFacts => ({ scripts, manager: "npm", paths: new Set(), ...more })
 

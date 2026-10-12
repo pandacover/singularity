@@ -11,6 +11,9 @@
  * Claude Code cuts a hook's text at 10,000 characters, so the hand-over keeps
  * to a budget: when it doesn't fit, excerpts get shorter, then go.
  *
+ * Between workflows, what the edges joining them say: how to go on from one
+ * to the next, and what to avoid there.
+ *
  * Memory that knows what its checks rewrite (Finish.ts) ends with one command
  * that checks everything, instead of checks under each workflow and a
  * finishing workflow of its own. Commands are checked against the repo first
@@ -20,7 +23,7 @@ import { applyFills, mergedValues, type PartUse } from "./Cues.ts"
 import { shapeOf } from "./Evidence.ts"
 import { checkCommands, finishOf, hasFinish, type RepoFacts } from "./Finish.ts"
 import type { Located } from "./Locate.ts"
-import type { Pitfall, Place, WorkflowMemory } from "./Models.ts"
+import type { Edge, Pitfall, Place, WorkflowMemory } from "./Models.ts"
 import { continues, describeChain, indentOf, membersOf, type Region } from "./Places.ts"
 import type { Selected } from "./Select.ts"
 
@@ -203,6 +206,33 @@ const PARTS_HEADER = [
   ""
 ].join("\n")
 
+const RELATION: Record<Edge["relation"], (to: string) => string> = {
+  LEADS_TO: (to) => `On to ${to}`,
+  TRIGGERS: (to) => `This makes ${to} needed`,
+  PROVIDES_INPUT_FOR: (to) => `This feeds ${to}`,
+  CONVERGES_TO: (to) => `This comes together in ${to}`
+}
+
+/**
+ * What the edges from a workflow say about the workflows handed over after it
+ * (or folded into the last section): how to go on, and what to avoid there.
+ * Edges that say neither, or lead to a workflow not handed over, say nothing.
+ */
+const edgeLines = (
+  memory: WorkflowMemory,
+  from: string,
+  steps: ReadonlyArray<Selected>,
+  at: number,
+  folded: ReadonlySet<string>
+): Array<string> =>
+  memory.edges.flatMap((e) => {
+    if (e.from !== from || (e.guidance === null && e.pitfalls === null)) return []
+    const j = steps.findIndex((c) => c.workflow.id === e.to)
+    const to = j > at ? `${j + 1} (${steps[j].workflow.name})` : folded.has(e.to) ? FINISH_NAME : undefined
+    if (to === undefined) return []
+    return [`${RELATION[e.relation](to)}${e.guidance === null ? "." : `: ${e.guidance}`}${e.pitfalls === null ? "" : ` Avoid there: ${e.pitfalls}`}`]
+  })
+
 /** Changes of a task by their labels: "1", "1 and 3", "1, 2 and 3". */
 const changes = (uses: ReadonlyArray<PartUse>): string => {
   const labels = uses.map((u) => u.label)
@@ -295,6 +325,7 @@ export const renderHandover = (
       const checks = repo === undefined ? w.checks : checkCommands(w.checks, repo)
       if (finish === undefined && checks.length > 0) out.push(`Check with ${checks.map(code).join(" or ")}.`)
       for (const id of w.pitfalls) warn(id)
+      for (const line of edgeLines(memory, w.id, steps, k, folded)) out.push(fill(line))
       out.push("")
     })
     if (finish !== undefined) {
