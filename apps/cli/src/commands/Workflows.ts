@@ -32,9 +32,9 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { commonPrompt, describeReadPlaces, learnCommon, MIN_TASKS, withKind } from "../workflows/Common.ts"
 import { cuesPrompt, writeCues } from "../workflows/CueWriter.ts"
 import { describeMemory } from "../workflows/Describe.ts"
-import { gatherEvidence } from "../workflows/Evidence.ts"
+import { gatherEvidence, withPlacesOf } from "../workflows/Evidence.ts"
 import { hasCues } from "../workflows/Cues.ts"
-import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord } from "../workflows/Evolve.ts"
+import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord, withNewPitfalls } from "../workflows/Evolve.ts"
 import { withSnapshots } from "../workflows/Finish.ts"
 import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL, induce } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
@@ -237,7 +237,7 @@ const evolve = Command.make(
         return shown === undefined ? [] : [{ run, shown }]
       })
       return yield* Console.log(`
-${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(newRecords))}`)
+${yield* lookupsText(yield* store.memory(), handed, (run) => repo ?? newRecords.find((x) => x.id === run.record)?.run.repo ?? undefined, yield* handedTexts(newRecords))}`)
     }
     const before = yield* gatherEvidence(learned, { repo })
     const cwd = path.join(defaultWorkspaces(), "_learner")
@@ -252,7 +252,8 @@ ${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(new
       { cli: claudeCli(claude), cwd, model: args.model, effort: args.effort },
       selector,
       current,
-      evidence,
+      // A place counts every run that edited it, the ones memory learned from too.
+      withPlacesOf(evidence, before, current),
       new Map(newRecords.map((r) => [r.id, r])),
       yield* store.candidates("rejected"),
       { repo, texts: yield* handedTexts(newRecords) }
@@ -284,7 +285,20 @@ ${yield* lookupsText(yield* store.memory(), handed, repo, yield* handedTexts(new
     })
     if (!verdict.commit) {
       yield* store.reject(candidate.id, verdict.reason)
-      return yield* Console.log(`rejected ${candidate.id}: ${verdict.reason}`)
+      yield* Console.log(`rejected ${candidate.id}: ${verdict.reason}`)
+      // Its new pitfalls stay, checked against the runs' failures; the new runs are left for the next round.
+      const warned = withNewPitfalls(current, revision)
+      if (warned === undefined) return
+      const kept = yield* store.propose(warned, {
+        baseVersion,
+        rationale: `the new pitfalls of ${candidate.id}, rejected: ${verdict.reason}`,
+        records: learned.map((r) => r.id),
+        model: args.model,
+        costUsd: 0,
+        report: { problems: [], replay: null }
+      })
+      const version = yield* store.commit(kept.id)
+      return yield* Console.log(`kept its ${warned.pitfalls.length - current.pitfalls.length} new pitfalls as version ${version}`)
     }
     // The runs it learned from become this home's records, so later rounds know them.
     for (const r of newRecords) if (!(yield* own.has(r.id))) yield* own.put(r)

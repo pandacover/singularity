@@ -180,7 +180,7 @@ const PREFIXES = new Set(["sudo", "time", "env", "nice", "command", "exec", "noh
 const TIME_LIMITS = new Set(["timeout", "gtimeout"])
 
 /** The program's name: no directory, no `.exe`/`.cmd`, lower case. */
-const programName = (word: string): string =>
+export const programName = (word: string): string =>
   win32.basename(posix.basename(word)).replace(/\.(exe|cmd|bat|ps1)$/i, "").toLowerCase()
 
 const isFlag = (word: string) => word.startsWith("-") && word.length > 1
@@ -209,6 +209,9 @@ const commandStart = (ws: ReadonlyArray<string>): number => {
   if (ws[i] === "&" || ws[i] === ".") i++
   return i
 }
+
+/** A segment's words from its program on: `timeout 600 npm test` → `npm test`. */
+export const commandWords = (segment: Segment): ReadonlyArray<string> => segment.words.slice(commandStart(segment.words))
 
 /**
  * What a segment runs: `yarn test:update`, `npx vitest`, `git diff`,

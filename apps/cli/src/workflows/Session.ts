@@ -10,7 +10,7 @@
  * Fired pitfalls are appended rather than written into the session file:
  * hooks for tool calls made in parallel run at the same time.
  */
-import { Effect, FileSystem, Option, Path, Schema } from "effect"
+import { Effect, FileSystem, Option, Path, Predicate, Schema } from "effect"
 import { writeFileWhole } from "../local/Files.ts"
 import { Pitfall } from "./Models.ts"
 
@@ -96,6 +96,29 @@ export const appendFired = Effect.fn("workflows.appendFired")(function*(tenantDi
   const dir = sessionsDir(tenantDir, path)
   yield* fs.makeDirectory(dir, { recursive: true })
   yield* fs.writeFileString(path.join(dir, `${safeId(sessionId)}.fired.jsonl`), fired.map((f) => JSON.stringify(f)).join("\n") + "\n", { flag: "a" })
+})
+
+/** What learning reads of a line of the hand-over log. */
+const LoggedHandover = Schema.Struct({
+  session_id: Schema.String,
+  moment: Schema.String,
+  text: Schema.optionalKey(Schema.NullOr(Schema.String))
+})
+
+/** The text each session was handed at its start, by session id, from the hand-over log. */
+export const handedAtStart = Effect.fn("workflows.handedAtStart")(function*(tenantDir: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const file = path.join(tenantDir, "workflows", "handovers.jsonl")
+  const out = new Map<string, string>()
+  if (!(yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false)))) return out
+  for (const line of (yield* fs.readFileString(file)).split(/\r?\n/)) {
+    const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(LoggedHandover))(line)
+    if (Option.isNone(decoded)) continue
+    const { session_id, moment, text } = decoded.value
+    if (moment === "start" && Predicate.isString(text) && text !== "") out.set(session_id, text)
+  }
+  return out
 })
 
 /** One line of the hand-over log. */

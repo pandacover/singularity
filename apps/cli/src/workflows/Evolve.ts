@@ -15,7 +15,10 @@
  * 3. Gate. The revision is kept only if, replayed over the runs (the new ones
  *    and those memory already learned from), it shows at least as many of the
  *    places runs edited, less the places they left alone, as the current
- *    memory does. Otherwise it is rejected, with the reason, for next time.
+ *    memory does, a place edited counting twice one left alone. Otherwise it
+ *    is rejected, with the reason, for next time; its new pitfalls stay
+ *    (`withNewPitfalls`): each comes from a failure the runs had, checked
+ *    against it, and says nothing about places.
  *    Memory picked by cues is replayed with cues: they are written again for
  *    the revision first (CueWriter.ts), so the gate judges what tasks will get.
  */
@@ -26,8 +29,9 @@ import type { Evidence, RunEvidence } from "./Evidence.ts"
 import { describePlace, type InduceConfig, induce } from "./Induce.ts"
 import { type CodeSource, type Located, locatePlaces } from "./Locate.ts"
 import { describeLookup } from "./Lookups.ts"
-import { isReadPlace, type Place, withShow, type WorkflowMemory } from "./Models.ts"
+import { isReadPlace, type Place, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
 import { selectWorkflows, type SelectorConfig, wordChoice } from "./Select.ts"
+import { handedAtStart } from "./Session.ts"
 import type { ReplayNumbers, WorkflowCandidate } from "./WorkflowStore.ts"
 
 export { withShow }
@@ -148,12 +152,39 @@ export const replay = Effect.fn("replayWorkflows")(function*(memory: WorkflowMem
   return { runs: runs.length, edited, shown_and_edited: shownAndEdited, shown_unused: shownUnused, workflows, costUsd } satisfies Replayed
 })
 
-/** The gate: at least as many edited places shown, less those left alone, as the current memory; never fewer shown places that runs edited by more than it gains. */
+/**
+ * What a place runs edited counts in the gate, against a place shown and left
+ * alone: a place memory misses costs the agent a search, one it shows for
+ * nothing a few lines of reading.
+ */
+export const EDITED_WEIGHT = 2
+
+/** The gate: edited places shown (each counting `EDITED_WEIGHT`), less those left alone, at least as many as the current memory's. */
 export const passes = (candidate: ReplayNumbers, current: ReplayNumbers): { readonly commit: boolean; readonly reason: string } => {
-  const score = (r: ReplayNumbers) => r.shown_and_edited - r.shown_unused
+  const score = (r: ReplayNumbers) => EDITED_WEIGHT * r.shown_and_edited - r.shown_unused
   const describe = (r: ReplayNumbers) => `${r.shown_and_edited} edited places shown, ${r.shown_unused} shown and left alone`
   if (score(candidate) < score(current)) return { commit: false, reason: `fits the runs worse: ${describe(candidate)}, against ${describe(current)}` }
   return { commit: true, reason: `${describe(candidate)}, against ${describe(current)}` }
+}
+
+/**
+ * The current memory with the pitfalls a rejected revision learned: those it
+ * has and memory doesn't, each in the current workflows that do what the
+ * revision's workflows listing it do (the same id, or a step at the same
+ * place). Undefined when it learned none.
+ */
+export const withNewPitfalls = (current: WorkflowMemory, revision: WorkflowMemory): WorkflowMemory | undefined => {
+  const known = new Set(current.pitfalls.map((p) => p.id))
+  const fresh = revision.pitfalls.filter((p) => !known.has(p.id))
+  if (fresh.length === 0) return undefined
+  const placesOf = (w: Workflow) => new Set(w.steps.flatMap((s) => (s.place === null ? [] : [s.place])))
+  const workflows = current.workflows.map((w) => {
+    const mine = placesOf(w)
+    const alike = revision.workflows.filter((o) => o.id === w.id || [...placesOf(o)].some((p) => mine.has(p)))
+    const added = fresh.filter((p) => alike.some((o) => o.pitfalls.includes(p.id))).map((p) => p.id)
+    return added.length === 0 ? w : { ...w, pitfalls: [...w.pitfalls, ...added] }
+  })
+  return { ...current, workflows, pitfalls: [...current.pitfalls, ...fresh] }
 }
 
 export interface EvolveResult {
@@ -176,7 +207,11 @@ export const refine = Effect.fn("refine")(function*(
   evidence: Evidence,
   records: ReadonlyMap<string, WorkflowRecord>,
   rejected: ReadonlyArray<WorkflowCandidate>,
-  /** To tell what runs looked up: a clone to find memory's places in at each run's base commit, and the hand-over texts runs got, by record. */
+  /**
+   * To tell what runs looked up: a clone to find memory's places in at each
+   * run's base commit (without one, the repo each run's record names), and
+   * the hand-over texts runs got, by record.
+   */
   looked?: { readonly repo: string | undefined; readonly texts: ReadonlyMap<string, string> }
 ) {
   let costUsd = 0
@@ -207,7 +242,8 @@ export const refine = Effect.fn("refine")(function*(
   const shows = new Set(current.places.filter((p) => p.show === "entry").map((p) => p.id))
   const places = new Map([...current.places, ...evidence.places].map((p) => [p.id, withShow(p, shows.has(p.id))]))
   const merged: Evidence = { ...evidence, places: [...places.values()] }
-  const lookups = looked === undefined ? "" : yield* lookupsText(current, results, looked.repo, looked.texts)
+  const repoOf = (run: RunEvidence) => looked?.repo ?? records.get(run.record)?.run.repo ?? undefined
+  const lookups = looked === undefined ? "" : yield* lookupsText(current, results, repoOf, looked.texts)
   const notes = [resultsText(results, places, current), lookups, rejectionsText(rejected)].filter((t) => t !== "")
   const induced = yield* induce(config, merged, current.tenant, current, notes)
   // A workflow that keeps its id keeps the runs it was learned from, and the kind of task it serves.
@@ -280,12 +316,13 @@ const LOOKUPS_INTRO = [
 /**
  * What the new runs that were handed memory still looked up before their
  * first edit, each lookup told against memory's places (found in the code at
- * the run's base commit) and the lines of them the run's hand-over showed.
+ * the run's base commit, in the repo `repoOf` says) and the lines of them the
+ * run's hand-over showed.
  */
 export const lookupsText = Effect.fn("lookupsText")(function*(
   memory: WorkflowMemory,
   runs: ReadonlyArray<{ readonly run: RunEvidence; readonly shown: Shown }>,
-  repo: string | undefined,
+  repoOf: (run: RunEvidence) => string | undefined,
   texts: ReadonlyMap<string, string>
 ) {
   const handed = runs.filter((x) => x.shown.handed && x.run.looking !== null && x.run.looking.lookups.length > 0)
@@ -295,6 +332,7 @@ export const lookupsText = Effect.fn("lookupsText")(function*(
   for (const { run, shown } of handed) {
     const looking = run.looking!
     let located: ReadonlyMap<string, Located> = new Map()
+    const repo = repoOf(run)
     if (repo !== undefined && run.base !== null) {
       const cached = byBase.get(run.base)
       const source: CodeSource = { kind: "commit", repo, commit: run.base }
@@ -321,13 +359,22 @@ export const lookupsText = Effect.fn("lookupsText")(function*(
   return lines.join("\n")
 })
 
-/** The hand-over each eval run got, by record: the text its run directory keeps (injected.md). */
-export const handedTexts = Effect.fn("handedTexts")(function*(records: ReadonlyArray<WorkflowRecord>) {
+/**
+ * The hand-over each run got, by record: for an eval run, the text its run
+ * directory keeps (injected.md); for a session in daily use, what the
+ * hand-over log in `tenantDir` has for its start.
+ */
+export const handedTexts = Effect.fn("handedTexts")(function*(records: ReadonlyArray<WorkflowRecord>, tenantDir?: string) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const out = new Map<string, string>()
+  const logged = tenantDir === undefined ? new Map<string, string>() : yield* handedAtStart(tenantDir).pipe(Effect.orElseSucceed(() => new Map<string, string>()))
   for (const r of records) {
-    if (r.run.run_dir === null || r.run.run_id === null) continue
+    if (r.run.run_dir === null || r.run.run_id === null) {
+      const text = r.run.session_id === null ? undefined : logged.get(r.run.session_id)
+      if (text !== undefined) out.set(r.id, text)
+      continue
+    }
     const file = path.join(r.run.run_dir, "runs", r.run.run_id, "injected.md")
     const text = yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""))
     if (text !== "") out.set(r.id, text)

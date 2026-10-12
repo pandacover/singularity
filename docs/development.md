@@ -86,7 +86,9 @@ What they make:
   (this.state.viewModeEnabled) › return [`), never as code. At task start
   the hooks (`workflows/hook.ts`) find each place in the code as it is (in
   the file it moved to, if it moved) and hand it over with current line
-  numbers.
+  numbers. After each tool call, a trigger's words are looked for in plain
+  JavaScript first (`HookFilter.ts`); the modules that match triggers load
+  only when they appear.
 - **Cues** pick workflows with no model call: phrases that say a task needs
   a workflow and where a task states its blanks' values, written once by
   `workflows cues` (`CueWriter.ts`) and matched exactly at task start, with
@@ -98,7 +100,9 @@ What they make:
 - **Evolve** revises memory from what new runs did and what it showed them,
   including what runs still looked up before their first edit
   (`Lookups.ts`), and keeps the revision only if, replayed over the runs, it
-  shows more of the places they edited and fewer they left alone.
+  shows more of the places they edited and fewer they left alone (a place
+  it misses counts twice one it shows for nothing). A revision it doesn't
+  keep still leaves its new pitfalls, each checked against a run's failure.
 - **Common** learns, for kinds of task like bug fixes, only what runs of at
   least two different tasks did alike: how a bug is reproduced in a test
   here, how the fix is checked, the mistakes made on the way. Its places
@@ -106,6 +110,12 @@ What they make:
   outlines.
 - **Finish** ends the hand-over with one command that runs every check its
   workflows need, regenerating the snapshot files earlier runs regenerated.
+  It is checked against the repo first: a line that calls a script its
+  package.json doesn't have, names a file it doesn't have or uses another
+  package manager is left out, so is a check another line already runs; a
+  test runner that would wait for changes runs once, and the lines go in
+  the order the repo's scripts run them. A repo without a package.json gets
+  no command.
 - **Two parts.** A hand-over longer than one hook can carry (Claude Code cuts
   a hook's text at 10,000 characters) goes in two parts, from two task-start
   hooks (`--parts 2`).
@@ -117,7 +127,10 @@ In daily use memory learns repo by repo (`workflows/Learn.ts`): a repo's
 memory is learned alone and merged back, so one repo never replaces
 another's. A change is stored when it is committed
 (`workflows/Commits.ts`), one record per commit, with the part of the
-session's log since its previous commit.
+session's log since its previous commit; learning reads it as its commit
+titles and the prompts typed for it, since its first prompt is often no
+ask ("commit and open a PR"). A round reads only the new changes, with each
+place they edited counting every run that edited it.
 
 ## Memory v0
 

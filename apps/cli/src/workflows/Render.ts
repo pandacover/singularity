@@ -13,11 +13,12 @@
  *
  * Memory that knows what its checks rewrite (Finish.ts) ends with one command
  * that checks everything, instead of checks under each workflow and a
- * finishing workflow of its own.
+ * finishing workflow of its own. Commands are checked against the repo first
+ * (Finish.ts: checkCommands); one that can't run there as learned is left out.
  */
 import { applyFills, mergedValues, type PartUse } from "./Cues.ts"
 import { shapeOf } from "./Evidence.ts"
-import { finishOf, hasFinish } from "./Finish.ts"
+import { checkCommands, finishOf, hasFinish, type RepoFacts } from "./Finish.ts"
 import type { Located } from "./Locate.ts"
 import type { Pitfall, Place, WorkflowMemory } from "./Models.ts"
 import { continues, describeChain, indentOf, membersOf, type Region } from "./Places.ts"
@@ -144,7 +145,8 @@ const renderPlace = (p: Place, at: Located, max: number): Rendered => {
   if (at.kind === "new-file") {
     const short = [...at.siblings].sort((a, b) => a.lines.length - b.lines.length)
     const names = short.slice(0, 6).map((f) => `${f.name} (${f.lines.length} lines)`).join(", ")
-    const header = `a new file in ${code(at.dir + "/")}, named like the ${at.siblings.length} there that start with ${code(at.prefix)}; shortest first: ${names}`
+    const like = at.prefix === "" ? `the ${at.siblings.length} there` : `the ${at.siblings.length} there that start with ${code(at.prefix)}`
+    const header = `a new file in ${code(at.dir + "/")}, named like ${like}; shortest first: ${names}`
     const first = short[0]
     if (!entry || first === undefined || max <= 0) return { header, excerpt: [], shown: { place: p.id, file: at.dir, from: 0, to: 0 } }
     const all: Array<Row> = first.lines.map((_, i) => i).filter((i) => i < first.lines.length - 1 || first.lines[i].trim() !== "")
@@ -223,7 +225,9 @@ export const renderHandover = (
   fills?: ReadonlyMap<string, ReadonlyMap<string, string>>,
   /** How many hooks carry it, each up to `budget` characters (splitHandover). */
   parts = 1,
-  inParts?: { readonly uses: ReadonlyMap<string, ReadonlyArray<PartUse>>; readonly count: number }
+  inParts?: { readonly uses: ReadonlyMap<string, ReadonlyArray<PartUse>>; readonly count: number },
+  /** The repo the task starts in, which commands are checked against (Finish.ts); without it, they are handed over as learned. */
+  repo?: RepoFacts
 ): Handover => {
   const places = new Map(memory.places.map((p) => [p.id, p]))
   const pitfalls = new Map(memory.pitfalls.map((p) => [p.id, p]))
@@ -235,7 +239,7 @@ export const renderHandover = (
     }
   }
 
-  const finish = hasFinish(memory) ? finishOf(memory, chosen.map((c) => c.workflow)) : undefined
+  const finish = hasFinish(memory) ? finishOf(memory, chosen.map((c) => c.workflow), repo) : undefined
   const folded = new Set(finish?.folded ?? [])
   const steps = chosen.filter((c) => !folded.has(c.workflow.id))
 
@@ -288,29 +292,43 @@ export const renderHandover = (
         if (r.excerpt.length > 0) out.push("   ```", ...r.excerpt.map((l) => `   ${l}`), "   ```")
         shown.push(r.shown)
       })
-      if (finish === undefined && w.checks.length > 0) out.push(`Check with ${w.checks.map(code).join(" or ")}.`)
+      const checks = repo === undefined ? w.checks : checkCommands(w.checks, repo)
+      if (finish === undefined && checks.length > 0) out.push(`Check with ${checks.map(code).join(" or ")}.`)
       for (const id of w.pitfalls) warn(id)
       out.push("")
     })
     if (finish !== undefined) {
-      out.push(
-        "## Last: check it all with one command",
-        `When all your edits are in, run once: ${code(finish.command)}`,
-        "These are the checks earlier runs of these workflows passed, in one call. Its output is long: keep its last 60 lines " +
-          "(`2>&1 | tail -n 60` in Bash, `2>&1 | Select-Object -Last 60` in PowerShell), or Claude Code saves it to a file you then have to read."
-      )
+      const at = out.length
+      if (finish.command !== undefined) {
+        out.push(
+          "## Last: check it all with one command",
+          `When all your edits are in, run once: ${code(finish.command)}`,
+          "These are the checks earlier runs of these workflows passed, in one call. Its output is long: keep its last 60 lines " +
+            "(`2>&1 | tail -n 60` in Bash, `2>&1 | Select-Object -Last 60` in PowerShell), or Claude Code saves it to a file you then have to read."
+        )
+      } else {
+        // None of the checks runs as learned in this repo: no command, what earlier runs saw still holds.
+        out.push("## Last: when your edits are in")
+      }
       if (finish.snapshots.length > 0) {
-        out.push(`In those runs the checks rewrote these test snapshots, as expected for this kind of change: ${finish.snapshots.map(code).join(", ")}.`)
+        out.push(
+          `In ${finish.command === undefined ? "earlier runs of these workflows" : "those runs"} the checks rewrote these test snapshots, ` +
+            `as expected for this kind of change: ${finish.snapshots.map(code).join(", ")}.`
+        )
       }
       for (const c of chosen) if (folded.has(c.workflow.id)) for (const id of c.workflow.pitfalls) warn(id)
-      out.push("")
+      // Nothing to say after all: no section.
+      if (out.length === at + 1) out.pop()
+      else out.push("")
     }
-    return { text: out.join("\n"), shown, missing }
+    // The header alone says nothing: no hand-over.
+    return { text: out.length === 1 ? "" : out.join("\n"), shown, missing }
   }
 
   // The longest excerpts that fit; at worst, none.
   for (const max of [8, 6, 4, 3, 0]) {
     const h = build(max)
+    if (h.text === "") break
     const cut = splitHandover(h.text, budget)
     if (cut.length <= parts || max === 0) {
       const kept = cut.slice(0, parts).map((t) => (t.length <= budget ? t : t.slice(0, budget)))

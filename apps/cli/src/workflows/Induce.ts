@@ -364,8 +364,10 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       continue
     }
     const where = `workflow ${id}`
-    const texts = [w.name, w.use_when, ...w.blanks.map((b) => b.meaning), ...w.checks]
+    const texts = [w.name, w.use_when, ...w.blanks.map((b) => b.meaning)]
     if (texts.some((t) => leak(where, t))) continue
+    // A check that names a task's own value (the task's own test) is that task's: it goes, its workflow stays.
+    const checks = w.checks.map((c) => c.trim()).filter((c) => c !== "" && !leak(`check ${JSON.stringify(c)} of ${id}`, c))
     const steps = w.steps.flatMap((s, i) => {
       if (leak(`step ${i + 1} of ${id}`, s.do) || leak(`step ${i + 1} of ${id}`, s.when)) return []
       if (s.place === null) return [s]
@@ -401,7 +403,7 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       blanks: w.blanks.map((b) => ({ name: b.name.replace(/^\{+|\}+$/g, "").trim(), meaning: b.meaning.trim() })),
       steps,
       only_if_asked: w.only_if_asked,
-      checks: w.checks.map((c) => c.trim()).filter((c) => c !== ""),
+      checks,
       pitfalls: w.pitfalls.map(slug).filter((p) => pitfallIds.has(p)),
       evidence,
       tasks

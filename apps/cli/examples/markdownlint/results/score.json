@@ -1,0 +1,754 @@
+{
+  "rows": [
+    {
+      "index": 1,
+      "task": "t01-heading-max-level",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3724948,
+        "tokens": {
+          "input": 40,
+          "write": 35589,
+          "read": 823644,
+          "output": 6533,
+          "total": 865806
+        },
+        "turns": 20,
+        "min": 2.81155
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.38624920000000007,
+        "tokens": {
+          "input": 38,
+          "write": 38975,
+          "read": 812116,
+          "output": 6785,
+          "total": 857914
+        },
+        "turns": 19,
+        "min": 3.006666666666667,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 0.4335833333333333
+      }
+    },
+    {
+      "index": 2,
+      "task": "t02-code-block-max-lines",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.4915648,
+        "tokens": {
+          "input": 52,
+          "write": 38366,
+          "read": 1128534,
+          "output": 11229,
+          "total": 1178181
+        },
+        "turns": 26,
+        "min": 3.57775
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.7379842000000002,
+        "tokens": {
+          "input": 70,
+          "write": 49451,
+          "read": 1793501,
+          "output": 18134,
+          "total": 1861156
+        },
+        "turns": 35,
+        "min": 5.27565,
+        "handover_chars": 0,
+        "workflows": [],
+        "waited_min": 2.7666666666666666
+      }
+    },
+    {
+      "index": 3,
+      "task": "t03-md024-ignore-case",
+      "kind": "rule-option",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.22383779999999998,
+        "tokens": {
+          "input": 22,
+          "write": 26177,
+          "read": 379179,
+          "output": 4325,
+          "total": 409703
+        },
+        "turns": 15,
+        "min": 1.78435
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.25202399999999997,
+        "tokens": {
+          "input": 20,
+          "write": 34281,
+          "read": 355700,
+          "output": 4372,
+          "total": 394373
+        },
+        "turns": 11,
+        "min": 1.79545,
+        "handover_chars": 4918,
+        "workflows": [
+          "add-rule-docs",
+          "add-rule-config-schema",
+          "verify-and-commit"
+        ],
+        "waited_min": 0.43225
+      }
+    },
+    {
+      "index": 4,
+      "task": "t04-list-max-depth",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.2394704,
+        "tokens": {
+          "input": 20,
+          "write": 28274,
+          "read": 370472,
+          "output": 5224,
+          "total": 403990
+        },
+        "turns": 10,
+        "min": 2.0007
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3080472,
+        "tokens": {
+          "input": 26,
+          "write": 35532,
+          "read": 543486,
+          "output": 5717,
+          "total": 584761
+        },
+        "turns": 13,
+        "min": 1.85595,
+        "handover_chars": 10705,
+        "workflows": [
+          "implement-builtin-rule",
+          "add-rule-docs",
+          "add-rule-config-schema",
+          "add-rule-test-fixtures",
+          "update-test-counts",
+          "verify-and-commit"
+        ],
+        "waited_min": 1.4780333333333333
+      }
+    },
+    {
+      "index": 5,
+      "task": "t05-get-rules",
+      "kind": "one-off",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.216629,
+        "tokens": {
+          "input": 20,
+          "write": 25458,
+          "read": 322635,
+          "output": 5023,
+          "total": 353136
+        },
+        "turns": 15,
+        "min": 1.23815
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3728242000000001,
+        "tokens": {
+          "input": 38,
+          "write": 35541,
+          "read": 808921,
+          "output": 6880,
+          "total": 851380
+        },
+        "turns": 19,
+        "min": 2.6905,
+        "handover_chars": 7073,
+        "workflows": [
+          "implement-builtin-rule",
+          "add-rule-docs",
+          "add-rule-test-fixtures",
+          "update-test-counts",
+          "verify-and-commit"
+        ],
+        "waited_min": 6.985883333333334
+      }
+    },
+    {
+      "index": 6,
+      "task": "t06-rename-doc-src",
+      "kind": "update",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.07438420000000001,
+        "tokens": {
+          "input": 10,
+          "write": 10123,
+          "read": 121211,
+          "output": 963,
+          "total": 132307
+        },
+        "turns": 6,
+        "min": 0.627
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.08671680000000001,
+        "tokens": {
+          "input": 10,
+          "write": 12520,
+          "read": 127584,
+          "output": 1110,
+          "total": 141224
+        },
+        "turns": 6,
+        "min": 0.7246166666666667,
+        "handover_chars": 2370,
+        "workflows": [
+          "add-rule-docs",
+          "verify-and-commit"
+        ],
+        "waited_min": 0.4340833333333333
+      }
+    },
+    {
+      "index": 7,
+      "task": "t07-link-url-scheme",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.40028779999999997,
+        "tokens": {
+          "input": 32,
+          "write": 43565,
+          "read": 716819,
+          "output": 8260,
+          "total": 768676
+        },
+        "turns": 16,
+        "min": 2.2319166666666668
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.43434100000000003,
+        "tokens": {
+          "input": 40,
+          "write": 41970,
+          "read": 919555,
+          "output": 8247,
+          "total": 969812
+        },
+        "turns": 21,
+        "min": 2.3341666666666665,
+        "handover_chars": 10475,
+        "workflows": [
+          "implement-builtin-rule",
+          "add-rule-docs",
+          "add-rule-config-schema",
+          "add-rule-test-fixtures",
+          "update-test-counts",
+          "verify-and-commit"
+        ],
+        "waited_min": 1.6495333333333333
+      }
+    },
+    {
+      "index": 8,
+      "task": "t08-todo-comments-example",
+      "kind": "look-alike",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.4871668,
+        "tokens": {
+          "input": 60,
+          "write": 34213,
+          "read": 1184374,
+          "output": 11332,
+          "total": 1229979
+        },
+        "turns": 31,
+        "min": 3.7432166666666666
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3301546,
+        "tokens": {
+          "input": 40,
+          "write": 29840,
+          "read": 739823,
+          "output": 6275,
+          "total": 775978
+        },
+        "turns": 21,
+        "min": 2.5568166666666667,
+        "handover_chars": 3405,
+        "workflows": [
+          "add-rule-test-fixtures",
+          "update-test-counts",
+          "verify-and-commit"
+        ],
+        "waited_min": 7.7704
+      }
+    },
+    {
+      "index": 9,
+      "task": "t09-md014-prompts",
+      "kind": "rule-option",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3875888,
+        "tokens": {
+          "input": 38,
+          "write": 36704,
+          "read": 791834,
+          "output": 8233,
+          "total": 836809
+        },
+        "turns": 28,
+        "min": 2.1184
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.33287440000000007,
+        "tokens": {
+          "input": 32,
+          "write": 32021,
+          "read": 592682,
+          "output": 8619,
+          "total": 633354
+        },
+        "turns": 18,
+        "min": 2.64215,
+        "handover_chars": 3865,
+        "workflows": [
+          "add-rule-parameter",
+          "verify-and-commit"
+        ],
+        "waited_min": 2.3484333333333334
+      }
+    },
+    {
+      "index": 10,
+      "task": "t10-ol-delimiter-style",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.49076959999999986,
+        "tokens": {
+          "input": 48,
+          "write": 42142,
+          "read": 1105378,
+          "output": 10103,
+          "total": 1157671
+        },
+        "turns": 24,
+        "min": 2.9013333333333335
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.5689248,
+        "tokens": {
+          "input": 54,
+          "write": 45705,
+          "read": 1368484,
+          "output": 11230,
+          "total": 1425473
+        },
+        "turns": 27,
+        "min": 2.9869,
+        "handover_chars": 7168,
+        "workflows": [
+          "implement-builtin-rule",
+          "add-rule-test-fixtures",
+          "add-rule-config-schema",
+          "update-test-counts",
+          "verify-and-commit"
+        ],
+        "waited_min": 1.8217666666666668
+      }
+    },
+    {
+      "index": 11,
+      "task": "t11-circular-extends",
+      "kind": "one-off",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.21645300000000003,
+        "tokens": {
+          "input": 22,
+          "write": 22295,
+          "read": 351795,
+          "output": 5687,
+          "total": 379799
+        },
+        "turns": 11,
+        "min": 1.3864833333333333
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.25951019999999997,
+        "tokens": {
+          "input": 30,
+          "write": 24348,
+          "read": 507541,
+          "output": 6055,
+          "total": 537974
+        },
+        "turns": 16,
+        "min": 2.1143833333333335,
+        "handover_chars": 672,
+        "workflows": [
+          "verify-and-commit"
+        ],
+        "waited_min": 14.636183333333333
+      }
+    },
+    {
+      "index": 12,
+      "task": "t12-no-empty-headings",
+      "kind": "new-rule",
+      "without": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.330358,
+        "tokens": {
+          "input": 36,
+          "write": 31423,
+          "read": 709220,
+          "output": 6275,
+          "total": 746954
+        },
+        "turns": 18,
+        "min": 2.3602666666666665
+      },
+      "with": {
+        "passed": true,
+        "checks": {
+          "hidden": true,
+          "test": true,
+          "lint": true,
+          "regenerate": true
+        },
+        "usd": 0.3747942000000001,
+        "tokens": {
+          "input": 40,
+          "write": 35651,
+          "read": 839751,
+          "output": 6416,
+          "total": 881858
+        },
+        "turns": 20,
+        "min": 2.07175,
+        "handover_chars": 6571,
+        "workflows": [
+          "implement-builtin-rule",
+          "add-rule-test-fixtures",
+          "add-rule-config-schema",
+          "update-test-counts",
+          "verify-and-commit"
+        ],
+        "waited_min": 0.6055333333333334
+      }
+    }
+  ],
+  "all": {
+    "without": {
+      "failed": 0,
+      "usd": 3.931005,
+      "tokens": 8463011,
+      "turns": 220,
+      "min": 26.781116666666673
+    },
+    "with": {
+      "failed": 0,
+      "usd": 4.444444800000001,
+      "tokens": 9915257,
+      "turns": 226,
+      "min": 30.055
+    }
+  },
+  "reach": {
+    "without": {
+      "failed": 0,
+      "usd": 3.0669453999999994,
+      "tokens": 6419024,
+      "turns": 174,
+      "min": 20.391816666666667
+    },
+    "with": {
+      "failed": 0,
+      "usd": 3.3202114000000003,
+      "tokens": 7196187,
+      "turns": 172,
+      "min": 21.772683333333333
+    }
+  },
+  "learnUsd": 2.5924904,
+  "rounds": [
+    {
+      "id": "c000001",
+      "created_at": "2026-10-11T01:36:40.197Z",
+      "cost_usd": 0.3023402,
+      "status": "committed",
+      "records": [
+        "markdownlint-2289b0af4117",
+        "markdownlint-f7fb6b0f1e65"
+      ],
+      "workflows": [
+        "implement-builtin-rule",
+        "add-rule-docs",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "verify-and-commit"
+      ]
+    },
+    {
+      "id": "c000002",
+      "created_at": "2026-10-11T01:52:51.713Z",
+      "cost_usd": 0.5309402,
+      "status": "rejected",
+      "records": [
+        "markdownlint-2289b0af4117",
+        "markdownlint-f7fb6b0f1e65",
+        "markdownlint-2e2ab5e37bc9",
+        "markdownlint-de3f13e14d4e",
+        "markdownlint-55111cb09f85"
+      ],
+      "workflows": [
+        "add-rule-docs",
+        "add-rule-config-schema"
+      ]
+    },
+    {
+      "id": "c000003",
+      "created_at": "2026-10-11T02:09:11.890Z",
+      "cost_usd": 0.7803344000000001,
+      "status": "committed",
+      "records": [
+        "markdownlint-2289b0af4117",
+        "markdownlint-f7fb6b0f1e65",
+        "markdownlint-2e2ab5e37bc9",
+        "markdownlint-de3f13e14d4e",
+        "markdownlint-55111cb09f85",
+        "markdownlint-9104f3d91c23",
+        "markdownlint-d3c947d6583b",
+        "markdownlint-331a0412f65d"
+      ],
+      "workflows": [
+        "implement-builtin-rule",
+        "add-rule-config-schema",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "add-rule-parameter",
+        "add-public-api-function",
+        "add-custom-rule-example",
+        "rename-directory-update-references",
+        "verify-and-commit"
+      ]
+    },
+    {
+      "id": "c000004",
+      "created_at": "2026-10-11T02:36:43.779Z",
+      "cost_usd": 0.9788756000000001,
+      "status": "rejected",
+      "records": [
+        "markdownlint-2289b0af4117",
+        "markdownlint-f7fb6b0f1e65",
+        "markdownlint-2e2ab5e37bc9",
+        "markdownlint-de3f13e14d4e",
+        "markdownlint-55111cb09f85",
+        "markdownlint-9104f3d91c23",
+        "markdownlint-d3c947d6583b",
+        "markdownlint-331a0412f65d",
+        "markdownlint-f1ef70f7d83d",
+        "markdownlint-001c84553735",
+        "markdownlint-c5a1a2390b4d"
+      ],
+      "workflows": [
+        "implement-builtin-rule",
+        "add-rule-docs",
+        "add-rule-test-fixtures",
+        "update-test-counts",
+        "change-settings-reader-inheritance",
+        "add-public-api-function",
+        "add-custom-rule-sample",
+        "rename-directory-update-references",
+        "verify-and-commit"
+      ]
+    }
+  ],
+  "skipped": [
+    {
+      "at": "2026-10-11T01:25:19.025Z",
+      "subject": "markdownlint",
+      "commit": "314ab18e719d52a911939012524d61651d2f171f",
+      "session": null,
+      "reason": "no session made it or wrote it"
+    }
+  ],
+  "stored": [
+    "markdownlint/markdownlint-001c84553735.json",
+    "markdownlint/markdownlint-2289b0af4117.json",
+    "markdownlint/markdownlint-2e2ab5e37bc9.json",
+    "markdownlint/markdownlint-331a0412f65d.json",
+    "markdownlint/markdownlint-55111cb09f85.json",
+    "markdownlint/markdownlint-9104f3d91c23.json",
+    "markdownlint/markdownlint-c5a1a2390b4d.json",
+    "markdownlint/markdownlint-d1373e504b1b.json",
+    "markdownlint/markdownlint-d3c947d6583b.json",
+    "markdownlint/markdownlint-de3f13e14d4e.json",
+    "markdownlint/markdownlint-f1ef70f7d83d.json",
+    "markdownlint/markdownlint-f7fb6b0f1e65.json"
+  ]
+}

@@ -1,0 +1,236 @@
+diff --git a/README.md b/README.md
+index b8873f70..79f435f7 100644
+--- a/README.md
++++ b/README.md
+@@ -919,6 +919,30 @@ import { getVersion } from "markdownlint";
+ console.log(getVersion());
+ ```
+ 
++To list the built-in rules (for example, in an editor integration), the
++`getRules` method can be used:
++
++```javascript
++/**
++ * Gets information about the built-in rules.
++ *
++ * @returns {RuleInfo[]} One (new) object per built-in rule, in rule order.
++ */
++function getRules() { ... }
++```
++
++Each object has the rule's `names` and `tags` (arrays of strings), its
++`description`, its documentation URL as the string `information`, and whether
++it can fix what it reports as the boolean `fixable`. Every call returns new
++objects, so changing them does not affect `markdownlint`:
++
++```javascript
++import { getRules } from "markdownlint";
++
++// Displays the names of the fixable rules
++console.log(getRules().filter((rule) => rule.fixable).map((rule) => rule.names[0]));
++```
++
+ [semver]: https://semver.org
+ 
+ ## Usage
+diff --git a/lib/exports.d.mts b/lib/exports.d.mts
+index 8919ba31..26722cae 100644
+--- a/lib/exports.d.mts
++++ b/lib/exports.d.mts
+@@ -1,4 +1,4 @@
+-export { applyFix, applyFixes, getVersion } from "./markdownlint.mjs";
++export { applyFix, applyFixes, getRules, getVersion } from "./markdownlint.mjs";
+ export { resolveModule } from "./resolve-module.cjs";
+ export type Configuration = import("./markdownlint.mjs").Configuration;
+ export type ConfigurationParser = import("./markdownlint.mjs").ConfigurationParser;
+@@ -24,6 +24,7 @@ export type ResolveConfigExtendsCallback = import("./markdownlint.mjs").ResolveC
+ export type Rule = import("./markdownlint.mjs").Rule;
+ export type RuleConfiguration = import("./markdownlint.mjs").RuleConfiguration;
+ export type RuleFunction = import("./markdownlint.mjs").RuleFunction;
++export type RuleInfo = import("./markdownlint.mjs").RuleInfo;
+ export type RuleOnError = import("./markdownlint.mjs").RuleOnError;
+ export type RuleOnErrorFixInfo = import("./markdownlint.mjs").RuleOnErrorFixInfo;
+ export type RuleOnErrorInfo = import("./markdownlint.mjs").RuleOnErrorInfo;
+@@ -52,6 +53,7 @@ export type RuleParams = import("./markdownlint.mjs").RuleParams;
+ /** @typedef {import("./markdownlint.mjs").Rule} Rule */
+ /** @typedef {import("./markdownlint.mjs").RuleConfiguration} RuleConfiguration */
+ /** @typedef {import("./markdownlint.mjs").RuleFunction} RuleFunction */
++/** @typedef {import("./markdownlint.mjs").RuleInfo} RuleInfo */
+ /** @typedef {import("./markdownlint.mjs").RuleOnError} RuleOnError */
+ /** @typedef {import("./markdownlint.mjs").RuleOnErrorFixInfo} RuleOnErrorFixInfo */
+ /** @typedef {import("./markdownlint.mjs").RuleOnErrorInfo} RuleOnErrorInfo */
+diff --git a/lib/exports.mjs b/lib/exports.mjs
+index da739b4c..97848af0 100644
+--- a/lib/exports.mjs
++++ b/lib/exports.mjs
+@@ -1,6 +1,6 @@
+ // @ts-check
+ 
+-export { applyFix, applyFixes, getVersion } from "./markdownlint.mjs";
++export { applyFix, applyFixes, getRules, getVersion } from "./markdownlint.mjs";
+ export { resolveModule } from "./resolve-module.cjs";
+ 
+ /** @typedef {import("./markdownlint.mjs").Configuration} Configuration */
+@@ -27,6 +27,7 @@ export { resolveModule } from "./resolve-module.cjs";
+ /** @typedef {import("./markdownlint.mjs").Rule} Rule */
+ /** @typedef {import("./markdownlint.mjs").RuleConfiguration} RuleConfiguration */
+ /** @typedef {import("./markdownlint.mjs").RuleFunction} RuleFunction */
++/** @typedef {import("./markdownlint.mjs").RuleInfo} RuleInfo */
+ /** @typedef {import("./markdownlint.mjs").RuleOnError} RuleOnError */
+ /** @typedef {import("./markdownlint.mjs").RuleOnErrorFixInfo} RuleOnErrorFixInfo */
+ /** @typedef {import("./markdownlint.mjs").RuleOnErrorInfo} RuleOnErrorInfo */
+diff --git a/lib/markdownlint.d.mts b/lib/markdownlint.d.mts
+index 986e1894..61a6b64b 100644
+--- a/lib/markdownlint.d.mts
++++ b/lib/markdownlint.d.mts
+@@ -141,6 +141,34 @@ export declare function applyFixes(input: string, errors: LintError[]): string;
+  * @returns {string} SemVer string.
+  */
+ export declare function getVersion(): string;
++/**
++ * Gets information about the built-in rules.
++ *
++ * @returns {RuleInfo[]} One (new) object per built-in rule, in rule order.
++ */
++export declare function getRules(): RuleInfo[];
++export type RuleInfo = {
++    /**
++     * Rule name(s).
++     */
++    names: string[];
++    /**
++     * Rule description.
++     */
++    description: string;
++    /**
++     * Rule tag(s).
++     */
++    tags: string[];
++    /**
++     * Link to more information.
++     */
++    information: string;
++    /**
++     * True iff the rule can fix what it reports.
++     */
++    fixable: boolean;
++};
+ export type RuleFunction = (params: RuleParams, onError: RuleOnError) => void;
+ export type RuleParams = {
+     /**
+@@ -505,6 +533,16 @@ export type ConfigurationParser = (text: string) => Configuration;
+ export type ReadConfigCallback = (err: Error | null, config?: Configuration) => void;
+ export type ResolveConfigExtendsCallback = (err: Error | null, path?: string) => void;
+ export type RuleConfiguration = boolean | any;
++/**
++ * Information about a built-in rule.
++ *
++ * @typedef {Object} RuleInfo
++ * @property {string[]} names Rule name(s).
++ * @property {string} description Rule description.
++ * @property {string[]} tags Rule tag(s).
++ * @property {string} information Link to more information.
++ * @property {boolean} fixable True iff the rule can fix what it reports.
++ */
+ /**
+  * Function to implement rule logic.
+  *
+diff --git a/lib/markdownlint.mjs b/lib/markdownlint.mjs
+index 35f1ae86..df581a9a 100644
+--- a/lib/markdownlint.mjs
++++ b/lib/markdownlint.mjs
+@@ -3,7 +3,7 @@
+ // @ts-ignore
+ import { fs as nodeFs, os, path } from "#node-imports";
+ import { initialize as cacheInitialize } from "./cache.mjs";
+-import { version } from "./constants.mjs";
++import { fixableRuleNames, version } from "./constants.mjs";
+ import { requireMarkdownItCjs } from "./defer-require.cjs";
+ import { resolveModule } from "./resolve-module.cjs";
+ import rules from "./rules.mjs";
+@@ -1304,8 +1304,34 @@ export function getVersion() {
+   return version;
+ }
+ 
++/**
++ * Gets information about the built-in rules.
++ *
++ * @returns {RuleInfo[]} One (new) object per built-in rule, in rule order.
++ */
++export function getRules() {
++  return rules.map((rule) => ({
++    "names": [ ...rule.names ],
++    "description": rule.description,
++    "tags": [ ...rule.tags ],
++    "information": String(rule.information),
++    "fixable": fixableRuleNames.includes(rule.names[0])
++  }));
++}
++
+ // Type declarations
+ 
++/**
++ * Information about a built-in rule.
++ *
++ * @typedef {Object} RuleInfo
++ * @property {string[]} names Rule name(s).
++ * @property {string} description Rule description.
++ * @property {string[]} tags Rule tag(s).
++ * @property {string} information Link to more information.
++ * @property {boolean} fixable True iff the rule can fix what it reports.
++ */
++
+ /**
+  * Function to implement rule logic.
+  *
+diff --git a/test/markdownlint-test-exports.mjs.snapshot b/test/markdownlint-test-exports.mjs.snapshot
+index 2734b94f..1393faa5 100644
+--- a/test/markdownlint-test-exports.mjs.snapshot
++++ b/test/markdownlint-test-exports.mjs.snapshot
+@@ -3,6 +3,7 @@ exports[`markdownlint-test-exports.mjs > exported names 1`] = `
+   "markdownlint": [
+     "applyFix",
+     "applyFixes",
++    "getRules",
+     "getVersion",
+     "resolveModule"
+   ],
+diff --git a/test/markdownlint-test.mjs b/test/markdownlint-test.mjs
+index 3250f1bc..c0132b28 100644
+--- a/test/markdownlint-test.mjs
++++ b/test/markdownlint-test.mjs
+@@ -13,7 +13,7 @@ import markdownIt from "markdown-it";
+ import pluginInline from "markdown-it-for-inline";
+ import pluginSub from "markdown-it-sub";
+ import pluginSup from "markdown-it-sup";
+-import { getVersion } from "markdownlint";
++import { getRules, getVersion } from "markdownlint";
+ import { lint as lintAsync } from "markdownlint/async";
+ import { lint as lintPromise } from "markdownlint/promise";
+ import { lint as lintSync } from "markdownlint/sync";
+@@ -1582,6 +1582,25 @@ test.suite(import.meta.url.replace(/^.*?\/(?<name>[^/]*)$/u, "$<name>"), () => {
+     t.assert.equal(actual, expected, "Version string not correct.");
+   });
+ 
++  test("getRules", (t) => {
++    t.plan(3);
++    const expected = rules.map((rule) => ({
++      "names": rule.names,
++      "description": rule.description,
++      "tags": rule.tags,
++      // @ts-ignore
++      "information": rule.information.href,
++      "fixable": constants.fixableRuleNames.includes(rule.names[0])
++    }));
++    const actual = getRules();
++    t.assert.deepEqual(actual, expected);
++    actual[0].names.push("changed");
++    actual[0].tags.length = 0;
++    actual.pop();
++    t.assert.notEqual(getRules(), actual);
++    t.assert.deepEqual(getRules(), expected);
++  });
++
+   test("constants", (t) => {
+     t.plan(2);
+     // @ts-ignore

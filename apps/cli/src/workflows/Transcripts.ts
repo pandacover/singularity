@@ -52,7 +52,15 @@ export interface Peek {
 
 const nothingSeen: Peek = { cwd: undefined, first: undefined, last: undefined }
 
-/** Where a session ran and when it started and ended, from its transcript's first and last lines. */
+const time = (t: string | undefined) => (t === undefined || Number.isNaN(Date.parse(t)) ? undefined : Date.parse(t))
+
+/**
+ * Where a session ran and when it started and ended, from its transcript's
+ * first and last lines. A line can be longer than the peek: an image pasted
+ * into a prompt is kept in that prompt's line (158 KB for one screenshot).
+ * When one hides what the peek looks for, the transcript is read whole,
+ * line by line, as far as it takes.
+ */
 export const peekTranscript = Effect.fn("peekTranscript")(function*(file: string) {
   const fs = yield* FileSystem.FileSystem
   const size = Number((yield* fs.stat(file)).size)
@@ -63,13 +71,17 @@ export const peekTranscript = Effect.fn("peekTranscript")(function*(file: string
   const headLines = whole ? head.split(/\r?\n/) : linesOf(head, true)
   const tailLines = whole ? headLines : linesOf(yield* read(size - PEEK_BYTES), false)
   const decoded = (lines: ReadonlyArray<string>) => lines.flatMap((l) => Option.toArray(decodeLine(l)))
-  const time = (t: string | undefined) => (t === undefined || Number.isNaN(Date.parse(t)) ? undefined : Date.parse(t))
+  const allLines = fs.stream(file).pipe(Stream.decodeText(), Stream.splitLines, Stream.map((l) => Option.getOrUndefined(decodeLine(l))))
   const fromHead = decoded(headLines)
   const fromTail = decoded(tailLines)
+  const started = fromHead.find((l) => l.cwd !== undefined) ??
+    (whole ? undefined : Option.getOrUndefined(yield* allLines.pipe(Stream.filter((l) => l?.cwd !== undefined), Stream.runHead)))
+  const last = fromTail.map((l) => time(l.timestamp)).filter((t) => t !== undefined).at(-1) ??
+    (whole ? undefined : Option.getOrUndefined(yield* allLines.pipe(Stream.map((l) => time(l?.timestamp)), Stream.filter((t) => t !== undefined), Stream.runLast)))
   return {
-    cwd: fromHead.find((l) => l.cwd !== undefined)?.cwd,
-    first: fromHead.map((l) => time(l.timestamp)).find((t) => t !== undefined),
-    last: fromTail.map((l) => time(l.timestamp)).filter((t) => t !== undefined).at(-1)
+    cwd: started?.cwd,
+    first: fromHead.map((l) => time(l.timestamp)).find((t) => t !== undefined) ?? time(started?.timestamp),
+    last
   } satisfies Peek
 })
 

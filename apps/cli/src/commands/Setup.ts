@@ -128,7 +128,7 @@ const learnQueued = Effect.fn("learnQueued")(function*(home: Home, subjectId: st
     const short = budgetReason(roundUsd(state), yield* spentToday(), prefs.max_usd_per_day)
     if (short !== undefined) return yield* log(`waits: ${short}`)
     const learner = yield* resolveLearner(prefs.with, dirsOf())
-    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)), every: prefs.every }).pipe(
+    const outcome = yield* learnSubject(subject, { ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)), every: prefs.every, tenantDir: home.tenantDir }).pipe(
       Effect.mapError((e) => new LearnerError({ message: withModelHint(e.message, learner.agent) }))
     )
     const s = makeStyle(false)
@@ -240,7 +240,8 @@ const learn = Command.make(
           learnSubject(subject, {
             ...learnerConfig(learner, path.join(defaultWorkspaces(), "_learner"), modelFor(prefs, learner.agent)),
             every: prefs.every,
-            now: true
+            now: true,
+            tenantDir: home.tenantDir
           }).pipe(Effect.provide(stores), Effect.mapError((e) => new LearnerError({ message: withModelHint(e.message, learner.agent) }))),
           interactive()
         )

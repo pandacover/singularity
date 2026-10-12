@@ -1,0 +1,21 @@
+branch t3/daily-learning-fixes, HEAD 9d241f23d351452f1c3c42800f0c1fdc5d57d66e, plus the uncommitted changes in CODE.diff
+ M AGENTS.md
+ M apps/cli/src/commands/Setup.ts
+ M apps/cli/src/commands/Workflows.ts
+ M apps/cli/src/layer/Api.ts
+ M apps/cli/src/records/Extract.ts
+ M apps/cli/src/setup/Setup.ts
+ M apps/cli/src/traces/Failure.ts
+ M apps/cli/src/workflows/Evidence.ts
+ M apps/cli/src/workflows/Evolve.ts
+ M apps/cli/src/workflows/Induce.ts
+ M apps/cli/src/workflows/Learn.ts
+ M apps/cli/src/workflows/Places.ts
+ M apps/cli/src/workflows/Render.ts
+ M apps/cli/src/workflows/Session.ts
+ M apps/cli/test/records/extract.test.ts
+ M apps/cli/test/traces/traces.test.ts
+ M apps/cli/test/workflows/workflows.test.ts
+ M docs/development.md
+?? apps/cli/examples/markdownlint/
+?? apps/cli/test/workflows/evidence.test.ts

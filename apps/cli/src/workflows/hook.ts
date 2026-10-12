@@ -35,21 +35,24 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { mayFire } from "./HookFilter.ts"
 
 const home = () => process.env.SINGULARITY_HOME || join(homedir(), ".singularity")
 
 /**
- * Which reader handed the session memory at its start (src/layer/Api.ts):
- * code (v1's session file) or web, checked with nothing but the file system.
+ * Which reader handed the session memory at its start (src/layer/Api.ts),
+ * found with nothing but the file system: code, with the text of v1's
+ * session file, or web.
  */
-const sessionKind = (stdin: string): "code" | "web" | undefined => {
+const sessionOf = (stdin: string): { readonly kind: "code"; readonly text: string } | { readonly kind: "web" } | undefined => {
   try {
     const sessionId = (JSON.parse(stdin) as { session_id?: unknown }).session_id
     const config = JSON.parse(readFileSync(join(home(), "config.json"), "utf-8")) as { tenant?: unknown }
     if (typeof sessionId !== "string" || typeof config.tenant !== "string") return undefined
     const file = `${sessionId.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`
-    if (existsSync(join(home(), "tenants", config.tenant, "workflows", "sessions", file))) return "code"
-    if (existsSync(join(home(), "tenants", config.tenant, "web", "sessions", file))) return "web"
+    const code = join(home(), "tenants", config.tenant, "workflows", "sessions", file)
+    if (existsSync(code)) return { kind: "code", text: readFileSync(code, "utf-8") }
+    if (existsSync(join(home(), "tenants", config.tenant, "web", "sessions", file))) return { kind: "web" }
     return undefined
   } catch {
     return undefined
@@ -81,9 +84,13 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
     let out: string | undefined
     // Every event goes to the memory layer's calls (src/layer/Api.ts): start, step, end.
     if (event === "post-tool-use") {
-      const kind = sessionKind(stdin)
-      if (kind === "code") out = await (await import("./HookTool.ts")).postToolUse(stdin)
-      else if (kind === "web") out = await (await import("../web/HookStep.ts")).webPostToolUse(stdin)
+      const session = sessionOf(stdin)
+      // Most calls end here too: no trigger of the session's pitfalls can match (HookFilter.ts), no module loaded.
+      if (session?.kind === "code") {
+        if (mayFire(stdin, session.text)) out = await (await import("./HookTool.ts")).postToolUse(stdin)
+      } else if (session?.kind === "web") {
+        out = await (await import("../web/HookStep.ts")).webPostToolUse(stdin)
+      }
       // Most calls end here: no word a committing command has (StoreTrigger's MAY_COMMIT), no module loaded.
       if (!evalRun && /commit|merge|cherry-pick|revert|\bam\b|pull|rebase/i.test(stdin)) {
         const trigger = await import("./StoreTrigger.ts")
@@ -95,7 +102,7 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
     } else if (event === "user-prompt-submit-2") {
       out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2, parts)
     } else if (event === "session-end") {
-      if (sessionKind(stdin) === "web") {
+      if (sessionOf(stdin)?.kind === "web") {
         await (await import("../web/HookStep.ts")).webSessionEnd(stdin)
       } else if (!evalRun) {
         (await import("./StoreTrigger.ts")).startStoring(stdin)
