@@ -38,6 +38,8 @@ export interface Selected {
   /** Steps that don't apply, numbered from 1. */
   readonly skip: ReadonlyArray<number>
   readonly why: string
+  /** Handed over only for the agent to judge: what must hold for it to apply (a TRIGGERS edge's condition, Cues.ts). */
+  readonly condition?: string
 }
 
 export const selectionPrompt = (task: string, memory: WorkflowMemory): string => {

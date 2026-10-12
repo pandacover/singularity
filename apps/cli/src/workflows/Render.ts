@@ -11,6 +11,10 @@
  * Claude Code cuts a hook's text at 10,000 characters, so the hand-over keeps
  * to a budget: when it doesn't fit, excerpts get shorter, then go.
  *
+ * Between workflows, what the edges joining them say: how to go on from one
+ * to the next, and what to avoid there; and, in a line each, a few branches
+ * with a condition that weren't handed over, for the agent to judge.
+ *
  * Memory that knows what its checks rewrite (Finish.ts) ends with one command
  * that checks everything, instead of checks under each workflow and a
  * finishing workflow of its own. Commands are checked against the repo first
@@ -20,7 +24,7 @@ import { applyFills, mergedValues, type PartUse } from "./Cues.ts"
 import { shapeOf } from "./Evidence.ts"
 import { checkCommands, finishOf, hasFinish, type RepoFacts } from "./Finish.ts"
 import type { Located } from "./Locate.ts"
-import type { Pitfall, Place, WorkflowMemory } from "./Models.ts"
+import type { Edge, Pitfall, Place, WorkflowMemory } from "./Models.ts"
 import { continues, describeChain, indentOf, membersOf, type Region } from "./Places.ts"
 import type { Selected } from "./Select.ts"
 
@@ -203,6 +207,55 @@ const PARTS_HEADER = [
   ""
 ].join("\n")
 
+const RELATION: Record<Edge["relation"], (to: string) => string> = {
+  LEADS_TO: (to) => `On to ${to}`,
+  TRIGGERS: (to) => `This makes ${to} needed`,
+  PROVIDES_INPUT_FOR: (to) => `This feeds ${to}`,
+  CONVERGES_TO: (to) => `This comes together in ${to}`
+}
+
+/** At most this many branches not handed over are listed in a hand-over. */
+const MAX_BRANCHES = 3
+
+/**
+ * What the edges from a workflow say. To a workflow handed over after it (or
+ * folded into the last section): how to go on, and what to avoid there; an
+ * edge that says neither says nothing, and its condition is left out, since
+ * both workflows being handed over settled it. To a workflow not handed over,
+ * when the edge has a condition: a line with the condition and the workflow's
+ * name, once in a hand-over (`listed`), since the task's words didn't pick it
+ * and only the agent can judge whether the condition holds.
+ */
+const edgeLines = (
+  memory: WorkflowMemory,
+  from: string,
+  steps: ReadonlyArray<Selected>,
+  at: number,
+  folded: ReadonlySet<string>,
+  listed: Set<string>
+): Array<string> => {
+  const byId = new Map(memory.workflows.map((w) => [w.id, w]))
+  const lines: Array<string> = []
+  const branches: Array<string> = []
+  for (const e of memory.edges) {
+    if (e.from !== from) continue
+    const j = steps.findIndex((c) => c.workflow.id === e.to)
+    const to = j > at ? `${j + 1} (${steps[j].workflow.name})` : folded.has(e.to) ? FINISH_NAME : undefined
+    if (to !== undefined) {
+      if (e.guidance === null && e.pitfalls === null) continue
+      lines.push(`${RELATION[e.relation](to)}${e.guidance === null ? "." : `: ${e.guidance}`}${e.pitfalls === null ? "" : ` Avoid there: ${e.pitfalls}`}`)
+      continue
+    }
+    // TRIGGERS edges bring their workflows in (Cues.ts: withTriggered); one left out had its reasons.
+    const w = byId.get(e.to)
+    if (j >= 0 || e.condition === null || e.relation === "TRIGGERS" || w === undefined || w.only_if_asked) continue
+    if (listed.has(w.id) || listed.size >= MAX_BRANCHES) continue
+    listed.add(w.id)
+    branches.push(`- If ${e.condition}: ${w.name}.`)
+  }
+  return branches.length === 0 ? lines : [...lines, "Memory also has, if your change needs it:", ...branches]
+}
+
 /** Changes of a task by their labels: "1", "1 and 3", "1, 2 and 3". */
 const changes = (uses: ReadonlyArray<PartUse>): string => {
   const labels = uses.map((u) => u.label)
@@ -248,6 +301,7 @@ export const renderHandover = (
     const shown: Array<Shown> = []
     const missing: Array<string> = []
     const warned = new Set<string>()
+    const branched = new Set<string>()
     const warn = (id: string) => {
       const p = pitfalls.get(id)
       if (p === undefined || warned.has(id)) return
@@ -263,7 +317,8 @@ export const renderHandover = (
       const values = new Map([...(own ?? []), ...[...folded].map((id) => [id, FINISH_NAME] as const)])
       const fill = (text: string) => (values.size === 0 ? text : applyFills(text, values))
       const some = uses !== undefined && inParts !== undefined && uses.length < inParts.count
-      out.push(`## ${k + 1}. ${w.name}${some ? ` (for ${changes(uses)} in your list)` : ""}`)
+      const notes = [...(some ? [`for ${changes(uses)} in your list`] : []), ...(c.condition === undefined ? [] : [`only if ${fill(c.condition)}`])]
+      out.push(`## ${k + 1}. ${w.name}${notes.length === 0 ? "" : ` (${notes.join("; ")})`}`)
       const stated = [...values].filter(([b]) => !folded.has(b))
       if (stated.length > 0) out.push(`Filled from your task: ${stated.map(([b, v]) => `${b} = ${code(v)}`).join(", ")}`)
       const byChange = uses !== undefined && merged === undefined ? uses.filter((u) => u.values.size > 0) : []
@@ -295,6 +350,7 @@ export const renderHandover = (
       const checks = repo === undefined ? w.checks : checkCommands(w.checks, repo)
       if (finish === undefined && checks.length > 0) out.push(`Check with ${checks.map(code).join(" or ")}.`)
       for (const id of w.pitfalls) warn(id)
+      for (const line of edgeLines(memory, w.id, steps, k, folded, branched)) out.push(fill(line))
       out.push("")
     })
     if (finish !== undefined) {

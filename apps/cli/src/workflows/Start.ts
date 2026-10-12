@@ -12,7 +12,7 @@ import { DateTime, Effect, FileSystem } from "effect"
 import { identifyRepo } from "../local/Git.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { type Usage, usageToJson } from "../traces/index.ts"
-import { cueChoice, fillsOfChosen, hasCues, partsChoice } from "./Cues.ts"
+import { cueChoice, fillsOfChosen, hasCues, partsChoice, withTriggered } from "./Cues.ts"
 import { type DraftCall, draftChange, type DrafterConfig, renderDraft } from "./Draft.ts"
 import { repoFacts } from "./Finish.ts"
 import { END, START, type WorkflowMemory } from "./Models.ts"
@@ -115,7 +115,7 @@ export const startTask = Effect.fn("startTask")(function*(
   // A task that lists several changes is picked and filled change by change.
   const inParts = byCues ? partsChoice(memory, input.prompt) : undefined
   const withoutModel = (): Selection => {
-    const chosen = inParts?.chosen ?? (byCues ? cueChoice(memory, input.prompt) : wordChoice(memory, input.prompt))
+    const chosen = inParts?.chosen ?? withTriggered(memory, byCues ? cueChoice(memory, input.prompt) : wordChoice(memory, input.prompt), input.prompt)
     return { chosen, call: null, reasons: chosen.map((c) => `${c.workflow.id}: ${c.why}`) }
   }
   const selection: Selection = options.cues === true ? withoutModel() : yield* selectWorkflows(memory, input.prompt, options.selector)

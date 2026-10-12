@@ -93,7 +93,11 @@ What they make:
   a workflow and where a task states its blanks' values, written once by
   `workflows cues` (`CueWriter.ts`) and matched exactly at task start, with
   negated clauses ("don't add a shortcut") left out (`Cues.ts`). A task that
-  lists several changes is picked and filled change by change. A build
+  lists several changes is picked and filled change by change. A workflow
+  picked brings in what it `TRIGGERS` along the graph's edges, marked "only
+  if" when an edge has a condition; between workflows handed over, the
+  hand-over says what their edges say (how to go on, what to avoid), and it
+  names a few branches with conditions it didn't hand over (`Render.ts`). A build
   writes workflows without cues: run `workflows cues` after it (a learning
   round on memory with cues writes them itself). `--pick model` has a model
   call pick instead, as v1 was first measured.
