@@ -103,6 +103,10 @@ What they make:
   shows more of the places they edited and fewer they left alone (a place
   it misses counts twice one it shows for nothing). A revision it doesn't
   keep still leaves its new pitfalls, each checked against a run's failure.
+  The model reads memory in a compact form and answers with what changes
+  only (`RevisionAnswer`); what the checks flag that only it can fix (a
+  task's own value written in, a pitfall from no detour of the runs) goes
+  back to it alone, in a second, small call.
 - **Common** learns, for kinds of task like bug fixes, only what runs of at
   least two different tasks did alike: how a bug is reproduced in a test
   here, how the fix is checked, the mistakes made on the way. Its places
@@ -130,7 +134,10 @@ another's. A change is stored when it is committed
 session's log since its previous commit; learning reads it as its commit
 titles and the prompts typed for it, since its first prompt is often no
 ask ("commit and open a PR"). A round reads only the new changes, with each
-place they edited counting every run that edited it.
+place they edited counting every run that edited it. A round that fails
+after a model call is kept as a rejected candidate with what it spent
+(`Spent` in `eval/ModelCall.ts` counts every call): it counts toward the
+day's limit and isn't tried again until a new change arrives.
 
 ## Memory v0
 

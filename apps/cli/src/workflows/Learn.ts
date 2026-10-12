@@ -15,6 +15,7 @@
  * its own (Start.ts's forSubject keeps edges by workflow id).
  */
 import { DateTime, Effect, FileSystem } from "effect"
+import { Spent } from "../eval/ModelCall.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import type { Subject } from "../records/Subjects.ts"
@@ -179,12 +180,51 @@ export const waitReason = (state: LearnState, every: number, now: boolean): stri
   return undefined
 }
 
-/** Learn one subject: a first build, or a learning round when enough new changes arrived. */
+/** How the reason of a round that failed starts: it spent what its calls cost, and isn't tried again until a new change arrives. */
+export const FAILED = "failed:"
+
+/** A rejected candidate that is a round that failed, not a revision memory tried. */
+export const isFailedRound = (c: WorkflowCandidate): boolean => c.reason.startsWith(FAILED)
+
+/**
+ * Learn one subject: a first build, or a learning round when enough new
+ * changes arrived. A round that fails after a model call has still spent: it
+ * is kept as a rejected candidate with what its calls cost, so it counts
+ * toward the day's limit and isn't tried again (and paid again) at every
+ * commit, until a new change arrives.
+ */
 export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject, config: LearnConfig) {
-  const store = yield* WorkflowStore
   const state = yield* learnState(subject.id)
   const waiting = waitReason(state, config.every, config.now === true)
   if (waiting !== undefined) return { kind: "waiting", subject: subject.id, reason: waiting, costUsd: 0 } satisfies LearnOutcome
+  const spent = Spent.fresh()
+  const read = (state.memory.workflows.length === 0 ? state.records : state.unlearned).map((r) => r.id)
+  return yield* learnRound(subject, config, state).pipe(
+    Effect.provideService(Spent, spent),
+    Effect.tapError((e) => (spent.calls() === 0 ? Effect.void : failedRound(config, read, spent.usd(), e).pipe(Effect.ignore)))
+  )
+})
+
+/** A round that failed, kept: memory as it was, rejected with the error, and what the round spent. */
+const failedRound = Effect.fnUntraced(function*(config: LearnConfig, records: ReadonlyArray<string>, usd: number, error: unknown) {
+  const store = yield* WorkflowStore
+  const message = error instanceof Error || (typeof error === "object" && error !== null && "message" in error)
+    ? String((error as { message: unknown }).message)
+    : String(error)
+  const candidate = yield* store.propose(yield* store.memory(), {
+    baseVersion: yield* store.head(),
+    rationale: "",
+    records,
+    model: config.model ?? config.cli.agent,
+    costUsd: usd,
+    report: { problems: [message], replay: null }
+  })
+  yield* store.reject(candidate.id, `${FAILED} ${message.slice(0, 300)}`)
+})
+
+/** A round, once `learnSubject` found one due. */
+const learnRound = Effect.fnUntraced(function*(subject: Subject, config: LearnConfig, state: LearnState) {
+  const store = yield* WorkflowStore
   // The model runs in a directory of its own, which a fresh machine doesn't have yet.
   yield* (yield* FileSystem.FileSystem).makeDirectory(config.cwd, { recursive: true }).pipe(Effect.ignore)
   const baseVersion = yield* store.head()
@@ -233,7 +273,9 @@ export const learnSubject = Effect.fn("learnSubject")(function*(subject: Subject
   const evidence = yield* gatherEvidence(state.unlearned, {})
   const before = yield* gatherEvidence(state.learned, {})
   const current = state.memory
+  // Revisions tried and rejected, for the model to avoid; a round that failed tried none.
   const rejected: ReadonlyArray<WorkflowCandidate> = (yield* store.candidates("rejected"))
+    .filter((c) => !isFailedRound(c))
     .map((c) => ({ ...c, memory: forSubject(c.memory, subject.id) }))
     .filter((c) => c.memory.workflows.length > 0)
   const refined = yield* refine(

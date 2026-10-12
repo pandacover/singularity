@@ -18,7 +18,9 @@ import { agentEnv, parseResult } from "./Agent.ts"
 import { runProcess } from "./Proc.ts"
 
 export class LlmError extends Schema.TaggedError<LlmError>()("LlmError", {
-  message: Schema.String
+  message: Schema.String,
+  /** What the failed call cost, when the agent said: a call over its budget, or one whose answer didn't fit, is paid for all the same. */
+  costUsd: Schema.optionalKey(Schema.Number)
 }) {}
 
 /** The agents whose command lines memory can make its model calls through. */
@@ -97,12 +99,13 @@ export const callStructured = Effect.fn("callStructured")(function*<A>(call: Str
   const proc = yield* runProcess(call.claude[0], args, { cwd: call.cwd, timeoutS, env: agentEnv(), input: call.prompt })
   if (proc.timedOut) return yield* new LlmError({ message: `claude timed out after ${timeoutS}s` })
   const result = parseResult(proc.stdout)
+  const cost = typeof result?.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {}
   if (result === undefined || result.subtype !== "success" || result.is_error === true) {
     const why = result === undefined ? proc.stderr.trim() || proc.stdout.trim() : JSON.stringify(result.subtype)
-    return yield* new LlmError({ message: `claude failed (exit ${proc.exitCode}): ${why.slice(0, 500)}` })
+    return yield* new LlmError({ message: `claude failed (exit ${proc.exitCode}): ${why.slice(0, 500)}`, ...cost })
   }
   const value = yield* Schema.decodeUnknownEffect(call.schema)(result.structured_output).pipe(
-    Effect.mapError((e) => new LlmError({ message: `the answer doesn't match the schema: ${e.message}` }))
+    Effect.mapError((e) => new LlmError({ message: `the answer doesn't match the schema: ${e.message}`, ...cost }))
   )
   const usage = Predicate.isObject(result.modelUsage)
     ? Object.values(result.modelUsage).reduce<Usage>((acc, v) => addUsage(acc, usageFromModelUsage(v)), emptyUsage)

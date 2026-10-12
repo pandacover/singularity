@@ -38,6 +38,7 @@ import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shown
 import { withSnapshots } from "../workflows/Finish.ts"
 import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL, induce } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
+import { isFailedRound } from "../workflows/Learn.ts"
 import { startTask } from "../workflows/Start.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import { homeFlag, recordsLayer } from "./Common.ts"
@@ -255,7 +256,7 @@ ${yield* lookupsText(yield* store.memory(), handed, (run) => repo ?? newRecords.
       // A place counts every run that edited it, the ones memory learned from too.
       withPlacesOf(evidence, before, current),
       new Map(newRecords.map((r) => [r.id, r])),
-      yield* store.candidates("rejected"),
+      (yield* store.candidates("rejected")).filter((c) => !isFailedRound(c)),
       { repo, texts: yield* handedTexts(newRecords) }
     )
     for (const p of refined.problems) yield* Console.log(`  ${p}`)

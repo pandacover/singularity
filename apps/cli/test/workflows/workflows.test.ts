@@ -7,7 +7,7 @@ import type { WorkflowRecord } from "../../src/records/Models.ts"
 import type { Evidence, RunEvidence } from "../../src/workflows/Evidence.ts"
 import { fit, passes, resultsText, shownInRecord, withNewPitfalls } from "../../src/workflows/Evolve.ts"
 import { feedbackOf } from "../../src/workflows/Feedback.ts"
-import { checkAnswer, type InductionAnswer, namedValue, placeProblem } from "../../src/workflows/Induce.ts"
+import { applyFix, applyRevision, checkAnswer, fixPrompt, type InductionAnswer, memoryText, namedValue, placeProblem } from "../../src/workflows/Induce.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { locatePlaces } from "../../src/workflows/Locate.ts"
 import { emptyMemory, FORMAT, graphOrder, type Place, type WorkflowMemory } from "../../src/workflows/Models.ts"
@@ -128,6 +128,121 @@ describe("checking an induced answer", () => {
     assert.strictEqual(namedValue("press Alt+M to toggle", ["Alt+M"]), "Alt+M")
     assert.isUndefined(namedValue("see packages/x/y.ts", ["packages/x/y.ts"]))
     assert.isUndefined(placeProblem(place("p"), new Map()))
+  })
+})
+
+describe("learning for less", () => {
+  const detour = {
+    kind: "command_error" as const,
+    failed: { call: 0, turn: 0, tool: "Bash", command: "yarn test:update --watch", file: null },
+    symptom: "unknown option --watch",
+    keys: ["yarn test:update"],
+    fixed: { call: 1, turn: 1, tool: "Bash", command: "yarn test:update", file: null },
+    removed: ["--watch"],
+    added: [],
+    files_edited: [],
+    failures: 1,
+    cost: { tokens: 4000, calls: 1, turns: 1 }
+  }
+  const evidence: Evidence = {
+    places: [place("p-1"), place("p-thin", { evidence: ["r1"] })],
+    runs: [runEvidence("r1", { detours: [detour] }), runEvidence("r2", { task: "t2" })],
+    readPlaces: [],
+    skipped: [],
+    families: new Map()
+  }
+  const workflow = answer().workflows[0]
+  const leaky = answer({
+    workflows: [
+      { ...workflow, id: "w1", steps: [{ do: "Add minimapEnabled to the table.", place: "p-1", when: null }] },
+      { ...workflow, id: "w2", steps: [{ do: "Add {letter} to the table.", place: "p-thin", when: null }] }
+    ],
+    edges: [{ from: "w2", to: "end", relation: "LEADS_TO", condition: "when Alt+M is free", guidance: null, pitfalls: null }],
+    pitfalls: [
+      { id: "Watch Flag", text: "`yarn test:update` already watches.", detours: ["r9#0"], trigger: null },
+      { id: "minimap", text: "Toggling minimapEnabled twice undoes it.", detours: ["r1#0"], trigger: null }
+    ]
+  })
+
+  it("flags what only the model can fix, and fixes the rest itself", () => {
+    const { memory, flagged } = checkAnswer(leaky, evidence, "local")
+    // A task's own value in a step, an edge's condition and a pitfall; a pitfall from no detour of these runs.
+    assert.deepStrictEqual(flagged, { workflows: ["w1"], pitfalls: ["watch-flag", "minimap"], edges: [["w2", "end"]] })
+    // A place one run edited goes from its step without a call.
+    assert.deepStrictEqual(memory.workflows.map((w) => [w.id, w.steps.map((s) => s.place)]), [["w2", [null]]])
+  })
+
+  it("sends back only the flagged parts, and takes only those from the answer", () => {
+    const checked = checkAnswer(leaky, evidence, "local")
+    const prompt = fixPrompt(leaky, checked, evidence)
+    assert.include(prompt, "Add minimapEnabled to the table.")
+    assert.notInclude(prompt, "Add {letter} to the table.")
+    assert.include(prompt, "`Alt+M`, `minimapEnabled`")
+    assert.include(prompt, "pitfall watch-flag comes from no detour of these runs")
+    // The detours, for the pitfall that named none of them.
+    assert.include(prompt, "### Run r1")
+    const fixed = applyFix(leaky, {
+      workflows: [
+        { ...workflow, id: "w1", steps: [{ do: "Add {flag} to the table.", place: "p-1", when: null }] },
+        { ...workflow, id: "w2", name: "Not flagged, not taken" }
+      ],
+      pitfalls: [{ id: "watch-flag", text: "`yarn test:update` already watches.", detours: ["r1#0"], trigger: null }],
+      edges: [{ from: "w2", to: "end", relation: "LEADS_TO", condition: "when the key is free", guidance: null, pitfalls: null }]
+    }, checked.flagged)
+    const again = checkAnswer(fixed, evidence, "local")
+    assert.deepStrictEqual(again.memory.workflows.map((w) => [w.id, w.name]), [["w1", "Add a key code"], ["w2", "Add a key code"]])
+    assert.deepStrictEqual(again.memory.pitfalls.map((p) => p.id), ["watch-flag"])
+    assert.deepStrictEqual(again.flagged, { workflows: [], pitfalls: ["minimap"], edges: [] })
+  })
+
+  it("reads memory compactly, and applies a revision that holds only what changes", () => {
+    const wf = (id: string) => ({
+      id,
+      subject: "repo",
+      name: `Do ${id}`,
+      use_when: `a task needs ${id}`,
+      only_if_asked: false,
+      blanks: [],
+      steps: [{ do: `Edit for ${id}.`, place: "p-1", when: null }],
+      checks: ["yarn test"],
+      pitfalls: id === "a" ? ["p1"] : [],
+      evidence: ["r1", "r2"],
+      tasks: ["t1"],
+      cues: { any: [`${id} phrase`], none: [], steps: [], fills: [] }
+    })
+    const edge = (from: string, to: string) => ({ from, to, relation: "LEADS_TO" as const, condition: null, guidance: null, pitfalls: null })
+    const current: WorkflowMemory = {
+      ...emptyMemory("local"),
+      places: [place("p-1")],
+      workflows: [wf("a"), wf("b"), wf("c")],
+      edges: [edge("start", "a"), edge("a", "b"), edge("b", "c"), edge("c", "end")],
+      pitfalls: [
+        { id: "p1", subject: "repo", text: "Mind the flag.", trigger: { on: "command", all: ["--watch"], none: [], file: null }, evidence: ["r1"], cost_tokens: 1 },
+        { id: "p2", subject: "repo", text: "Mind the order.", trigger: null, evidence: ["r1"], cost_tokens: 1 }
+      ]
+    }
+    const text = memoryText(current)
+    assert.include(text, "### b\nName: Do b\nUse when: a task needs b\n1. Edit for b. [place: p-1]\nChecks: `yarn test`")
+    assert.include(text, "- p1: Mind the flag. Trigger: {\"on\":\"command\",\"all\":[\"--watch\"],\"none\":[],\"file\":null}")
+    assert.notInclude(text, "a phrase")
+    assert.isBelow(text.length, JSON.stringify({ workflows: current.workflows, edges: current.edges, pitfalls: current.pitfalls }, null, 1).length / 2)
+
+    const merged = applyRevision(current, {
+      workflows: [{ ...answer().workflows[0], id: "b", name: "Do b better" }, { ...answer().workflows[0], id: "d", name: "Do d" }],
+      removed_workflows: ["c"],
+      edges: [edge("a", "b"), edge("b", "d"), edge("d", "end")],
+      pitfalls: [{ id: "p2", text: "Mind the build order.", detours: [], trigger: null }],
+      removed_pitfalls: ["p1"],
+      entries: [],
+      rationale: "b does more; c went"
+    })
+    assert.deepStrictEqual(merged.workflows.map((w) => [w.id, w.name]), [["a", "Do a"], ["b", "Do b better"], ["d", "Do d"]])
+    assert.deepStrictEqual(merged.edges.map((e) => `${e.from}>${e.to}`), ["start>a", "a>b", "b>d", "d>end"])
+    assert.deepStrictEqual(merged.pitfalls.map((p) => [p.id, p.text]), [["p2", "Mind the build order."]])
+    // What it keeps of memory reads as memory's own: no runs, its own trigger.
+    const checked = checkAnswer(merged, evidence, "local", current)
+    assert.deepStrictEqual(checked.memory.pitfalls.map((p) => p.id), ["p2"])
+    assert.deepStrictEqual(checked.memory.workflows.find((w) => w.id === "a")?.pitfalls, [])
   })
 })
 
