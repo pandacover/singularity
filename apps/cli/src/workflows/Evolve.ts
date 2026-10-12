@@ -259,8 +259,8 @@ export const refine = Effect.fn("refine")(function*(
   })
   const used = new Set(workflows.flatMap((w) => w.steps.flatMap((s) => (s.place === null ? [] : [s.place]))))
   const entries = new Set(induced.entries)
-  // A pitfall with a trigger warns on its own when its mistake comes back; one the revision left out stays.
-  const kept = new Set(induced.memory.pitfalls.map((p) => p.id))
+  // A pitfall with a trigger warns on its own when its mistake comes back: one the checks dropped stays, one the model took out goes.
+  const kept = new Set([...induced.memory.pitfalls.map((p) => p.id), ...induced.removed.pitfalls])
   const carried = current.pitfalls.filter((p) => p.trigger !== null && !kept.has(p.id))
   const memory: WorkflowMemory = {
     ...induced.memory,

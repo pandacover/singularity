@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Path } from "effect"
+import { Effect, Exit, Layer, Path } from "effect"
 import { execFileSync, spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -362,6 +362,65 @@ describe("learning repo by repo", () => {
     expect(out.hookEventName).toBe("BeforeAgent")
     expect(out.additionalContext).toContain("run once: `npm test`")
   }, 60_000)
+
+  it("revises memory from what changes, and keeps a round that fails with what it spent, not to try it again", async () => {
+    const root = tempDir()
+    const claudeHome = join(root, "claude")
+    const homeDir = join(root, "home")
+    const config = { cli: claudeCli(FAKE_CLAUDE), cwd: join(root, "_learner"), model: "sonnet", effort: "high", every: 3, now: true }
+    const home = await run(loadHome(homeDir))
+    const answers = join(root, "answers.json")
+    const revision = {
+      workflows: [{ ...workflowAnswer.workflows[0], name: "Change the app's list of colors" }],
+      removed_workflows: [],
+      edges: [],
+      pitfalls: [],
+      removed_pitfalls: [],
+      entries: [],
+      rationale: "a clearer name"
+    }
+    // A first build (its workflows, then their cues twice), a learning round (what changes, the cues twice), then no answer at all.
+    writeFileSync(answers, JSON.stringify([workflowAnswer, cuesAnswer, cuesAnswer, revision, cuesAnswer, cuesAnswer, { not: "an answer" }]))
+    const repo = makeRepo(root, "alpha", [5, 3605])
+    const change = (i: number, s: number) => {
+      writeFileSync(join(repo, "app.ts"), `export const name = "alpha"\nexport const colors = ["red", "c${i}"]\n`)
+      gitAt(repo, at(s + 5), "commit", "-qam", `change ${i}`)
+      writeTranscript(claudeHome, repo, `alphaxx${i + 1}-0000-0000-0000-00000000000${i + 1}`, s, `Add color ${i} to the colors`, "pass")
+    }
+    writeTranscript(claudeHome, repo, "alphaxx1-0000-0000-0000-000000000001", 0, "Add blue to the colors", "pass")
+    writeTranscript(claudeHome, repo, "alphaxx2-0000-0000-0000-000000000002", 3600, "Add green to the colors", "pass")
+    const learn = () =>
+      withEnv({ FAKE_CLAUDE_ANSWERS: answers, SINGULARITY_HOME: homeDir }, () =>
+        run(Effect.gen(function*() {
+          yield* storePast(repo, { claude: claudeHome }, home.tenantDir)
+          const subject = (yield* (yield* RecordStore).subjectFor((yield* identifyRepo(repo))!))!
+          const exit = yield* learnSubject(subject, config).pipe(Effect.exit)
+          const state = yield* learnState(subject.id)
+          return { exit, state, candidates: yield* (yield* WorkflowStore).candidates() }
+        }).pipe(Effect.provide(storesFor(homeDir)))))
+
+    const built = await learn()
+    expect(Exit.isSuccess(built.exit) && built.exit.value).toMatchObject({ kind: "learned", round: "build" })
+
+    change(2, 7200)
+    const revised = await learn()
+    expect(Exit.isSuccess(revised.exit) && revised.exit.value).toMatchObject({ kind: "learned", workflows: ["Change the app's list of colors"] })
+    // The round read memory compactly and was asked for what changes; one call, the checks flagging nothing.
+    const asked = JSON.parse(readFileSync(`${answers}.call3.json`, "utf-8")).prompt as string
+    expect(asked).toContain("Answer with what changes, and only that")
+    expect(asked).toContain("### change-colors\nName: Change the app's colors")
+    expect(asked).not.toContain("```json")
+    expect(JSON.parse(readFileSync(`${answers}.call4.json`, "utf-8")).system).toContain("You add cues")
+
+    change(3, 10800)
+    const failed = await learn()
+    expect(Exit.isFailure(failed.exit)).toBe(true)
+    const last = failed.candidates.at(-1)!
+    expect([last.status, last.reason.startsWith("failed: "), last.cost_usd, last.records.length]).toEqual(["rejected", true, 0.01, 1])
+    // Counted toward the day's limit, and not tried again until a new change arrives.
+    expect(waitReason(failed.state, 3, true)).toBe("0 of 1 new changes stored")
+    expect(failed.state.memory.workflows.map((w) => w.name)).toEqual(["Change the app's list of colors"])
+  }, 120_000)
 
   it("learns the same through Codex, with Codex's model, its cost counted from the tokens", async () => {
     const root = tempDir()

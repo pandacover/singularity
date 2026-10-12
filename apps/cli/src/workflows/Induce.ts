@@ -9,8 +9,13 @@
  * Then every claim is checked against the evidence, mechanically: a step's
  * place must be one runs edited; no text may carry a task's own values; a
  * trigger must single out its mistake (match the call that failed, not the
- * one that fixed it); edges must lead from `start` to `end`. Problems go back
- * to the model once; whatever still fails is dropped and reported.
+ * one that fixed it); edges must lead from `start` to `end`. What only the
+ * model can fix (a task's own value written in, a pitfall from no detour of
+ * the runs) goes back to it once, alone; the checks fix the rest themselves,
+ * and whatever still fails is dropped and reported.
+ *
+ * Revising memory, the model reads it in a compact form (`memoryText`) and
+ * answers with what changes only (`RevisionAnswer`, `applyRevision`).
  */
 import { Effect, Schema } from "effect"
 import type { ModelCli } from "../eval/Llm.ts"
@@ -20,7 +25,7 @@ import { relativizer } from "../records/Extract.ts"
 import { describeTrigger, eventOfCall, Trigger, triggerProblem } from "../records/Triggers.ts"
 import type { ToolCall } from "../traces/index.ts"
 import { type Evidence, type RunEvidence, shapeOf } from "./Evidence.ts"
-import { Blank, Edge, END, FORMAT, isReadPlace, type Pitfall, type Place, START, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
+import { Blank, Edge, END, FORMAT, graphOrder, isReadPlace, type Pitfall, type Place, START, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
 import { describeChain } from "./Places.ts"
 
 export const ProposedStep = Schema.Struct({
@@ -63,6 +68,36 @@ export const InductionAnswer = Schema.Struct({
 })
 export type InductionAnswer = typeof InductionAnswer.Type
 
+/**
+ * A revision's answer: what changes in current memory, the rest staying as
+ * it is (`applyRevision`). Rewriting all of memory twice was a quarter of a
+ * learning round's bill, and grows with memory.
+ */
+export const RevisionAnswer = Schema.Struct({
+  /** Workflows added or changed, each in full. */
+  workflows: Schema.Array(ProposedWorkflow),
+  /** Ids of current workflows to take out. */
+  removed_workflows: Schema.Array(Schema.String),
+  /** The edges from and to each workflow added or changed (they replace its old ones), and edges added or changed between others. */
+  edges: Schema.Array(Edge),
+  /** Pitfalls added or changed, each in full. */
+  pitfalls: Schema.Array(ProposedPitfall),
+  /** Ids of current pitfalls to take out. */
+  removed_pitfalls: Schema.Array(Schema.String),
+  /** All of them, as they should be. */
+  entries: Schema.Array(Schema.String),
+  rationale: Schema.String
+})
+export type RevisionAnswer = typeof RevisionAnswer.Type
+
+/** The parts of an answer that were flagged, fixed (`fixPrompt`). */
+export const FixAnswer = Schema.Struct({
+  workflows: Schema.Array(ProposedWorkflow),
+  pitfalls: Schema.Array(ProposedPitfall),
+  edges: Schema.Array(Edge)
+})
+export type FixAnswer = typeof FixAnswer.Type
+
 export const INDUCE_PROMPT = `You build procedural memory for a coding agent from its past runs in one repository.
 
 From the runs you are given, extract reusable workflows: small sub-routines that different tasks in this repository share. Connect them in a graph, and keep the mistakes worth a warning. Later, when a new task starts, memory picks the workflows it needs and hands them to the agent, with the places they name found in the code as it is then.
@@ -88,7 +123,7 @@ From the runs you are given, extract reusable workflows: small sub-routines that
 
 ## Pitfalls
 
-From the detours (a call that failed, and what it cost until fixed), keep the mistakes another task could make again, in general words: what goes wrong and what to do instead. When revising current memory, keep its pitfalls too: list each by its id, with \`detours\` empty unless these runs made the mistake again. Runs that no longer hit a pitfall show it works, not that it is wrong. Leave out failures that were simply the task's work in progress (a test failing until the feature was done). Refer to the detours a pitfall comes from as "<run id>#<detour number>", and list its id in the workflows it belongs to.
+From the detours (a call that failed, and what it cost until fixed), keep the mistakes another task could make again, in general words: what goes wrong and what to do instead. When revising current memory, its pitfalls stay unless you take one out: runs that no longer hit a pitfall show it works, not that it is wrong. Leave out failures that were simply the task's work in progress (a test failing until the feature was done). Refer to the detours a pitfall comes from as "<run id>#<detour number>", and list its id in the workflows it belongs to.
 
 A pitfall may have an exact \`trigger\` that tells it is happening, checked on every tool call: plain substrings, never regular expressions, and never a task's own values.
 - \`on: "command"\`: a shell command containing every string in \`all\` and none in \`none\` (\`file\` null).
@@ -148,27 +183,45 @@ export const describeDetour = (r: RunEvidence, i: number): string => {
     `Fixed by ${call(d.fixed)}${between}.`
 }
 
-/** What the model reads: the places, then each task with its runs; on a second try, its answer and what was wrong with it. */
-export const inductionPrompt = (
-  evidence: Evidence,
-  current: WorkflowMemory | undefined,
-  notes: ReadonlyArray<string> = [],
-  previous?: InductionAnswer,
-  extra: ReadonlyArray<string> = []
-): string => {
+/**
+ * Current memory as the model reads it to revise it: every field it may write
+ * back, without what memory keeps for itself (cues, the runs a workflow came
+ * from, snapshots) or JSON's quoting, in under half the characters.
+ */
+export const memoryText = (m: WorkflowMemory): string => {
   const lines: Array<string> = []
-  if (current !== undefined && current.workflows.length > 0) {
-    lines.push(
-      "## Current memory",
-      "",
-      "Revise it rather than starting over: keep what the runs still support, change what they show is wrong or missing.",
-      "",
-      "```json",
-      JSON.stringify({ workflows: current.workflows, edges: current.edges, pitfalls: current.pitfalls }, null, 1),
-      "```",
-      ""
-    )
+  for (const w of graphOrder(m)) {
+    lines.push(`### ${w.id}${w.only_if_asked ? " (only_if_asked)" : ""}`, `Name: ${w.name}`, `Use when: ${w.use_when}`)
+    if (w.blanks.length > 0) lines.push(`Blanks: ${w.blanks.map((b) => `{${b.name}} ${b.meaning}`).join("; ")}`)
+    w.steps.forEach((s, i) => lines.push(`${i + 1}. ${s.do}${s.place === null ? "" : ` [place: ${s.place}]`}${s.when === null ? "" : ` [when: ${s.when}]`}`))
+    if (w.checks.length > 0) lines.push(`Checks: ${w.checks.map(code).join("; ")}`)
+    if (w.pitfalls.length > 0) lines.push(`Pitfalls: ${w.pitfalls.join(", ")}`)
+    lines.push("")
   }
+  const edge = (e: Edge) =>
+    `- ${e.from} -> ${e.to} (${e.relation})${e.condition === null ? "" : `, condition: ${e.condition}`}` +
+    `${e.guidance === null ? "" : `, guidance: ${e.guidance}`}${e.pitfalls === null ? "" : `, pitfalls: ${e.pitfalls}`}`
+  lines.push("Edges:", ...m.edges.map(edge), "")
+  if (m.pitfalls.length > 0) {
+    lines.push("Pitfalls:", ...m.pitfalls.map((p) => `- ${p.id}: ${p.text}${p.trigger === null ? "" : ` Trigger: ${JSON.stringify(p.trigger)}`}`))
+  }
+  return lines.join("\n")
+}
+
+const REVISE = [
+  "Revise it: keep what the runs still support, change what they show is wrong or missing. Answer with what changes, and only that:",
+  "- `workflows`: each workflow you add or change, in full. One you leave out stays as it is.",
+  "- `removed_workflows`: the ids of workflows to take out.",
+  "- `edges`: every edge from or to a workflow you add or change (they replace its old edges), and any edge you add or change between others.",
+  "- `pitfalls`: each pitfall you add or change, in full, with `detours` empty unless these runs made its mistake again. One you leave out stays as it is.",
+  "- `removed_pitfalls`: the ids of pitfalls to take out.",
+  "- `entries`: all of them, as they should be."
+].join("\n")
+
+/** What the model reads: current memory (to revise, with how to answer), the places, then each task with its runs. */
+export const inductionPrompt = (evidence: Evidence, current: WorkflowMemory | undefined, extra: ReadonlyArray<string> = []): string => {
+  const lines: Array<string> = []
+  if (current !== undefined && current.workflows.length > 0) lines.push("## Current memory", "", REVISE, "", memoryText(current), "")
   lines.push("## Places where the runs edited", "", "Use these ids in steps. Each is a block found by the blocks around it, a group of top-level statements that start alike, or a directory new files go in.", "")
   const read = evidence.places.filter(isReadPlace)
   for (const p of evidence.places.filter((x) => !isReadPlace(x))) {
@@ -229,10 +282,6 @@ export const inductionPrompt = (
     })
   }
   for (const section of extra) lines.push(section, "")
-  if (previous !== undefined) lines.push("## Your previous answer", "", "```json", JSON.stringify(previous, null, 1), "```", "")
-  if (notes.length > 0) {
-    lines.push("## Problems in your previous answer", "", "Answer again in full, with these fixed and everything else kept:", "", ...notes.map((n) => `- ${n}`), "")
-  }
   return lines.join("\n")
 }
 
@@ -249,12 +298,26 @@ export const namedValue = (text: string, values: ReadonlyArray<string>): string 
     return new RegExp(`(^|[^A-Za-z0-9_$])${escape(v)}(?=$|[^A-Za-z0-9_$])`, "i").test(text)
   })
 
+/**
+ * What of an answer a model call can fix, by the ids it proposed (as
+ * slugs): what named a task's own value, and pitfalls whose detours aren't
+ * these runs'. The rest the checks fix themselves (a place one run edited
+ * goes from its step, a trigger that doesn't single out its mistake goes).
+ */
+export interface Flagged {
+  readonly workflows: ReadonlyArray<string>
+  readonly pitfalls: ReadonlyArray<string>
+  /** Edges by their ends. */
+  readonly edges: ReadonlyArray<readonly [string, string]>
+}
+
 export interface Checked {
   readonly memory: WorkflowMemory
   /** Problems the model should fix, then what was dropped. */
   readonly problems: ReadonlyArray<string>
   /** Places shown as a whole entry: the answer's `entries` that steps use. */
   readonly entries: ReadonlyArray<string>
+  readonly flagged: Flagged
 }
 
 const median = (xs: ReadonlyArray<number>) => {
@@ -304,6 +367,9 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
     if (v !== undefined) problems.push(`${where} names a task's own value ${JSON.stringify(v)}: write a blank instead`)
     return v !== undefined
   }
+  const flaggedWorkflows = new Set<string>()
+  const flaggedPitfalls = new Set<string>()
+  const flaggedEdges: Array<readonly [string, string]> = []
 
   // Pitfalls: real detours, general words, a trigger that singles out the mistake.
   const pitfalls: Array<Pitfall> = []
@@ -325,13 +391,17 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
     if (detours.length === 0) {
       if (before === undefined) {
         problems.push(`pitfall ${id} comes from no detour of these runs; dropped`)
+        flaggedPitfalls.add(id)
         continue
       }
       // Memory's own pitfall, which these runs didn't run into: kept as it was learned, in the answer's words if they hold.
       pitfalls.push({ ...before, text: leak(`pitfall ${id}`, p.text) ? before.text : p.text.trim() })
       continue
     }
-    if (leak(`pitfall ${id}`, p.text)) continue
+    if (leak(`pitfall ${id}`, p.text)) {
+      flaggedPitfalls.add(id)
+      continue
+    }
     let trigger = p.trigger
     if (trigger !== null) {
       const own = triggerValue(trigger, values.map((value) => ({ value })))
@@ -365,11 +435,17 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
     }
     const where = `workflow ${id}`
     const texts = [w.name, w.use_when, ...w.blanks.map((b) => b.meaning)]
-    if (texts.some((t) => leak(where, t))) continue
+    if (texts.some((t) => leak(where, t))) {
+      flaggedWorkflows.add(id)
+      continue
+    }
     // A check that names a task's own value (the task's own test) is that task's: it goes, its workflow stays.
     const checks = w.checks.map((c) => c.trim()).filter((c) => c !== "" && !leak(`check ${JSON.stringify(c)} of ${id}`, c))
     const steps = w.steps.flatMap((s, i) => {
-      if (leak(`step ${i + 1} of ${id}`, s.do) || leak(`step ${i + 1} of ${id}`, s.when)) return []
+      if (leak(`step ${i + 1} of ${id}`, s.do) || leak(`step ${i + 1} of ${id}`, s.when)) {
+        flaggedWorkflows.add(id)
+        return []
+      }
       if (s.place === null) return [s]
       const p = places.get(s.place)
       if (p === undefined) {
@@ -421,7 +497,10 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       problems.push(`edge ${e.from} -> ${e.to} joins unknown workflows; dropped`)
       continue
     }
-    if (leak(`edge ${from} -> ${to}`, e.condition) || leak(`edge ${from} -> ${to}`, e.guidance) || leak(`edge ${from} -> ${to}`, e.pitfalls)) continue
+    if (leak(`edge ${from} -> ${to}`, e.condition) || leak(`edge ${from} -> ${to}`, e.guidance) || leak(`edge ${from} -> ${to}`, e.pitfalls)) {
+      flaggedEdges.push([from, to])
+      continue
+    }
     if (edges.some((x) => x.from === from && x.to === to)) continue
     edges.push({ ...e, from, to })
   }
@@ -450,7 +529,8 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       pitfalls
     },
     problems,
-    entries
+    entries,
+    flagged: { workflows: [...flaggedWorkflows], pitfalls: [...flaggedPitfalls], edges: flaggedEdges }
   }
 }
 
@@ -459,6 +539,104 @@ const mismatch = (trigger: Trigger, run: RunEvidence, failedAt: number, fixedAt:
   if (run.calls.length === 0) return undefined
   const relative = relativizer(run.cwd)
   return triggerMismatch(trigger, run.calls, failedAt, fixedAt, (c: ToolCall | undefined) => (c === undefined ? undefined : eventOfCall(c, relative)))
+}
+
+const endOf = (x: string) => (x === START || x === END ? x : slug(x))
+const edgeKey = (from: string, to: string) => `${endOf(from)} -> ${endOf(to)}`
+
+/** A workflow of memory as an answer proposes one. */
+const proposedOf = (w: Workflow): ProposedWorkflow => ({
+  id: w.id,
+  name: w.name,
+  use_when: w.use_when,
+  blanks: w.blanks,
+  steps: w.steps,
+  checks: w.checks,
+  pitfalls: w.pitfalls,
+  from_runs: [],
+  only_if_asked: w.only_if_asked
+})
+
+/**
+ * A revision's answer applied to current memory: the whole answer it stands
+ * for, which the checks read as they read a first build's. Workflows keep
+ * their order, new ones last; the edges from and to a workflow the answer
+ * adds, changes or takes out are the answer's.
+ */
+export const applyRevision = (current: WorkflowMemory, r: RevisionAnswer): InductionAnswer => {
+  const given = new Map(r.workflows.map((w) => [slug(w.id), w]))
+  const removed = new Set(r.removed_workflows.map(slug))
+  const known = new Set(current.workflows.map((w) => w.id))
+  const workflows = [
+    ...current.workflows.flatMap((w) => (removed.has(w.id) ? [] : [given.get(w.id) ?? proposedOf(w)])),
+    ...r.workflows.filter((w) => !known.has(slug(w.id)))
+  ]
+  const touched = new Set([...given.keys(), ...removed])
+  const answered = new Set(r.edges.map((e) => edgeKey(e.from, e.to)))
+  const edges = [
+    ...current.edges.filter((e) => !touched.has(e.from) && !touched.has(e.to) && !answered.has(edgeKey(e.from, e.to))),
+    ...r.edges
+  ]
+  const changed = new Set(r.pitfalls.map((p) => slug(p.id)))
+  const gone = new Set(r.removed_pitfalls.map(slug))
+  const pitfalls = [
+    ...current.pitfalls.filter((p) => !changed.has(p.id) && !gone.has(p.id)).map((p) => ({ id: p.id, text: p.text, detours: [], trigger: p.trigger })),
+    ...r.pitfalls
+  ]
+  return { workflows, edges, pitfalls, entries: r.entries, rationale: r.rationale }
+}
+
+const isFlagged = (f: Flagged) => f.workflows.length + f.pitfalls.length + f.edges.length > 0
+
+/**
+ * What a second call reads: only the parts of an answer the checks flagged,
+ * what is wrong with each, the values memory may not hold, and for a pitfall
+ * that named no detour of the runs, their detours.
+ */
+export const fixPrompt = (answer: InductionAnswer, checked: Checked, evidence: Evidence): string => {
+  const f = checked.flagged
+  const edges = new Set(f.edges.map(([from, to]) => edgeKey(from, to)))
+  const parts: FixAnswer = {
+    workflows: answer.workflows.filter((w) => f.workflows.includes(slug(w.id))),
+    pitfalls: answer.pitfalls.filter((p) => f.pitfalls.includes(slug(p.id))),
+    edges: answer.edges.filter((e) => edges.has(edgeKey(e.from, e.to)))
+  }
+  const names = [...f.workflows, ...f.pitfalls, ...[...edges]]
+  const problems = checked.problems.filter((p) => names.some((n) => p.includes(n)))
+  const values = [...new Set(evidence.runs.flatMap((r) => r.values))]
+  const lines = [
+    "## Parts of your answer to fix",
+    "",
+    "The checks found these problems in some parts of your answer. Answer with those parts only, fixed, under the same ids, with everything else in them kept:",
+    "",
+    ...problems.map((p) => `- ${p}`),
+    "",
+    `The tasks' own values, never to be written in memory (write a blank in braces instead, listed in its workflow's blanks, or say it in general words): ${values.map(code).join(", ") || "(none)"}`,
+    "",
+    "```json",
+    JSON.stringify(parts, null, 1),
+    "```",
+    ""
+  ]
+  if (problems.some((p) => p.includes("comes from no detour of these runs"))) {
+    lines.push("## The runs' detours", "", "A pitfall names its detours as \"<run id>#<detour number>\".", "")
+    for (const r of evidence.runs.filter((x) => x.detours.length > 0)) lines.push(`### Run ${r.record}`, ...r.detours.map((_, i) => describeDetour(r, i)), "")
+  }
+  return lines.join("\n")
+}
+
+/** An answer with its flagged parts replaced by those a second call fixed; anything else it gave is left out. */
+export const applyFix = (answer: InductionAnswer, fix: FixAnswer, flagged: Flagged): InductionAnswer => {
+  const workflows = new Map(fix.workflows.filter((w) => flagged.workflows.includes(slug(w.id))).map((w) => [slug(w.id), w]))
+  const pitfalls = new Map(fix.pitfalls.filter((p) => flagged.pitfalls.includes(slug(p.id))).map((p) => [slug(p.id), p]))
+  const flaggedEdges = new Set(flagged.edges.map(([from, to]) => edgeKey(from, to)))
+  const edges = new Map(fix.edges.filter((e) => flaggedEdges.has(edgeKey(e.from, e.to))).map((e) => [edgeKey(e.from, e.to), e]))
+  return {
+    ...answer,
+    workflows: answer.workflows.map((w) => workflows.get(slug(w.id)) ?? w),
+    pitfalls: answer.pitfalls.map((p) => pitfalls.get(slug(p.id)) ?? p),
+    edges: answer.edges.map((e) => edges.get(edgeKey(e.from, e.to)) ?? e)
+  }
 }
 
 export interface InduceConfig {
@@ -478,11 +656,17 @@ export interface Induced extends Checked {
   readonly rationale: string
   readonly costUsd: number
   readonly calls: number
+  /** What a revision took out of current memory, by its own answer (the checks drop more). */
+  readonly removed: { readonly workflows: ReadonlyArray<string>; readonly pitfalls: ReadonlyArray<string> }
 }
 
 /**
  * Induce memory from evidence (revising `current`, when there is one): one
- * model call, and one more to fix what the checks found.
+ * model call, which for a revision answers with what changes only. Then, if
+ * the checks flagged parts a model can fix, one more call that reads just
+ * those parts and answers with them fixed; the checks fix the rest
+ * themselves. A second call that read everything again and rewrote all of
+ * memory was 45% of a learning round's bill.
  */
 export const induce = Effect.fn("induce")(function*(
   config: InduceConfig,
@@ -492,33 +676,30 @@ export const induce = Effect.fn("induce")(function*(
   /** More sections for the model to read: how memory did on the runs, revisions rejected before. */
   extra: ReadonlyArray<string> = []
 ) {
-  let notes: ReadonlyArray<string> = []
-  let previous: InductionAnswer | undefined
+  const ask = <A>(prompt: string, schema: Schema.Decoder<A>, maxBudgetUsd: number) =>
+    callModel({ cli: config.cli, system: INDUCE_PROMPT, prompt, schema, model: config.model, effort: config.effort, cwd: config.cwd, maxBudgetUsd, timeoutS: 1200 })
+  const prompt = inductionPrompt(evidence, current, extra)
+  let answer: InductionAnswer
   let costUsd = 0
-  let calls = 0
-  let result: Checked | undefined
-  let rationale = ""
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const answer = yield* callModel({
-      cli: config.cli,
-      system: INDUCE_PROMPT,
-      prompt: inductionPrompt(evidence, current, notes, previous, extra),
-      schema: InductionAnswer,
-      model: config.model,
-      effort: config.effort,
-      cwd: config.cwd,
-      maxBudgetUsd: 3,
-      timeoutS: 1200
-    })
-    calls++
-    costUsd += answer.costUsd ?? 0
-    rationale = answer.value.rationale
-    result = checkAnswer(answer.value, evidence, tenant, current)
-    // Only problems the model can fix are worth a second call: values, places, triggers.
-    const fixable = result.problems.filter((p) => !p.includes("is in no workflow"))
-    if (fixable.length === 0) break
-    notes = fixable
-    previous = answer.value
+  let removed: Induced["removed"] = { workflows: [], pitfalls: [] }
+  if (current !== undefined && current.workflows.length > 0) {
+    const revision = yield* ask(prompt, RevisionAnswer, 3)
+    costUsd += revision.costUsd ?? 0
+    answer = applyRevision(current, revision.value)
+    removed = { workflows: revision.value.removed_workflows.map(slug), pitfalls: revision.value.removed_pitfalls.map(slug) }
+  } else {
+    const built = yield* ask(prompt, InductionAnswer, 3)
+    costUsd += built.costUsd ?? 0
+    answer = built.value
   }
-  return { ...result!, rationale, costUsd, calls } satisfies Induced
+  let calls = 1
+  let result = checkAnswer(answer, evidence, tenant, current)
+  if (isFlagged(result.flagged)) {
+    const fixed = yield* ask(fixPrompt(answer, result, evidence), FixAnswer, 1)
+    calls++
+    costUsd += fixed.costUsd ?? 0
+    answer = applyFix(answer, fixed.value, result.flagged)
+    result = checkAnswer(answer, evidence, tenant, current)
+  }
+  return { ...result, rationale: answer.rationale, costUsd, calls, removed } satisfies Induced
 })

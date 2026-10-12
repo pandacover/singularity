@@ -223,19 +223,22 @@ export const callCodex = Effect.fn("callCodex")(function*<A>(call: ModelCall<A>)
   const proc = yield* runProcess(program, args, { cwd: call.cwd, timeoutS, env, input: call.prompt })
   if (proc.timedOut) return yield* new LlmError({ message: `codex timed out after ${timeoutS}s` })
   const events = codexEvents(proc.stdout)
+  // What it used is paid for whether or not the answer is any good.
+  const used = codexUsage(events)
+  const model = call.model ?? configuredModel(yield* fs.readFileString(path.join(codexHome({ home: homedir(), env: process.env }), "config.toml")).pipe(Effect.orElseSucceed(() => "")))
+  const costUsd = codexUsd(model, used.input, used.cached, used.output)
+  const cost = { costUsd }
   const answerText = yield* fs.readFileString(answerFile).pipe(Effect.orElseSucceed(() => ""))
   const lastMessage = events.filter((e) => e.type === "item.completed" && e.item?.type === "agent_message").at(-1)?.item?.text
   const text = answerText.trim() !== "" ? answerText : lastMessage ?? ""
   if (proc.exitCode !== 0 || text.trim() === "") {
     const why = failureOf(events) ?? (proc.stderr.trim() || proc.stdout.trim())
-    return yield* new LlmError({ message: `codex failed (exit ${proc.exitCode}): ${why.slice(0, 500)}` })
+    return yield* new LlmError({ message: `codex failed (exit ${proc.exitCode}): ${why.slice(0, 500)}`, ...cost })
   }
   const value = yield* Schema.decodeUnknownEffect(AnswerJson)(text.trim()).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(call.schema)),
-    Effect.mapError((e) => new LlmError({ message: `the answer doesn't match the schema: ${e.message}` }))
+    Effect.mapError((e) => new LlmError({ message: `the answer doesn't match the schema: ${e.message}`, ...cost }))
   )
-  const used = codexUsage(events)
-  const model = call.model ?? configuredModel(yield* fs.readFileString(path.join(codexHome({ home: homedir(), env: process.env }), "config.toml")).pipe(Effect.orElseSucceed(() => "")))
   const usage: Usage = {
     input_tokens: Math.max(0, used.input - used.cached),
     output_tokens: used.output,
@@ -244,7 +247,7 @@ export const callCodex = Effect.fn("callCodex")(function*<A>(call: ModelCall<A>)
   }
   return {
     value,
-    costUsd: codexUsd(model, used.input, used.cached, used.output),
+    costUsd,
     usage,
     durationS: proc.durationS
   } satisfies StructuredResult<A>
