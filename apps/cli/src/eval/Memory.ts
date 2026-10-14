@@ -5,7 +5,7 @@ import { Effect } from "effect"
 import type { LearnerConfig } from "./GraphLearner.ts"
 import { makeGraphMemory } from "./GraphMemory.ts"
 import { makeHooksMemory } from "./HooksMemory.ts"
-import { makeSavedScripts } from "./SavedScripts.ts"
+import { makeSavedScripts, makeScripts } from "./SavedScripts.ts"
 import { makeWorkflowsMemory } from "./WorkflowsMemory.ts"
 import type { MemorySetup } from "./Setups.ts"
 import { combine, MemoryError, NoMemory, SETUPS } from "./Setups.ts"
@@ -41,6 +41,7 @@ export const makeSetup = (
   if (name === NoMemory.name) return Effect.succeed(NoMemory)
   if (memoryDir === undefined) return Effect.fail(new MemoryError({ message: `${name} needs a memory directory (--memory)` }))
   if (name === "saved-scripts") return Effect.succeed(makeSavedScripts(memoryDir, frozen))
+  if (name === "scripts") return Effect.succeed(makeScripts(memoryDir, frozen))
   if (name === "saved-scripts-top2") return Effect.succeed(makeSavedScripts(memoryDir, frozen, 2))
   if (name === "saved-scripts-warnings") {
     if (context.graphId === undefined) return Effect.fail(new MemoryError({ message: `${name} needs a graph id (the suite name)` }))

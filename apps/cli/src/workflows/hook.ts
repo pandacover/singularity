@@ -1,30 +1,27 @@
 /**
- * Claude Code hook entry point for memory v1, separate from the CLI and from
- * v0's hooks (src/hook.ts) so that each starts fast and neither changes the
- * other:
+ * Claude Code hook entry point for memory, separate from the CLI and from
+ * v0's hooks (src/hook.ts) so that each starts fast:
  *
  *     node src/workflows/hook.ts user-prompt-submit   (UserPromptSubmit)
- *     node src/workflows/hook.ts user-prompt-submit-2 (UserPromptSubmit: the hand-over's second part, when it has one)
+ *     node src/workflows/hook.ts user-prompt-submit-2 (kept for installed settings; hands over nothing)
  *     node src/workflows/hook.ts post-tool-use        (PostToolUse and PostToolUseFailure)
  *     node src/workflows/hook.ts session-end          (SessionEnd)
  *
- * `--parts=2` after a task-start event says the hand-over comes in two parts,
- * from two hooks (`SINGULARITY_HANDOVER_PARTS` says the same for eval runs).
- * The same script serves Codex, Gemini CLI and Droid, whose hooks speak
- * Claude Code's format, and Hermes Agent, whose plugin (src/setup/HermesPlugin.ts)
- * speaks it for Hermes. Memory stores a change when it is committed: after a
- * tool call that ran a committing command, a background run stores the
- * commit with the steps that led to it (src/workflows/Commits.ts), and every
- * task start and session end starts one too, for commits made outside the
- * agent. When a stored change makes it time to learn, and the user turned
- * learning on its own on, a learning round starts in the background
- * (src/setup/AutoLearn.ts). Eval runs store nothing: they measure memory as
- * it was.
+ * Memory is saved scripts (src/scripts/): at a session's first prompt, the
+ * stored change most like the task is handed over, read from git, or nothing.
+ * There is no learning step and no warning during the task. The same script
+ * serves Codex, Gemini CLI and Droid, whose hooks speak Claude Code's format,
+ * and Hermes Agent, whose plugin (src/setup/HermesPlugin.ts) speaks it for
+ * Hermes. Memory stores a change when it is committed: after a tool call that
+ * ran a committing command, a background run stores the commit with the steps
+ * that led to it (src/workflows/Commits.ts), and every task start and session
+ * end starts one too, for commits made outside the agent. Eval runs store
+ * nothing: they measure memory as it was.
  *
  * The event's JSON comes on stdin; what the model should see goes to stdout as
  * `hookSpecificOutput.additionalContext`. Each event loads only its own
  * modules: the tool-call hook runs after every call and never touches git or
- * a model.
+ * a model unless the call committed.
  *
  * A hook must never break the session it serves: any error is written to
  * `<home>/hook-errors.log` and the hook exits 0 with no output.
@@ -32,32 +29,11 @@
  * which the harness marks with `--eval-run` (`RUN_HOOK_FLAG` in
  * handover/Install.ts): hooks installed for daily work stay silent in runs.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { mayFire } from "./HookFilter.ts"
 
 const home = () => process.env.SINGULARITY_HOME || join(homedir(), ".singularity")
-
-/**
- * Which reader handed the session memory at its start (src/layer/Api.ts),
- * found with nothing but the file system: code, with the text of v1's
- * session file, or web.
- */
-const sessionOf = (stdin: string): { readonly kind: "code"; readonly text: string } | { readonly kind: "web" } | undefined => {
-  try {
-    const sessionId = (JSON.parse(stdin) as { session_id?: unknown }).session_id
-    const config = JSON.parse(readFileSync(join(home(), "config.json"), "utf-8")) as { tenant?: unknown }
-    if (typeof sessionId !== "string" || typeof config.tenant !== "string") return undefined
-    const file = `${sessionId.replace(/[^A-Za-z0-9_.-]/g, "_")}.json`
-    const code = join(home(), "tenants", config.tenant, "workflows", "sessions", file)
-    if (existsSync(code)) return { kind: "code", text: readFileSync(code, "utf-8") }
-    if (existsSync(join(home(), "tenants", config.tenant, "web", "sessions", file))) return { kind: "web" }
-    return undefined
-  } catch {
-    return undefined
-  }
-}
 
 const readStdin = async (): Promise<string> => {
   const chunks: Array<Buffer> = []
@@ -76,37 +52,25 @@ const logError = (event: string, error: unknown) => {
 }
 
 const event = process.argv[2] ?? ""
-const parts = process.argv.find((a) => a.startsWith("--parts="))?.slice("--parts=".length) ?? process.env.SINGULARITY_HANDOVER_PARTS
 const evalRun = process.argv.includes("--eval-run")
 if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
   try {
     const stdin = await readStdin()
     let out: string | undefined
-    // Every event goes to the memory layer's calls (src/layer/Api.ts): start, step, end.
     if (event === "post-tool-use") {
-      const session = sessionOf(stdin)
-      // Most calls end here too: no trigger of the session's pitfalls can match (HookFilter.ts), no module loaded.
-      if (session?.kind === "code") {
-        if (mayFire(stdin, session.text)) out = await (await import("./HookTool.ts")).postToolUse(stdin)
-      } else if (session?.kind === "web") {
-        out = await (await import("../web/HookStep.ts")).webPostToolUse(stdin)
-      }
+      // Saved scripts give no warnings during a task: the hook only starts storing after a commit.
       // Most calls end here: no word a committing command has (StoreTrigger's MAY_COMMIT), no module loaded.
       if (!evalRun && /commit|merge|cherry-pick|revert|\bam\b|pull|rebase/i.test(stdin)) {
         const trigger = await import("./StoreTrigger.ts")
         if (trigger.ranCommit(stdin)) trigger.startStoring(stdin)
       }
     } else if (event === "user-prompt-submit") {
-      out = await (await import("../layer/Api.ts")).startFromHook(stdin, 1, parts)
+      out = await (await import("../scripts/Hook.ts")).userPromptSubmit(stdin)
       if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
     } else if (event === "user-prompt-submit-2") {
-      out = await (await import("./HookStart.ts")).userPromptSubmit(stdin, 2, parts)
+      // Saved scripts hand over in one part.
     } else if (event === "session-end") {
-      if (sessionOf(stdin)?.kind === "web") {
-        await (await import("../web/HookStep.ts")).webSessionEnd(stdin)
-      } else if (!evalRun) {
-        (await import("./StoreTrigger.ts")).startStoring(stdin)
-      }
+      if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
     } else {
       logError(event, new Error(`unknown hook event ${JSON.stringify(event)}`))
     }

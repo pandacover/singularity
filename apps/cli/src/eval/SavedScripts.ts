@@ -21,6 +21,9 @@ import { reportsFailure, SHELL_TOOLS } from "../traces/index.ts"
 import type { Injection, MemorySetup, Outcome, SetupServices } from "./Setups.ts"
 import { MemoryError } from "./Setups.ts"
 import { isoNow } from "./Time.ts"
+import { extractMechanical } from "../records/Extract.ts"
+import { commandsToShow, countLines, diffChunks, mistakesToShow, renderScript } from "../scripts/Render.ts"
+import { MIN_SCORE as SCRIPTS_MIN_SCORE, rank as rankScripts } from "../scripts/Search.ts"
 
 /** Below this prompt similarity, nothing is injected. */
 export const MIN_SIMILARITY = 0.35
@@ -40,7 +43,9 @@ export const Entry = Schema.Struct({
   source_diff: Schema.String,
   commands: Schema.Array(Schema.String),
   tool_calls: Schema.NullOr(Schema.Number),
-  created_at: Schema.String
+  created_at: Schema.String,
+  /** Failed commands with what worked instead (src/scripts/Render.ts); entries saved before it lack it. */
+  mistakes: Schema.optionalKey(Schema.Array(Schema.String))
 })
 export type Entry = typeof Entry.Type
 
@@ -49,6 +54,49 @@ const EntryJson = Schema.fromJsonString(Entry)
 export interface SavedScripts extends MemorySetup {
   /** The saved runs, in file-name order. */
   readonly entries: Effect.Effect<Array<Entry>, MemoryError, SetupServices>
+}
+
+/**
+ * The `scripts` setup: the same saved runs, picked by the new search
+ * (src/scripts/Search.ts: none below its score) and shown as the daily hook
+ * shows a stored commit (src/scripts/Render.ts, within one hook's room), with
+ * the mistakes the run made. In the system prompt, as the other saved-scripts
+ * setups.
+ */
+export const makeScripts = (memoryDir: string, frozen = false): SavedScripts => {
+  const base = makeSavedScripts(memoryDir, frozen)
+  const beforeRun = Effect.fn("Scripts.beforeRun")(function*(task: { readonly prompt: string }) {
+    const all = yield* base.entries
+    const ranked = rankScripts(task.prompt, all)
+    const top = ranked[0]
+    const info = { entries: all.length, frozen, similarity: round3(top?.score ?? 0) }
+    if (top === undefined || top.score < SCRIPTS_MIN_SCORE) {
+      return { systemPrompt: undefined, info: { ...info, retrieved: null } } satisfies Injection
+    }
+    return {
+      systemPrompt: renderEntry(top.doc, top.score),
+      info: { ...info, retrieved: { id: top.doc.id, task_id: top.doc.task_id }, chars: renderEntry(top.doc, top.score).length }
+    } satisfies Injection
+  })
+  return { ...base, name: "scripts", beforeRun }
+}
+
+/** A saved run as the daily hook shows a stored commit. */
+export const renderEntry = (entry: Entry, score: number): string => {
+  const chunks = diffChunks(entry.source_diff)
+  const counts = new Map(chunks.map((c) => [c.path, countLines(c.text)] as const))
+  return renderScript({
+    prompt: entry.prompt,
+    commit: null,
+    score,
+    files: [
+      ...entry.files_changed.map((path) => ({ path, status: "modified" as const, ...(counts.get(path) ?? { added: 0, removed: 0 }), snapshot: false, now: path })),
+      ...entry.snapshots_changed.map((path) => ({ path, status: "modified" as const, added: 0, removed: 0, snapshot: true, now: path }))
+    ],
+    commands: commandsToShow(entry.commands.map((command) => ({ command, ok: true }))),
+    mistakes: entry.mistakes ?? [],
+    diff: chunks
+  })
 }
 
 /** `topK` > 1 is the variant that hands over up to that many saved runs. */
@@ -121,7 +169,8 @@ export const makeEntry = (outcome: Outcome): Entry => {
     source_diff: source,
     commands: commands.slice(-MAX_COMMANDS),
     tool_calls: outcome.trace === undefined ? null : outcome.trace.toolCalls.length,
-    created_at: isoNow()
+    created_at: isoNow(),
+    mistakes: outcome.trace === undefined ? [] : mistakesToShow(extractMechanical(outcome.trace, outcome.diff, { succeeded: true }).detours)
   }
 }
 

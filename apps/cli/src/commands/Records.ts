@@ -17,7 +17,6 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { ReportError } from "../eval/Report.ts"
 import { homedir } from "node:os"
 import { sessionHomes } from "../setup/Agents.ts"
-import { afterRecord } from "../setup/AutoLearn.ts"
 import { releaseLock, takeLock } from "../setup/Background.ts"
 import { findTranscript, parseSession } from "../traces/index.ts"
 import { storeCommits } from "../workflows/Commits.ts"
@@ -215,11 +214,6 @@ const commits = Command.make(
     const skipped = [...result.skipped].map(([reason, n]) => `${n} ${reason}`).join("; ")
     if (result.examined > 0 || !args.background) {
       yield* say(`${name}: ${result.examined} new commits looked at, ${result.stored.length} stored${skipped === "" ? "" : ` (left out: ${skipped})`}`)
-    }
-    if (args.background && result.subject !== undefined && result.stored.length > 0) {
-      const learning = yield* Effect.promise(() => afterRecord(result.subject!))
-      if (learning === "started") yield* say(`${name}: started a learning round`)
-      if (learning === "queued") yield* say(`${name}: a learning round is queued after the one running`)
     }
   })
 ).pipe(Command.withDescription("store the changes sessions committed, one record per commit (the hooks run this on their own)"))
