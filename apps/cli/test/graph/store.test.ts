@@ -614,7 +614,8 @@ describe("JsonGraphStore and the Python version", () => {
 
       // Reads and failed calls leave the files as they were.
       yield* assertSameFiles(root, path.join(fixtures, "python-store"))
-    }).pipe(Effect.provide(NodeServices.layer)))
+      // Every file of a store read and compared: seconds with the whole suite running.
+    }).pipe(Effect.provide(NodeServices.layer)), 30_000)
 
   it.effect("writes the same files as the Python version", () =>
     Effect.gen(function*() {

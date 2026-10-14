@@ -4,7 +4,12 @@
  */
 import { describeTrigger } from "../records/Triggers.ts"
 import { describePlace } from "./Induce.ts"
-import { graphOrder, type WorkflowMemory } from "./Models.ts"
+import { graphOrder, type Pitfall, triggersOf, type WorkflowMemory } from "./Models.ts"
+
+const fires = (p: Pitfall): string => {
+  const ts = triggersOf(p)
+  return ts.length === 0 ? "" : ` (fires on ${ts.map(describeTrigger).join(", or ")})`
+}
 
 export const describeMemory = (m: WorkflowMemory, version: number | string): string => {
   const places = new Map(m.places.map((p) => [p.id, p]))
@@ -24,14 +29,14 @@ export const describeMemory = (m: WorkflowMemory, version: number | string): str
     if (w.checks.length > 0) lines.push(`   checks: ${w.checks.join("; ")}`)
     for (const id of w.pitfalls) {
       const p = pitfalls.get(id)
-      if (p !== undefined) lines.push(`   pitfall ${p.id}: ${p.text}${p.trigger === null ? "" : ` (fires on ${describeTrigger(p.trigger)})`}`)
+      if (p !== undefined) lines.push(`   pitfall ${p.id}: ${p.text}${fires(p)}`)
     }
     lines.push(`   from ${w.evidence.length} runs of ${w.tasks.join(", ") || "no task"}`, "")
   }
   const loose = m.pitfalls.filter((p) => !m.workflows.some((w) => w.pitfalls.includes(p.id)))
   if (loose.length > 0) {
     lines.push("Pitfalls in no workflow:")
-    for (const p of loose) lines.push(`- ${p.id}: ${p.text}${p.trigger === null ? "" : ` (fires on ${describeTrigger(p.trigger)})`}`)
+    for (const p of loose) lines.push(`- ${p.id}: ${p.text}${fires(p)}`)
     lines.push("")
   }
   lines.push("Edges:")

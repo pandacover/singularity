@@ -140,5 +140,35 @@ for (const backend of backends) {
         assert.strictEqual(other?.id, "excalidraw-2")
         assert.strictEqual((yield* store.subjects()).length, 2)
       }).pipe(Effect.provide(backend.layer)))
+
+    it.effect("reads a task as the person wrote it, whatever an older record holds", () =>
+      Effect.gen(function*() {
+        const store = yield* RecordStore
+        const notice = "<task-notification>\n<status>completed</status>\n</task-notification>"
+        const r = { ...sampleRecord(), task: { prompt: notice, followups: ["commit, push and merge to main", "[Request interrupted by user]"] } }
+        yield* store.put(r)
+        assert.deepStrictEqual((yield* store.get(r.id)).task, { prompt: "commit, push and merge to main", followups: [] })
+        assert.deepStrictEqual((yield* store.find())[0].task.prompt, "commit, push and merge to main")
+        const item = { id: "w1", kind: "warning", moment: "trigger" as const, outcome: "followed" as const, note: null }
+        assert.strictEqual((yield* store.addFeedback(r.id, { setup: "hooks", version: 1, items: [item] })).task.prompt, "commit, push and merge to main")
+      }).pipe(Effect.provide(backend.layer)))
   })
 }
+
+describe("JsonRecordStore", () => {
+  it.effect("never rewrites what a stored record's task holds", () =>
+    Effect.gen(function*() {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "record-store-" })
+      const notice = "<task-notification>\n<status>completed</status>\n</task-notification>"
+      const r = { ...sampleRecord(), task: { prompt: notice, followups: ["commit it"] } }
+      yield* Effect.gen(function*() {
+        const store = yield* RecordStore
+        yield* store.put(r)
+        yield* store.addFeedback(r.id, { setup: "hooks", version: 1, items: [] })
+      }).pipe(Effect.provide(JsonRecordStore.layer(path.join(dir, "t1"), "t1")))
+      const text = yield* fs.readFileString(path.join(dir, "t1", "records", r.subject, `${r.id}.json`))
+      assert.deepStrictEqual(JSON.parse(text).task, { prompt: notice, followups: ["commit it"] })
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)))
+})

@@ -10,7 +10,8 @@
  * - "assistant": one content block of a model response. A response with several
  *   blocks (thinking, text, tool_use) spans several lines sharing `message.id`,
  *   each repeating the response's usage, so usage must be counted once per id.
- * - "user": a prompt, or tool results (`tool_result` blocks).
+ * - "user": a prompt, or tool results (`tool_result` blocks). A prompt's
+ *   `promptSource` says who sent it: "system" for the harness's own notices.
  * - "cost-state": Claude Code's running cost and token totals for the session.
  *
  * Everything else (attachments, queue operations, titles) is ignored. The log
@@ -224,7 +225,8 @@ class Parser {
     }
     if (results.length > 0 || agentId !== undefined || truthy(r.isMeta) || truthy(r.isCompactSummary)) return
     const text = content.filter((b) => b.type === "text").map((b) => str(b.text) ?? "").join("\n")
-    if (text) this.prompts.push({ text, timestamp: ts })
+    // Notices of background tasks and messages from other sessions: Claude Code marks them as the system's.
+    if (text) this.prompts.push({ text, timestamp: ts, ...(r.promptSource === "system" ? { harness: true } : {}) })
   }
 
   finish(): Trace {

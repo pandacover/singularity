@@ -15,7 +15,7 @@ import { type Usage, usageToJson } from "../traces/index.ts"
 import { cueChoice, fillsOfChosen, hasCues, partsChoice, withTriggered } from "./Cues.ts"
 import { type DraftCall, draftChange, type DrafterConfig, renderDraft } from "./Draft.ts"
 import { repoFacts } from "./Finish.ts"
-import { END, START, type WorkflowMemory } from "./Models.ts"
+import { END, START, triggersOf, type WorkflowMemory } from "./Models.ts"
 import { type CodeSource, locatePlaces, pathExists } from "./Locate.ts"
 import { MAX_HANDOVER_CHARS, renderHandover, type Shown } from "./Render.ts"
 import { type Selection, selectWorkflows, type SelectorConfig, wordChoice } from "./Select.ts"
@@ -162,7 +162,7 @@ export const startTask = Effect.fn("startTask")(function*(
     shown: [...handover.shown],
     missing: [...handover.missing],
     pitfalls: [...handover.pitfalls],
-    triggers: memory.pitfalls.filter((p) => p.trigger !== null),
+    triggers: memory.pitfalls.filter((p) => triggersOf(p).length > 0),
     selection: selection.call === null ? null : { model: selection.call.model, cost_usd: selection.call.costUsd, error: selection.call.error }
   }
   const result: StartResult = { text, parts, state, reasons: selection.reasons, shown: handover.shown, draft }

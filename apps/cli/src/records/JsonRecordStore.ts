@@ -11,12 +11,17 @@
  * once the last wins (a hook and a CLI command recording the same session,
  * say, or the two task-start hooks of a hand-over in two parts each noting
  * the repo's new path).
+ *
+ * Records are read with their task as the person wrote it (`withPersonTask`):
+ * those stored before that filter keep the tools' notices in their files,
+ * which stay as they were; an update writes back what the file had.
  */
 import { DateTime, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect"
 import { Conflict, StoreError } from "../graph/Errors.ts"
 import { writeFileWhole } from "../local/Files.ts"
 import type { RepoIdentity } from "../local/Git.ts"
 import { ID } from "../local/Home.ts"
+import { withPersonTask } from "./Build.ts"
 import { RecordExists, RecordNotFound } from "./Errors.ts"
 import { exactKeys } from "./Keys.ts"
 import { type MemoryUse, type ModelPart, WorkflowRecord } from "./Models.ts"
@@ -141,7 +146,7 @@ export const make = Effect.fn("JsonRecordStore.make")(function*(dir: string, ten
   const get = Effect.fn("JsonRecordStore.get")(function*(id: string) {
     const file = yield* locate(id)
     if (file === undefined) return yield* new RecordNotFound({ id })
-    return yield* readRecord(file)
+    return withPersonTask(yield* readRecord(file))
   })
 
   const has = Effect.fn("JsonRecordStore.has")(function*(id: string) {
@@ -156,7 +161,7 @@ export const make = Effect.fn("JsonRecordStore.make")(function*(dir: string, ten
         Effect.mapError(storeError(`can't list ${d}`))
       )
       for (const name of names.filter((n) => n.endsWith(".json")).sort()) {
-        const record = yield* readRecord(path.join(d, name))
+        const record = withPersonTask(yield* readRecord(path.join(d, name)))
         if (matches(record, query)) found.push(record)
       }
     }
@@ -171,7 +176,7 @@ export const make = Effect.fn("JsonRecordStore.make")(function*(dir: string, ten
       if (file === undefined) return yield* new RecordNotFound({ id })
       const updated = yield* change(yield* readRecord(file))
       yield* writeRecord(file, updated)
-      return updated
+      return withPersonTask(updated)
     }).pipe(writes.withPermits(1))
 
   const annotate = Effect.fn("JsonRecordStore.annotate")(

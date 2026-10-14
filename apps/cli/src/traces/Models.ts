@@ -48,6 +48,8 @@ export const usageToJson = (u: Usage) => ({
 export interface Prompt {
   readonly text: string
   readonly timestamp: DateTime.Utc | undefined
+  /** Sent by the harness, as the transcript says (Claude Code's `promptSource: "system"`): no one typed it. */
+  readonly harness?: boolean | undefined
 }
 
 export interface ToolCall {

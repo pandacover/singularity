@@ -127,6 +127,146 @@ describe("extractMechanical", () => {
     assert.deepStrictEqual(m.filesRead, ["nope.ts"])
   })
 
+  it("judges a call by its error status, whatever it printed", () => {
+    const trace = session("Build it", [
+      [bash("npm run build", "built 3 files", true)],
+      [bash("npm run build", "built 3 files")]
+    ])
+    const m = extractMechanical(trace, DIFF)
+    assert.deepStrictEqual(m.commands.map((c) => c.ok), [false, true])
+    assert.deepStrictEqual(m.detours.map((d) => [d.kind, d.failed.call, d.fixed.call]), [["command_error", 0, 1]])
+  })
+
+  it("never judges what a read or a search printed", () => {
+    const trace = session("Look around", [
+      [bash("grep -n failed notes.md", "notes.md:3: with 1 failed, $4.29 + learning $2.63")],
+      [bash("cat run.log", "Traceback (most recent call last):\n  File \"x.py\", line 1\nKeyError: 'a'")],
+      [bash("sed -n 1,40p HANDOFF.md", "src/a.ts(3,9): error TS1002: Unterminated string literal.")],
+      [bash("npm run build", "built")]
+    ])
+    const m = extractMechanical(trace, DIFF, { succeeded: true })
+    assert.deepStrictEqual(m.commands.map((c) => c.ok), [true, true, true, true])
+    assert.deepStrictEqual(m.detours, [])
+  })
+
+  it("takes a script's own words for what it printed, not for its failure", () => {
+    // Record 4fc4bcb's detour #16: a scoring script that printed "with 1 failed".
+    const trace = session("Score the runs", [
+      [bash("node score.mjs --runs C:/runs", "with 1 failed, $4.29 + learning $2.63 = $6.92\nall 12: without 0 failed")],
+      [bash("npx vitest run test/workflows/evidence.test.ts 2>&1 | tail -15", TESTS_PASS)]
+    ])
+    const m = extractMechanical(trace, DIFF, { succeeded: true })
+    assert.deepStrictEqual(m.commands.map((c) => c.ok), [true, true])
+    assert.deepStrictEqual(m.detours, [])
+  })
+
+  it("finds failures a pipe hides from the status: a traceback, a missing command, a test runner's summary", () => {
+    const trace = session("Fix it", [
+      [bash("python scripts/count.py 2>&1 | tail -5", "Traceback (most recent call last):\n  File \"count.py\", line 3\nKeyError: 'items'")],
+      [edit(`${CWD}\\scripts\\count.py`, "data.get('items', [])")],
+      [bash("python scripts/count.py 2>&1 | tail -5", "42")],
+      [bash("npx vitest run 2>&1 | tail -5", " FAIL  tests/app.test.tsx > zen > toggles\n Test Files  1 failed | 138 passed (139)")],
+      [bash("npx vitest run 2>&1 | tail -5", TESTS_PASS)],
+      [bash("yarn lint 2>&1 | tail -3", "bash: yarn: command not found")],
+      [bash("npm run lint 2>&1 | tail -3", "> eslint .")]
+    ])
+    const m = extractMechanical(trace, DIFF)
+    assert.deepStrictEqual(m.detours.map((d) => [d.kind, d.failed.call, d.fixed.call]), [
+      ["command_error", 0, 2],
+      ["test_failure", 3, 4],
+      ["not_found", 5, 6]
+    ])
+    assert.deepStrictEqual(m.detours[0].files_edited, ["scripts/count.py"])
+  })
+
+  it("closes a failure when what failed later works, even through another command", () => {
+    const trace = session("Run the build script", [
+      [bash("python3 tools/build.py", "Python was not found; run without arguments to install from the Microsoft Store", true)],
+      [bash("python tools/build.py", "built")]
+    ])
+    const [d] = extractMechanical(trace, DIFF).detours
+    assert.deepStrictEqual([d.kind, d.failed.call, d.fixed.call], ["not_found", 0, 1])
+    assert.deepStrictEqual([d.removed, d.added], [["python3"], ["python"]])
+  })
+
+  it("doesn't take a read that failed in a line of commands for a mistake, nor close it by another command", () => {
+    // Record 4fc4bcb's detour #0: `tail` of a missing log, once "fixed" by a `git checkout`.
+    const trace = session("Lint the docs", [
+      [bash("git checkout -q -- . && npm run lint > /tmp/lint.log 2>&1; tail -20 /tmp/lint.log", "tail: cannot open '/tmp/lint.log' for reading: No such file or directory", true)],
+      [bash("git checkout -- doc-build/build-rules.mjs", "")]
+    ])
+    assert.deepStrictEqual(extractMechanical(trace, DIFF, { succeeded: true }).detours, [])
+  })
+
+  it("closes a check only when the same check passes", () => {
+    const trace = session("Add a test", [
+      [bash("npx vitest run", testFails("tests/app.test.tsx"), true)],
+      [bash("node -e 'console.log(process.version)'", "v24.15.0")],
+      [bash("npm run build", "built")],
+      [bash("npx vitest run tests/app.test.tsx", TESTS_PASS)]
+    ])
+    assert.deepStrictEqual(extractMechanical(trace, DIFF).detours.map((d) => [d.kind, d.failed.call, d.fixed.call]), [["test_failure", 0, 3]])
+  })
+
+  it("closes a broken scripted edit at the next edit of its file that works, by the editor too", () => {
+    const trace = session("Rename it", [
+      [bash("sed -i 's|a(b|c|' src/x.ts", "sed: -e expression #1, char 10: unknown option to `s'", true)],
+      [bash("sed -i 's/one/two/' src/other.ts", "")],
+      [edit(`${CWD}\\src\\x.ts`, "c")]
+    ])
+    const [d] = extractMechanical(trace, DIFF).detours
+    assert.deepStrictEqual([d.kind, d.failed.call, d.fixed.call, d.fixed.tool], ["command_error", 0, 2, "Edit"])
+  })
+
+  it("tells inline scripts apart: only the same script, fixed, closes its failure", () => {
+    const failing = `node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync("runs.json","utf8")); console.log(data.items.length)'`
+    const fixed = `node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync("runs.json","utf8")); console.log(data.rows.length)'`
+    const trace = session("Count the runs", [
+      [bash(failing, "TypeError: Cannot read properties of undefined (reading 'length')\n\nNode.js v24.15.0")],
+      [bash("node -e 'console.log(process.version)'", "v24.15.0")],
+      [bash(fixed, "12")]
+    ])
+    assert.deepStrictEqual(extractMechanical(trace, DIFF).detours.map((d) => [d.kind, d.failed.call, d.fixed.call]), [["command_error", 0, 2]])
+  })
+
+  it("closes a failure only with a run in the same place", () => {
+    // Record 4ce5a7c's detour #96: a scratch copy's tests, once "fixed" by this repo's own test run 108 turns later.
+    const scratch = session("Try the agent elsewhere", [
+      [bash("cd /c/scratch/excalidraw-copy && npx vitest run 2>&1 | tail -5", " FAIL  tests/app.test.tsx > zen\n Test Files  1 failed | 3 passed (4)")],
+      [bash("npm run build", "built")],
+      [bash("npm test 2>&1 | tail -5", TESTS_PASS)]
+    ])
+    assert.deepStrictEqual(extractMechanical(scratch, DIFF, { succeeded: true }).detours, [])
+    // Run there again, it closes: `mkdir -p x && cd x && …` runs in x.
+    const there = session("Try the agent elsewhere", [
+      [bash("cd /c/scratch/excalidraw-copy && npx vitest run 2>&1 | tail -5", " FAIL  tests/app.test.tsx > zen\n Test Files  1 failed | 3 passed (4)")],
+      [bash("npm test 2>&1 | tail -5", TESTS_PASS)],
+      [bash("mkdir -p /c/scratch && cd /c/scratch && cd excalidraw-copy && npx vitest run", TESTS_PASS)]
+    ])
+    assert.deepStrictEqual(extractMechanical(there, DIFF).detours.map((d) => [d.failed.call, d.fixed.call]), [[0, 2]])
+  })
+
+  // A check stays where it ran (the test above); a script is the same script by its name wherever its file is.
+  it("closes a script's failure where a copy of it works", () => {
+    // Record 0d8fcf2's detour #61: a scratch script outside the repo can't load its packages; copied inside, it runs.
+    const crash = "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@effect/platform-node' imported from C:\\scratch\\try.ts\n\nNode.js v24.15.0"
+    const trace = session("Try the evidence", [
+      [bash("cat > /c/scratch/try.ts <<'EOF'\nimport { NodeServices } from \"@effect/platform-node\"\nEOF\nnode /c/scratch/try.ts", crash)],
+      [bash("mkdir -p scratch && cp /c/scratch/try.ts scratch/try.ts && node scratch/try.ts", "ok")]
+    ])
+    assert.deepStrictEqual(extractMechanical(trace, DIFF).detours.map((d) => [d.kind, d.failed.call, d.fixed.call]), [["command_error", 0, 1]])
+  })
+
+  it("keeps closing what this repo's files did when run from elsewhere", () => {
+    const trace = session("Check the installer", [
+      [bash("cd /tmp/inst && sh /c/work/repo/install.sh --dry-run", "/c/work/repo/install.sh: line 40: syntax error near unexpected token `fi'", true)],
+      [bash("cd /tmp/x && sed -i 's/a(b/c/' /c/work/repo/src/x.ts", "sed: -e expression #1, char 9: Unmatched ( or \\(", true)],
+      [edit(`${CWD}\\src\\x.ts`, "c")],
+      [bash("sh install.sh --dry-run", "would install")]
+    ])
+    assert.deepStrictEqual(extractMechanical(trace, DIFF).detours.map((d) => [d.failed.call, d.fixed.call]), [[0, 3], [1, 2]])
+  })
+
   it("shows paths relative to the repo", () => {
     const trace = session("x", [[bash(`cat ${CWD}\\src\\a.ts`, "ok")]])
     assert.strictEqual(extractMechanical(trace, "").commands[0].command, "cat src\\a.ts")

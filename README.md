@@ -69,9 +69,10 @@ status` says when Codex is still skipping them.
 
 1. **Record.** When a session commits a change and the last check before
    the commit passed (tests, a typecheck, a build or a lint; a docs-only
-   change needs none), memory keeps a record of it: the prompts that led to
-   it, the files changed and where, the commands that ran, and what failed
-   and what fixed it. This needs no model call.
+   change needs none), memory keeps a record of it: what you asked for (not
+   the notices and reminders your tools add), the files changed and where,
+   the commands that ran, and what failed and what fixed it. This needs no
+   model call.
 2. **Learn.** After every 3 new changes in a repo, a model reads the
    records and writes *workflows*: small reusable steps with blanks for the
    values that differ (`{field}`, `{shortcut}`), the places in the code they
@@ -82,8 +83,10 @@ status` says when Codex is still skipping them.
    words call for (plain text matching, no model call, a fraction of a
    millisecond), fills in the values the task states, finds each place in
    the code as it is now, and adds it all to the agent's first prompt.
-4. **Warn.** During the task, when a known mistake is about to happen again,
-   its fix arrives with the error.
+4. **Warn.** During the task, when a call fails with a known mistake's own
+   message, or runs a command known to lead to one, its fix arrives right
+   then. Reading a file or searching never sets one off, and a known mistake
+   that stops happening is let go.
 
 Memory helps the agent do the task; it never writes the change for it.
 Workflows keep places as the blocks around an edit
@@ -125,7 +128,7 @@ you're in.
 ## Commands
 
 ```
-singularity status              # which agents have memory, what it knows per repo, how learning goes
+singularity status              # which agents have memory, what it knows per repo, how often it warned, how learning goes
 singularity recall "<task>"     # what a task here would be handed (no model call)
 singularity status --json       # the same as JSON, for agents and scripts (recall too)
 singularity learn               # learn from new changes now (asks before spending)

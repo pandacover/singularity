@@ -106,7 +106,8 @@ What they make:
   (`Lookups.ts`), and keeps the revision only if, replayed over the runs, it
   shows more of the places they edited and fewer they left alone (a place
   it misses counts twice one it shows for nothing). A revision it doesn't
-  keep still leaves its new pitfalls, each checked against a run's failure.
+  keep still leaves its pitfalls (new, merged, given triggers or taken out),
+  each checked against a run's failure.
   The model reads memory in a compact form and answers with what changes
   only (`RevisionAnswer`); what the checks flag that only it can fix (a
   task's own value written in, a pitfall from no detour of the runs) goes
@@ -130,6 +131,43 @@ What they make:
 - **Drafting the change** (`--draft`) was tested and dropped: a second model
   call at task start wrote the change itself (fewer tokens, more dollars),
   and writing the change is the agent's job, not memory's.
+- **What a record holds.** Its task is what the person wrote
+  (`traces/Prompts.ts`): notices of background tasks (Claude Code's
+  `promptSource: "system"`), reminders, slash commands' output, T3's image
+  notes and quoted assistant text are left out, a quote keeps the person's
+  comment, and pasted text is marked as quoted lines. Stored records are
+  read through the same filter; their files stay as they were. A call failed
+  when its error status says so (`is_error`, a PostToolUseFailure event); a
+  command whose pipe hides its status failed only when its output can't be
+  mistaken: its check's own report of failures, a traceback, a missing
+  command, as the shell's own line (`records/Outcome.ts`). What a read or a
+  search prints is never judged. A detour on a check closes when the same
+  check passes; any other when what failed runs again and works, by
+  whatever command (`python3 x.py`, then `python x.py`; a file a `sed -i`
+  broke, edited by the editor), and only in the same place: a command runs
+  in the session's folder moved by each `cd` in its line, and one place is
+  inside the other (a scratch copy's tests aren't fixed by this repo's). A
+  script an interpreter runs is the same script by its name wherever its
+  file is: one copied to where it works fixes its failure.
+  The learner reads a detour's cost in turns, at most "30+". Learning reads
+  stored records' detours again by these rules.
+- **Warnings.** Every pitfall needs a trigger, checked after each tool call
+  (`records/Triggers.ts`): an `error` trigger fires on a call that failed
+  doing something and printed the mistake's exact message, a `command`
+  trigger on the risky command (for what comes before a commit, `git add`),
+  never on a read or a search, a helper agent's included. A pitfall may have
+  several (`also`), one per way the same mistake shows. A learning round
+  checks each against the detours of the runs the pitfall came from, takes
+  triggers from the messages a pitfall quotes, and sends one with none back
+  to the model once, then drops it (`Induce.ts`). It lets go of pitfalls
+  whose mistake hasn't happened in 100 stored changes (about a month here),
+  or that name a package script no package.json in the repo has, or a file
+  that is neither there nor the end of a tracked file's path; the model
+  reads the repo's own CLAUDE.md and AGENTS.md to leave out what they
+  already say (`Pitfalls.ts`). A rejected revision's pitfalls stay. The
+  hook logs a warning once a session, and a mistake made again after it
+  (`moment: "again"` in `handovers.jsonl`); `singularity status --json`
+  gives each pitfall's tally.
 
 In daily use memory learns repo by repo (`workflows/Learn.ts`): a repo's
 memory is learned alone and merged back, so one repo never replaces

@@ -184,11 +184,26 @@ export const Pitfall = Schema.Struct({
   text: Schema.String,
   /** Handed over when it fires, during the task; without one, at the start with its workflow. */
   trigger: Schema.NullOr(Trigger),
+  /**
+   * More triggers for the same mistake, any of which fires it: one per
+   * message, when mistakes another task fixes the same way are one pitfall.
+   * Absent in memory learned before.
+   */
+  also: Schema.optionalKey(Schema.Array(Trigger)),
   evidence: Schema.Array(Schema.String),
   /** What the mistake cost the runs that made it: the median, in tokens. */
   cost_tokens: Schema.Int
 })
 export type Pitfall = typeof Pitfall.Type
+
+/** Every trigger of a pitfall: its first, and the others for the same mistake. */
+export const triggersOf = (p: Pick<Pitfall, "trigger" | "also">): Array<Trigger> => [...(p.trigger === null ? [] : [p.trigger]), ...(p.also ?? [])]
+
+/** A pitfall with these triggers, the first as `trigger` and the rest as `also`. */
+export const withTriggers = <P extends Pick<Pitfall, "trigger" | "also">>(p: P, triggers: ReadonlyArray<Trigger>): P => {
+  const { also: _also, ...rest } = p
+  return { ...rest, trigger: triggers[0] ?? null, ...(triggers.length > 1 ? { also: triggers.slice(1) } : {}) } as P
+}
 
 export const WorkflowMemory = Schema.Struct({
   format: Schema.Literal(FORMAT),

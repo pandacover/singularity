@@ -29,7 +29,8 @@ MIT licensed (`LICENSE`).
   (2026-10-08) are relative to `apps/cli`, except `runs/`.
 
 Layout of `apps/cli` (paths from here to the end are relative to it, except
-`node_modules/`, `runs/` and the install scripts, at the root): `src/traces/` (Claude Code log parser and metrics), `src/graph/` (the
+`node_modules/`, `runs/` and the install scripts, at the root): `src/traces/` (Claude Code log parser and metrics; what the
+person wrote in a prompt, without what tools add: `Prompts.ts`), `src/graph/` (the
 procedural graph store of the first graph setup), `src/eval/` (the eval
 harness and memory setups), `src/cli.ts` (the whole command line, run from
 the repo), `src/singularity.ts` (the `singularity` command setup installs:
@@ -37,7 +38,8 @@ the six daily commands only, so nothing user-facing may point users or
 agents at another one). The local memory
 from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
 `src/records/` (workflow records: extraction, where edits went, the model's
-reading, the store), `src/memory/` (the memory graph: build, replay, store),
+reading, the store; whether a call failed, the same for records and hooks:
+`Outcome.ts`), `src/memory/` (the memory graph: build, replay, store),
 `src/search/` (exact and word search), `src/handover/` (task start and the
 code at its places, triggers, session end, hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
 hook entry point). That local memory is v0, frozen at tag `memory-v0`.
@@ -153,7 +155,10 @@ comparable.
 
 Graph `command_patterns` are JavaScript regular expressions. Prompts that ask
 an LLM to write them must say so. Warning triggers in the memory graph are
-plain substrings, never regular expressions, and prompts say that too.
+plain substrings, never regular expressions, and prompts say that too. They
+never fire on a read or a search: what those print isn't judged
+(`src/records/Outcome.ts`). What memory's known mistakes did, and which to let
+go, is `src/workflows/Pitfalls.ts`.
 
 Everything written to disk keeps the snake_case keys the Python version used:
 `results.jsonl`, saved-scripts memory entries, graph store files. Old runs in

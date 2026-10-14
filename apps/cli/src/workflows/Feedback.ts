@@ -15,7 +15,7 @@
  */
 import type { MemoryItem, MemoryUse } from "../records/Models.ts"
 import { matchTrigger, type ToolEvent } from "../records/Triggers.ts"
-import type { Pitfall } from "./Models.ts"
+import { type Pitfall, triggersOf } from "./Models.ts"
 
 export interface Handed {
   readonly version: number
@@ -66,19 +66,23 @@ export const feedbackOf = (handed: Handed, did: Did): MemoryUse => {
     if (!shown.has(p)) items.push({ id: p, kind: "place-not-shown", moment: "start", outcome: "unknown", note: `edited in ${file}, not shown` })
   }
   const byId = new Map(handed.triggers.map((p) => [p.id, p]))
+  const sets = (id: string, e: ToolEvent) => {
+    const p = byId.get(id)
+    return p !== undefined && triggersOf(p).some((t) => matchTrigger(t, e))
+  }
   for (const id of handed.pitfalls) {
-    const t = byId.get(id)?.trigger ?? null
-    if (t === null) {
+    const p = byId.get(id)
+    if (p === undefined || triggersOf(p).length === 0) {
       items.push({ id, kind: "pitfall", moment: "start", outcome: "unknown", note: null })
       continue
     }
-    const made = did.events.some((e) => matchTrigger(t, e.event))
+    const made = did.events.some((e) => sets(id, e.event))
     items.push({ id, kind: "pitfall", moment: "start", outcome: made ? "ignored" : "followed", note: made ? "its trigger matched anyway" : null })
   }
   for (const f of handed.fired) {
-    const t = byId.get(f.pitfall)?.trigger ?? null
-    if (t === null) continue
-    const again = did.events.some((e) => e.at !== undefined && e.at > f.at && matchTrigger(t, e.event))
+    const p = byId.get(f.pitfall)
+    if (p === undefined || triggersOf(p).length === 0) continue
+    const again = did.events.some((e) => e.at !== undefined && e.at > f.at && sets(f.pitfall, e.event))
     items.push({
       id: f.pitfall,
       kind: "pitfall",

@@ -56,7 +56,7 @@ const rank = (command: string): number => {
   return ranks.length === 0 ? ORDER.indexOf("other") : Math.min(...ranks)
 }
 
-type Manager = "npm" | "yarn" | "pnpm" | "bun"
+export type Manager = "npm" | "yarn" | "pnpm" | "bun"
 
 /** What a finish's commands are checked against: the repo the task starts in. */
 export interface RepoFacts {
@@ -104,13 +104,13 @@ const VITEST = /(^|\s)vitest(\s|$)/
 const RUNS_ONCE = /(^|\s)(run|--run|--watch=false)(\s|$)|--watch\s+false/
 
 /** What a segment runs; `at` is where its words (`commandWords`) name it, and what follows is passed to it. */
-type Call =
+export type Call =
   | { readonly kind: "script"; readonly manager: Manager; readonly name: string; readonly at: number }
   | { readonly kind: "program"; readonly manager: Manager | undefined; readonly name: string; readonly at: number }
   | { readonly kind: "elsewhere" }
 
 /** What a segment runs, as the repo's scripts see it: one of them, a program (`npx tsc`), or something in another package. */
-const callOf = (segment: Segment, scripts: Readonly<Record<string, string>>): Call => {
+export const callOf = (segment: Segment, scripts: Readonly<Record<string, string>>): Call => {
   const ws = commandWords(segment)
   const program = programName(ws[0] ?? "")
   const end = ws.includes("--") ? ws.indexOf("--") : ws.length
@@ -321,7 +321,7 @@ export const checkCommands = (lines: ReadonlyArray<string>, repo: RepoFacts): Ar
   return texts.map((t) => t.text)
 }
 
-const PackageJson = Schema.fromJsonString(Schema.Struct({ scripts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }))
+export const PackageJson = Schema.fromJsonString(Schema.Struct({ scripts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }))
 
 /** The repo the task starts in, as the commands `lines` are checked against it, read from `source`. */
 export const repoFacts = Effect.fn("repoFacts")(function*(source: CodeSource, lines: ReadonlyArray<string>) {

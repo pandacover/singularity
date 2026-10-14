@@ -3,12 +3,15 @@
  * Fields we don't use are ignored. See the hooks reference in Claude Code's
  * docs: UserPromptSubmit has `prompt`; PostToolUse has `tool_name`,
  * `tool_input` and `tool_response`; PostToolUseFailure has `error` instead of
- * a response; SessionEnd has `reason`.
+ * a response, and is how a call's failure is known (a shell command that
+ * exits with an error is one); SessionEnd has `reason`. A call a helper agent
+ * made carries its `agent_id`.
  */
 import { Option, Predicate, Schema } from "effect"
+import { mistakeMade } from "../records/Outcome.ts"
 import type { ToolEvent } from "../records/Triggers.ts"
 import { editText } from "../records/Triggers.ts"
-import { EDIT_TOOLS, reportsFailure, SHELL_TOOLS, SHELL_WRITE } from "../traces/index.ts"
+import { EDIT_TOOLS, SHELL_TOOLS, SHELL_WRITE } from "../traces/index.ts"
 import { relativizer } from "../records/Extract.ts"
 
 export const HookInput = Schema.Struct({
@@ -22,7 +25,9 @@ export const HookInput = Schema.Struct({
   tool_input: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   tool_response: Schema.optionalKey(Schema.Unknown),
   error: Schema.optionalKey(Schema.String),
-  reason: Schema.optionalKey(Schema.String)
+  reason: Schema.optionalKey(Schema.String),
+  /** Set when a helper agent (a subagent) made the call; absent for the main thread. */
+  agent_id: Schema.optionalKey(Schema.String)
 })
 export type HookInput = typeof HookInput.Type
 
@@ -59,6 +64,6 @@ export const eventOfHook = (input: HookInput, repoRoot: string | undefined): Too
     file: path === undefined ? undefined : relativizer(repoRoot)(path),
     text: EDIT_TOOLS.has(tool) ? editText(tool, args) : command !== undefined && SHELL_WRITE.test(command) ? command : undefined,
     output,
-    failed: failed || (shell && output !== undefined && reportsFailure(output))
+    failed: mistakeMade({ tool, command, output, isError: failed })
   }
 }

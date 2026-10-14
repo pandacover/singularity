@@ -14,7 +14,7 @@ import { DateTime, Effect, Layer, Option, Predicate, Schema } from "effect"
 import { decodeHookInput, eventOfHook, type HookInput } from "../handover/HookInput.ts"
 import { loadHome } from "../local/Home.ts"
 import { matchTrigger, type ToolEvent } from "../records/Triggers.ts"
-import type { Pitfall } from "./Models.ts"
+import { type Pitfall, triggersOf } from "./Models.ts"
 import { appendFired, logHandover, readFired, readSession } from "./Session.ts"
 
 const layer = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)
@@ -84,9 +84,13 @@ export const asClaudeCall = (input: HookInput): HookInput => {
   }
 }
 
+/** Pitfalls one of whose triggers this event matches. */
+const matching = (triggers: ReadonlyArray<Pitfall>, event: ToolEvent): Array<Pitfall> =>
+  triggers.filter((p) => triggersOf(p).some((t) => matchTrigger(t, event)))
+
 /** Pitfalls whose trigger this event matches and that haven't fired yet this session. */
 export const firing = (triggers: ReadonlyArray<Pitfall>, fired: ReadonlySet<string>, event: ToolEvent): Array<Pitfall> =>
-  triggers.filter((p) => p.trigger !== null && !fired.has(p.id) && matchTrigger(p.trigger, event))
+  matching(triggers, event).filter((p) => !fired.has(p.id))
 
 export const renderWarning = (pitfalls: ReadonlyArray<Pitfall>): string =>
   [
@@ -94,25 +98,38 @@ export const renderWarning = (pitfalls: ReadonlyArray<Pitfall>): string =>
     ...pitfalls.map((p) => `- ${p.text}`)
   ].join("\n")
 
-export const onToolEvent = Effect.fn("workflows.onToolEvent")(function*(tenantDir: string, sessionId: string, event: ToolEvent) {
+/**
+ * Warn of the pitfalls this call sets off that haven't warned yet this
+ * session. One that did and is set off again was made anyway: it is logged
+ * (`moment: "again"`), for the tally of what each pitfall did (Pitfalls.ts), and
+ * not said twice.
+ */
+export const onToolEvent = Effect.fn("workflows.onToolEvent")(function*(tenantDir: string, sessionId: string, event: ToolEvent, agent?: string) {
   const state = yield* readSession(tenantDir, sessionId)
   if (state === undefined || state.triggers.length === 0) return undefined
   const fired = new Set((yield* readFired(tenantDir, sessionId)).map((f) => f.pitfall))
-  const now = firing(state.triggers, fired, event)
-  if (now.length === 0) return undefined
+  const matched = matching(state.triggers, event)
+  if (matched.length === 0) return undefined
+  const now = matched.filter((p) => !fired.has(p.id))
+  const again = matched.filter((p) => fired.has(p.id))
   const at = DateTime.formatIso(yield* DateTime.now)
+  const log = (moment: string, pitfalls: ReadonlyArray<Pitfall>) =>
+    logHandover(tenantDir, {
+      at,
+      session_id: sessionId,
+      moment,
+      subject: state.subject,
+      version: state.version,
+      pitfalls: pitfalls.map((p) => p.id),
+      tool: event.tool,
+      command: event.command?.slice(0, 200) ?? null,
+      file: event.file ?? null,
+      ...(agent === undefined ? {} : { agent })
+    })
+  if (again.length > 0) yield* log("again", again)
+  if (now.length === 0) return undefined
   yield* appendFired(tenantDir, sessionId, now.map((p) => ({ pitfall: p.id, at, tool: event.tool })))
-  yield* logHandover(tenantDir, {
-    at,
-    session_id: sessionId,
-    moment: "trigger",
-    subject: state.subject,
-    version: state.version,
-    pitfalls: now.map((p) => p.id),
-    tool: event.tool,
-    command: event.command?.slice(0, 200) ?? null,
-    file: event.file ?? null
-  })
+  yield* log("trigger", now)
   return renderWarning(now)
 })
 
@@ -128,7 +145,7 @@ export const postToolUse = (stdin: string): Promise<string | undefined> =>
       if (state === undefined) return undefined
       const event = eventOfHook(input, state.repo ?? input.cwd)
       if (event === undefined) return undefined
-      const text = yield* onToolEvent(home.tenantDir, input.session_id, event)
+      const text = yield* onToolEvent(home.tenantDir, input.session_id, event, input.agent_id)
       if (text === undefined) return undefined
       const hookEventName = input.hook_event_name ?? "PostToolUse"
       return JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: text } })
