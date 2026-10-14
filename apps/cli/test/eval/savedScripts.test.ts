@@ -186,7 +186,8 @@ describe("saved-scripts", () => {
         process.chdir(cwd)
       }
     })
-  })
+    // Two whole eval runs with a fake agent: a few seconds alone, more with the whole suite running.
+  }, 30_000)
 
   it("learns from recorded runs", async () => {
     const root = tempDir()
@@ -203,5 +204,5 @@ describe("saved-scripts", () => {
       assert.deepStrictEqual(e.files_changed, ["answer.txt"])
       assert.strictEqual(e.tool_calls, 1)
     })
-  })
+  }, 30_000)
 })

@@ -20,8 +20,9 @@ import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import type { Subject } from "../records/Subjects.ts"
 import { writeCues } from "./CueWriter.ts"
-import { gatherEvidence, withPlacesOf } from "./Evidence.ts"
-import { handedTexts, passes, refine, replay, withNewPitfalls } from "./Evolve.ts"
+import { gatherEvidence, type RunEvidence, withPlacesOf } from "./Evidence.ts"
+import { handedTexts, passes, refine, replay, withPitfallsOf } from "./Evolve.ts"
+import { describeTally, instructionsSection, readTriggerLog, repoHas, talliedChanges, tallyPitfalls, tidyPitfalls } from "./Pitfalls.ts"
 import { withSnapshots } from "./Finish.ts"
 import { type InduceConfig, induce } from "./Induce.ts"
 import { END, START, type WorkflowMemory } from "./Models.ts"
@@ -222,6 +223,13 @@ const failedRound = Effect.fnUntraced(function*(config: LearnConfig, records: Re
   yield* store.reject(candidate.id, `${FAILED} ${message.slice(0, 300)}`)
 })
 
+/** Where a subject is checked out here: the first of its paths that still exists. */
+const repoOf = Effect.fnUntraced(function*(subject: Subject) {
+  const fs = yield* FileSystem.FileSystem
+  for (const p of subject.paths) if (yield* fs.exists(p).pipe(Effect.orElseSucceed(() => false))) return p
+  return undefined
+})
+
 /** A round, once `learnSubject` found one due. */
 const learnRound = Effect.fnUntraced(function*(subject: Subject, config: LearnConfig, state: LearnState) {
   const store = yield* WorkflowStore
@@ -230,6 +238,15 @@ const learnRound = Effect.fnUntraced(function*(subject: Subject, config: LearnCo
   const baseVersion = yield* store.head()
   const full = yield* store.memory()
   const first = state.memory.workflows.length === 0
+
+  // The repo as it is now: its own instructions go to the model, and what a pitfall names is checked against it.
+  const repo = yield* repoOf(subject)
+  const instructions = yield* instructionsSection(repo)
+  const has = repo === undefined ? undefined : yield* repoHas(repo)
+  const log = config.tenantDir === undefined ? [] : yield* readTriggerLog(config.tenantDir).pipe(Effect.orElseSucceed(() => []))
+  const tallyOf = (memory: WorkflowMemory, runs: ReadonlyArray<RunEvidence>) => tallyPitfalls(memory.pitfalls, talliedChanges(state.records, runs), log)
+  // What a round keeps: pitfalls whose mistake still happens, and that belong to this repo.
+  const tidy = (memory: WorkflowMemory, runs: ReadonlyArray<RunEvidence>) => tidyPitfalls(memory, tallyOf(memory, runs), has)
 
   // What the checks dropped or flagged goes with the candidate: why a round kept little is there to read, without paying again.
   const propose = (memory: WorkflowMemory, records: ReadonlyArray<string>, rationale: string, costUsd: number, problems: ReadonlyArray<string>) =>
@@ -245,17 +262,18 @@ const learnRound = Effect.fnUntraced(function*(subject: Subject, config: LearnCo
 
   if (first) {
     const evidence = yield* gatherEvidence(state.records, {})
-    const induced = yield* induce(config, evidence, store.tenant)
-    const built = withSnapshots(induced.memory, evidence.runs)
+    const induced = yield* induce(config, evidence, store.tenant, undefined, [instructions].filter((s) => s !== ""))
+    const tidied = yield* tidy(withSnapshots(induced.memory, evidence.runs), evidence.runs)
+    const built = tidied.memory
     const records = evidence.runs.map((r) => r.record)
     if (built.workflows.length === 0) {
-      const candidate = yield* propose(built, records, induced.rationale, induced.costUsd, induced.problems)
+      const candidate = yield* propose(built, records, induced.rationale, induced.costUsd, [...induced.problems, ...tidied.dropped])
       yield* store.reject(candidate.id, "no workflows")
       return { kind: "kept", subject: subject.id, reason: "the changes showed no workflow to keep yet", costUsd: induced.costUsd } satisfies LearnOutcome
     }
     const cued = yield* writeCues(config, built, evidence.runs)
     const costUsd = induced.costUsd + cued.costUsd
-    const candidate = yield* propose(cued.memory, records, induced.rationale, costUsd, [...induced.problems, ...cued.problems])
+    const candidate = yield* propose(cued.memory, records, induced.rationale, costUsd, [...induced.problems, ...tidied.dropped, ...cued.problems])
     const version = yield* store.commit(candidate.id)
     return {
       kind: "learned",
@@ -273,6 +291,8 @@ const learnRound = Effect.fnUntraced(function*(subject: Subject, config: LearnCo
   const evidence = yield* gatherEvidence(state.unlearned, {})
   const before = yield* gatherEvidence(state.learned, {})
   const current = state.memory
+  const runs = [...before.runs, ...evidence.runs]
+  const tally = tallyOf(current, runs)
   // Revisions tried and rejected, for the model to avoid; a round that failed tried none.
   const rejected: ReadonlyArray<WorkflowCandidate> = (yield* store.candidates("rejected"))
     .filter((c) => !isFailedRound(c))
@@ -287,32 +307,45 @@ const learnRound = Effect.fnUntraced(function*(subject: Subject, config: LearnCo
     new Map(state.unlearned.map((r) => [r.id, r])),
     rejected,
     // Memory's places are found in the repo each run's record names.
-    { repo: undefined, texts: yield* handedTexts(state.unlearned, config.tenantDir) }
+    { repo: undefined, texts: yield* handedTexts(state.unlearned, config.tenantDir) },
+    // Memory's pitfalls are checked against the runs memory learned them from, and the model reads what they did.
+    {
+      notes: [instructions, tally.length === 0 ? "" : ["## What memory's pitfalls did", "", ...tally.map(describeTally)].join("\n")].filter((t) => t !== ""),
+      checks: { learnedRuns: before.runs }
+    }
   )
-  const runs = [...before.runs, ...evidence.runs]
   const cued = yield* writeCues(config, withSnapshots(refined.memory, runs), runs)
-  const revision = cued.memory
+  const tidied = yield* tidy(cued.memory, runs)
+  const revision = tidied.memory
   const now = yield* replay(current, runs, "cues")
   const then = yield* replay(revision, runs, "cues")
   const verdict = passes(then, now)
   const costUsd = refined.costUsd + cued.costUsd
   const records = [...state.learned.map((r) => r.id), ...state.unlearned.map((r) => r.id)]
-  const candidate = yield* propose(revision, records, refined.rationale, costUsd, [...refined.problems, ...cued.problems])
+  const candidate = yield* propose(revision, records, refined.rationale, costUsd, [...refined.problems, ...tidied.dropped, ...cued.problems])
   if (!verdict.commit) {
     yield* store.reject(candidate.id, verdict.reason)
-    // What went wrong in the runs was checked against their failures, not their places: it stays.
-    const warned = withNewPitfalls(current, revision)
+    // What went wrong in the runs was checked against their failures, not their places: the revision's pitfalls stay.
+    const warned = withPitfallsOf(current, revision)
     if (warned === undefined) {
       return { kind: "kept", subject: subject.id, reason: `kept the memory it had: the revision ${verdict.reason}`, costUsd } satisfies LearnOutcome
     }
-    const added = warned.pitfalls.length - current.pitfalls.length
+    const had = new Set(current.pitfalls.map((p) => p.id))
+    const has = new Set(warned.pitfalls.map((p) => p.id))
+    const added = warned.pitfalls.filter((p) => !had.has(p.id)).length
+    const gone = current.pitfalls.filter((p) => !has.has(p.id)).length
     // The new changes are left for the next round to learn from: this version holds only what memory learned before.
-    const kept = yield* propose(warned, state.learned.map((r) => r.id), `the new pitfalls of ${candidate.id}, rejected: ${verdict.reason}`, 0, [])
+    const kept = yield* propose(warned, state.learned.map((r) => r.id), `the pitfalls of ${candidate.id}, rejected: ${verdict.reason}`, 0, tidied.dropped)
     yield* store.commit(kept.id)
+    const said = [
+      ...(added > 0 ? [`added ${added} known mistake${added === 1 ? "" : "s"}`] : []),
+      ...(gone > 0 ? [`let go of ${gone}`] : []),
+      ...(added === 0 && gone === 0 ? ["gave its known mistakes new triggers or words"] : [])
+    ]
     return {
       kind: "kept",
       subject: subject.id,
-      reason: `kept its workflows and added ${added} known mistake${added === 1 ? "" : "s"}: the revision ${verdict.reason}`,
+      reason: `kept its workflows and ${said.join(" and ")}: the revision ${verdict.reason}`,
       costUsd
     } satisfies LearnOutcome
   }

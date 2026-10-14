@@ -137,8 +137,8 @@ describe("web sessions", () => {
       workflows: [{ id: "issue-refund", name: "Issue a refund", use_when: "a task asks to refund an order", blanks: [{ name: "order", meaning: "the order" }], steps: [{ do: "Open More actions, then Refund for {order}.", place: refund.id, when: null }, { do: "Refund 4821.", place: null, when: null }], checks: [], pitfalls: ["refund-note"], from_runs: ["r1"], only_if_asked: false }],
       edges: [],
       pitfalls: [
-        { id: "refund-note", text: "Refunds over {amount} need a manager note first.", detours: ["r2#feedback"], trigger: { on: "page", all: ["Refund amount"], none: [], file: null } },
-        { id: "made-up", text: "Something nobody saw.", detours: ["r9#3"], trigger: null }
+        { id: "refund-note", text: "Refunds over {amount} need a manager note first.", detours: ["r2#feedback"], trigger: { on: "page", all: ["Refund amount"], none: [], file: null }, also: [] },
+        { id: "made-up", text: "Something nobody saw.", detours: ["r9#3"], trigger: null, also: [] }
       ],
       entries: [],
       rationale: ""

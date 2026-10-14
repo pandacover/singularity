@@ -4,10 +4,11 @@ import { Effect } from "effect"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { WorkflowRecord } from "../../src/records/Models.ts"
+import type { ToolCall } from "../../src/traces/index.ts"
 import type { Evidence, RunEvidence } from "../../src/workflows/Evidence.ts"
-import { fit, passes, resultsText, shownInRecord, withNewPitfalls } from "../../src/workflows/Evolve.ts"
+import { fit, passes, resultsText, shownInRecord, withPitfallsOf } from "../../src/workflows/Evolve.ts"
 import { feedbackOf } from "../../src/workflows/Feedback.ts"
-import { applyFix, applyRevision, checkAnswer, fixPrompt, type InductionAnswer, memoryText, namedValue, placeProblem } from "../../src/workflows/Induce.ts"
+import { applyFix, applyRevision, checkAnswer, describeDetour, fixPrompt, type InductionAnswer, memoryText, namedValue, placeProblem } from "../../src/workflows/Induce.ts"
 import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
 import { locatePlaces } from "../../src/workflows/Locate.ts"
 import { emptyMemory, FORMAT, graphOrder, type Place, type WorkflowMemory } from "../../src/workflows/Models.ts"
@@ -116,7 +117,7 @@ describe("checking an induced answer", () => {
   })
 
   it("keeps pitfalls only from real detours", () => {
-    const a = answer({ pitfalls: [{ id: "flag", text: "Don't double the flag.", detours: ["r1#0"], trigger: null }] })
+    const a = answer({ pitfalls: [{ id: "flag", text: "Don't double the flag.", detours: ["r1#0"], trigger: null, also: [] }] })
     const { memory, problems } = checkAnswer(a, evidence, "local")
     assert.deepStrictEqual(memory.pitfalls, [])
     assert.isTrue(problems.some((p) => p.includes("no detour")))
@@ -159,8 +160,8 @@ describe("learning for less", () => {
     ],
     edges: [{ from: "w2", to: "end", relation: "LEADS_TO", condition: "when Alt+M is free", guidance: null, pitfalls: null }],
     pitfalls: [
-      { id: "Watch Flag", text: "`yarn test:update` already watches.", detours: ["r9#0"], trigger: null },
-      { id: "minimap", text: "Toggling minimapEnabled twice undoes it.", detours: ["r1#0"], trigger: null }
+      { id: "Watch Flag", text: "`yarn test:update` already watches.", detours: ["r9#0"], trigger: null, also: [] },
+      { id: "minimap", text: "Toggling minimapEnabled twice undoes it.", detours: ["r1#0"], trigger: null, also: [] }
     ]
   })
 
@@ -186,7 +187,7 @@ describe("learning for less", () => {
         { ...workflow, id: "w1", steps: [{ do: "Add {flag} to the table.", place: "p-1", when: null }] },
         { ...workflow, id: "w2", name: "Not flagged, not taken" }
       ],
-      pitfalls: [{ id: "watch-flag", text: "`yarn test:update` already watches.", detours: ["r1#0"], trigger: null }],
+      pitfalls: [{ id: "watch-flag", text: "`yarn test:update` already watches.", detours: ["r1#0"], trigger: { on: "error", all: ["unknown option --watch"], none: [], file: null }, also: [] }],
       edges: [{ from: "w2", to: "end", relation: "LEADS_TO", condition: "when the key is free", guidance: null, pitfalls: null }]
     }, checked.flagged)
     const again = checkAnswer(fixed, evidence, "local")
@@ -218,7 +219,7 @@ describe("learning for less", () => {
       edges: [edge("start", "a"), edge("a", "b"), edge("b", "c"), edge("c", "end")],
       pitfalls: [
         { id: "p1", subject: "repo", text: "Mind the flag.", trigger: { on: "command", all: ["--watch"], none: [], file: null }, evidence: ["r1"], cost_tokens: 1 },
-        { id: "p2", subject: "repo", text: "Mind the order.", trigger: null, evidence: ["r1"], cost_tokens: 1 }
+        { id: "p2", subject: "repo", text: "Mind the order.", trigger: { on: "error", all: ["unknown option"], none: [], file: null }, evidence: ["r1"], cost_tokens: 1 }
       ]
     }
     const text = memoryText(current)
@@ -231,7 +232,7 @@ describe("learning for less", () => {
       workflows: [{ ...answer().workflows[0], id: "b", name: "Do b better" }, { ...answer().workflows[0], id: "d", name: "Do d" }],
       removed_workflows: ["c"],
       edges: [edge("a", "b"), edge("b", "d"), edge("d", "end")],
-      pitfalls: [{ id: "p2", text: "Mind the build order.", detours: [], trigger: null }],
+      pitfalls: [{ id: "p2", text: "Mind the build order.", detours: [], trigger: null, also: [] }],
       removed_pitfalls: ["p1"],
       entries: [],
       rationale: "b does more; c went"
@@ -243,6 +244,93 @@ describe("learning for less", () => {
     const checked = checkAnswer(merged, evidence, "local", current)
     assert.deepStrictEqual(checked.memory.pitfalls.map((p) => p.id), ["p2"])
     assert.deepStrictEqual(checked.memory.workflows.find((w) => w.id === "a")?.pitfalls, [])
+  })
+})
+
+describe("known mistakes and their triggers", () => {
+  const call = (id: string, command: string, result: string, isError = false): ToolCall => ({
+    id,
+    name: "Bash",
+    input: { command },
+    agentId: undefined,
+    startedAt: undefined,
+    finishedAt: undefined,
+    result,
+    isError
+  })
+  const detour = (failed: number, fixed: number, symptom: string) => ({
+    kind: "command_error" as const,
+    failed: { call: failed, turn: failed, tool: "Bash", command: "x", file: null },
+    symptom,
+    keys: [],
+    fixed: { call: fixed, turn: fixed, tool: "Bash", command: "x", file: null },
+    removed: [],
+    added: [],
+    files_edited: [],
+    failures: 1,
+    cost: { tokens: 1000, calls: 1, turns: 1 }
+  })
+  // A scripted edit that broke the code, the typecheck that said so, and the fix; then an anchor the script didn't find.
+  const calls = [
+    call("c0", "node -e 'edit(\"src/a.ts\")' && npx tsc --noEmit", "src/a.ts(3,9): error TS1002: Unterminated string literal.", true),
+    call("c1", "npx tsc --noEmit", ""),
+    call("c2", "node fix-anchor.mjs", "Error: missing: const x = 1\n\nNode.js v24.15.0"),
+    call("c3", "node fix-anchor.mjs", "done")
+  ]
+  const evidence: Evidence = {
+    places: [place("p-1")],
+    runs: [runEvidence("r1", { calls, detours: [detour(0, 1, "Unterminated string literal"), detour(2, 3, "Error: missing: const x = 1")] })],
+    readPlaces: [],
+    skipped: [],
+    families: new Map()
+  }
+  const error = (s: string) => ({ on: "error" as const, all: [s], none: [], file: null })
+  const pitfall = (text: string, over: Partial<InductionAnswer["pitfalls"][number]> = {}) =>
+    answer({ pitfalls: [{ id: "scripted-edit", text, detours: ["r1#0", "r1#1"], trigger: null, also: [], ...over }] })
+
+  it("keeps one trigger for each way the same mistake shows", () => {
+    const { memory, problems } = checkAnswer(pitfall("A scripted edit broke: use the editor tool.", { trigger: error("Unterminated string literal"), also: [error("missing:")] }), evidence, "local")
+    assert.deepStrictEqual(problems, [])
+    assert.deepStrictEqual(memory.pitfalls.map((p) => [p.trigger?.all, p.also?.map((t) => t.all)]), [[["Unterminated string literal"], [["missing:"]]]])
+  })
+
+  it("takes triggers from the messages a pitfall quotes, when its own don't fit", () => {
+    const text = "Scripted edits leave 'Unterminated string literal' errors or throw 'missing: …': use the editor tool."
+    const { memory } = checkAnswer(pitfall(text, { trigger: error("no such message") }), evidence, "local")
+    assert.deepStrictEqual(memory.pitfalls.map((p) => [p.trigger?.all, p.also?.map((t) => t.all)]), [[["Unterminated string literal"], [["missing:"]]]])
+  })
+
+  it("drops a trigger that fires on the fix, and a pitfall no trigger fits, after asking for one", () => {
+    const checked = checkAnswer(pitfall("Mind your scripts.", { trigger: { on: "command", all: ["npx tsc"], none: [], file: null } }), evidence, "local")
+    assert.deepStrictEqual(checked.memory.pitfalls, [])
+    assert.isTrue(checked.problems.some((p) => p.includes("it also matches a call that fixed its mistake")))
+    assert.deepStrictEqual(checked.flagged.pitfalls, ["scripted-edit"])
+    const prompt = fixPrompt(pitfall("Mind your scripts."), checked, evidence)
+    assert.include(prompt, "pitfall scripted-edit has no trigger that fits its detours")
+    assert.include(prompt, "## Where the pitfalls without a trigger happened")
+    assert.include(prompt, "- r1#0 (command_error, 1 turn until fixed)")
+  })
+
+  it("shows a detour's cost in turns, at most 30", () => {
+    const run = (turns: number) => runEvidence("r1", { calls, detours: [{ ...detour(0, 1, "Unterminated string literal"), cost: { tokens: 9_000_000, calls: 3, turns } }] })
+    assert.include(describeDetour(run(3), 0), "(command_error, 3 turns until fixed)")
+    // An edit mismatch "closed" 161 turns later is mostly other work in between; the record keeps the true count.
+    assert.include(describeDetour(run(161), 0), "(command_error, 30+ turns until fixed)")
+    assert.notInclude(describeDetour(run(161), 0), "tokens")
+  })
+
+  it("checks memory's own pitfalls against the runs they were learned from", () => {
+    const current: WorkflowMemory = {
+      ...emptyMemory("local"),
+      pitfalls: [{ id: "scripted-edit", subject: "repo", text: "A scripted edit can throw 'missing: …'.", trigger: null, evidence: ["r1"], cost_tokens: 1000 }]
+    }
+    const kept = applyRevision(current, { workflows: [], removed_workflows: [], edges: [], pitfalls: [], removed_pitfalls: [], entries: [], rationale: "" })
+    const newRun: Evidence = { ...evidence, runs: [runEvidence("r2")] }
+    const learned = checkAnswer(kept, newRun, "local", current, { learnedRuns: evidence.runs })
+    assert.deepStrictEqual(learned.memory.pitfalls.map((p) => p.trigger?.all), [["missing:"]])
+    // Without those runs, nothing tells its trigger: it goes, after a second call.
+    const blind = checkAnswer(kept, newRun, "local", current)
+    assert.deepStrictEqual([blind.memory.pitfalls, blind.flagged.pitfalls], [[], ["scripted-edit"]])
   })
 })
 
@@ -389,12 +477,12 @@ describe("learning from results", () => {
       ],
       pitfalls: [...current.pitfalls, pitfall("stale-count"), pitfall("lint-style")]
     })
-    const kept = withNewPitfalls(current, revision)!
+    const kept = withPitfallsOf(current, revision)!
     assert.deepStrictEqual(kept.pitfalls.map((p) => p.id), ["flag", "stale-count", "lint-style"])
     assert.deepStrictEqual(kept.workflows.map((w) => [w.id, w.pitfalls]), [["a", ["flag", "stale-count"]], ["b", ["flag"]]])
     // Its workflows, places and graph are the current memory's.
     assert.deepStrictEqual([kept.places, kept.edges], [current.places, current.edges])
-    assert.isUndefined(withNewPitfalls(current, memoryWith({ workflows: [] })))
+    assert.isUndefined(withPitfallsOf(current, memoryWith({ workflows: [] })))
   })
 
   it("reads what v1 showed a run from its record", () => {

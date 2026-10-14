@@ -22,10 +22,26 @@ import type { ModelCli } from "../eval/Llm.ts"
 import { callModel } from "../eval/ModelCall.ts"
 import { triggerMismatch, triggerValue } from "../records/Annotate.ts"
 import { relativizer } from "../records/Extract.ts"
-import { describeTrigger, eventOfCall, Trigger, triggerProblem } from "../records/Triggers.ts"
+import type { Detour } from "../records/Models.ts"
+import { describeTrigger, eventOfCall, matchTrigger, Trigger, triggerKey, triggerProblem } from "../records/Triggers.ts"
 import type { ToolCall } from "../traces/index.ts"
 import { type Evidence, type RunEvidence, shapeOf } from "./Evidence.ts"
-import { Blank, Edge, END, FORMAT, graphOrder, isReadPlace, type Pitfall, type Place, START, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
+import {
+  Blank,
+  Edge,
+  END,
+  FORMAT,
+  graphOrder,
+  isReadPlace,
+  type Pitfall,
+  type Place,
+  START,
+  triggersOf,
+  withShow,
+  withTriggers,
+  type Workflow,
+  type WorkflowMemory
+} from "./Models.ts"
 import { describeChain } from "./Places.ts"
 
 export const ProposedStep = Schema.Struct({
@@ -54,7 +70,9 @@ export const ProposedPitfall = Schema.Struct({
   text: Schema.String,
   /** "<run id>#<detour number>" */
   detours: Schema.Array(Schema.String),
-  trigger: Schema.NullOr(Trigger)
+  trigger: Schema.NullOr(Trigger),
+  /** More triggers for the same mistake, one per other way it shows; any of them fires it. */
+  also: Schema.Array(Trigger)
 })
 export type ProposedPitfall = typeof ProposedPitfall.Type
 
@@ -123,13 +141,17 @@ From the runs you are given, extract reusable workflows: small sub-routines that
 
 ## Pitfalls
 
-From the detours (a call that failed, and what it cost until fixed), keep the mistakes another task could make again, in general words: what goes wrong and what to do instead. When revising current memory, its pitfalls stay unless you take one out: runs that no longer hit a pitfall show it works, not that it is wrong. Leave out failures that were simply the task's work in progress (a test failing until the feature was done). Refer to the detours a pitfall comes from as "<run id>#<detour number>", and list its id in the workflows it belongs to.
+From the detours (a call that failed, and how many turns it took until fixed), keep the mistakes another task could make again, in general words: what goes wrong and what to do instead. When revising current memory, its pitfalls stay unless you take one out: runs that no longer hit a pitfall show it works, not that it is wrong. Leave out:
+- failures that were simply the task's work in progress (a test failing until the feature was done);
+- bugs in the code that the change itself fixed: the code has the fix now, so no task meets them again;
+- what the agent's own instructions in this repository already say (shown below, when it has them): the agent reads them in every session. Take such pitfalls out of current memory too.
+Keep one pitfall per remedy: mistakes another task avoids the same way (scripted edits that broke on quotes, on an anchor they didn't find, or on line endings: use the editor tool) are one pitfall, with a trigger for each way it shows. Refer to the detours a pitfall comes from as "<run id>#<detour number>", and list its id in the workflows it belongs to.
 
-A pitfall may have an exact \`trigger\` that tells it is happening, checked on every tool call: plain substrings, never regular expressions, and never a task's own values.
-- \`on: "command"\`: a shell command containing every string in \`all\` and none in \`none\` (\`file\` null).
+Every pitfall needs a trigger, checked after every tool call, so that its warning comes when the mistake is made; a pitfall without one is dropped. Plain substrings, never regular expressions, and never a task's own values.
+- \`on: "error"\`: a call that failed printed every string in \`all\` (\`file\` null). Use the exact words of the message the failing call printed, as its detour shows them, specific enough that no other failure prints them ('Unterminated string literal', not 'error'). It never fires on a read or a search, nor on a call that worked.
+- \`on: "command"\`: a shell command containing every string in \`all\` and none in \`none\` (\`file\` null), for a mistake that prints no message of its own: the risky command itself. There is no hook before a call, so the warning comes right after the command it matches; for something to do before committing, trigger on \`git add\`, which comes before the commit. It never fires on a command that only reads.
 - \`on: "edit"\`: an edit (to a file whose path ends with \`file\`, if given) writing text that contains every string in \`all\` and none in \`none\`.
-- \`on: "error"\`: a failed tool call whose output contains every string in \`all\` (\`file\` null).
-It must match the call that failed and not the call that fixed it. Use null when there are no such strings.
+\`trigger\` is the first; \`also\` lists more for the same mistake, one per other message or command it shows as, any of which fires it. Each must match the call that failed in one of its detours and not the call that fixed it.
 
 ## Entries
 
@@ -155,6 +177,9 @@ export const describePlace = (p: Place): string => {
 
 const MAX_FIX_EDITS = 4
 
+/** The most turns a detour's cost is shown as ("30+ turns"). */
+export const MAX_TURNS_SHOWN = 30
+
 /** The edits a run made between a detour's failure and its fix: what fixed it. */
 const fixEdits = (r: RunEvidence, failedAt: number, fixedAt: number): Array<string> => {
   const relative = relativizer(r.cwd)
@@ -179,7 +204,10 @@ export const describeDetour = (r: RunEvidence, i: number): string => {
   const between = edits.length > 0
     ? `; edits in between: ${edits.join("; ")}`
     : d.files_edited.length > 0 ? `; edited ${d.files_edited.join(", ")} in between` : ""
-  return `- #${i} (${d.kind}, cost ${Math.round(d.cost.tokens / 1000)}k tokens): ${call(d.failed)} failed: "${clip(oneLine(d.symptom), 220)}". ` +
+  // Its cost in turns: summed tokens count the whole conversation again every turn, so a long thread's look huge.
+  // A fix found much later is mostly other work in between: the cost shown stops at MAX_TURNS_SHOWN; the record keeps it all.
+  const turns = d.cost.turns > MAX_TURNS_SHOWN ? `${MAX_TURNS_SHOWN}+ turns` : `${d.cost.turns} turn${d.cost.turns === 1 ? "" : "s"}`
+  return `- #${i} (${d.kind}, ${turns} until fixed): ${call(d.failed)} failed: "${clip(oneLine(d.symptom), 220)}". ` +
     `Fixed by ${call(d.fixed)}${between}.`
 }
 
@@ -203,7 +231,11 @@ export const memoryText = (m: WorkflowMemory): string => {
     `${e.guidance === null ? "" : `, guidance: ${e.guidance}`}${e.pitfalls === null ? "" : `, pitfalls: ${e.pitfalls}`}`
   lines.push("Edges:", ...m.edges.map(edge), "")
   if (m.pitfalls.length > 0) {
-    lines.push("Pitfalls:", ...m.pitfalls.map((p) => `- ${p.id}: ${p.text}${p.trigger === null ? "" : ` Trigger: ${JSON.stringify(p.trigger)}`}`))
+    const triggers = (p: Pitfall) => {
+      const [first, ...also] = triggersOf(p)
+      return first === undefined ? " No trigger yet." : ` Trigger: ${JSON.stringify(first)}${also.length === 0 ? "" : ` Also: ${also.map((t) => JSON.stringify(t)).join(", ")}`}`
+    }
+    lines.push("Pitfalls:", ...m.pitfalls.map((p) => `- ${p.id}: ${p.text}${triggers(p)}`))
   }
   return lines.join("\n")
 }
@@ -318,6 +350,8 @@ export interface Checked {
   /** Places shown as a whole entry: the answer's `entries` that steps use. */
   readonly entries: ReadonlyArray<string>
   readonly flagged: Flagged
+  /** Each pitfall's detours, in words, for a second call asked to give one its trigger. */
+  readonly pitfallDetours: ReadonlyMap<string, ReadonlyArray<string>>
 }
 
 const median = (xs: ReadonlyArray<number>) => {
@@ -346,6 +380,11 @@ export interface CheckOptions {
    * runs a workflow, and a place a step names, must come from.
    */
   readonly minTasks?: number
+  /**
+   * The runs memory learned from before these: a pitfall memory already has
+   * is checked against the detours of the runs it came from.
+   */
+  readonly learnedRuns?: ReadonlyArray<RunEvidence>
 }
 
 /**
@@ -371,9 +410,12 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
   const flaggedPitfalls = new Set<string>()
   const flaggedEdges: Array<readonly [string, string]> = []
 
-  // Pitfalls: real detours, general words, a trigger that singles out the mistake.
+  // Pitfalls: real detours, general words, and triggers that fire where the mistake happened: one without any can't warn, and goes.
   const pitfalls: Array<Pitfall> = []
   const learned = new Map((current?.pitfalls ?? []).map((x) => [x.id, x]))
+  // Memory's own pitfalls are checked against the runs memory learned them from, when the caller has them.
+  const pastRuns = new Map([...(options.learnedRuns ?? []), ...evidence.runs].map((r) => [r.record, r]))
+  const sitesOf: Map<string, ReadonlyArray<Site>> = new Map()
   for (const p of answer.pitfalls) {
     const id = slug(p.id)
     if (pitfalls.some((x) => x.id === id)) continue
@@ -388,40 +430,52 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
       }
       return [{ run, index: Number(m![2]), detour: d }]
     })
-    if (detours.length === 0) {
-      if (before === undefined) {
-        problems.push(`pitfall ${id} comes from no detour of these runs; dropped`)
-        flaggedPitfalls.add(id)
-        continue
-      }
-      // Memory's own pitfall, which these runs didn't run into: kept as it was learned, in the answer's words if they hold.
-      pitfalls.push({ ...before, text: leak(`pitfall ${id}`, p.text) ? before.text : p.text.trim() })
-      continue
-    }
-    if (leak(`pitfall ${id}`, p.text)) {
+    if (detours.length === 0 && before === undefined) {
+      problems.push(`pitfall ${id} comes from no detour of these runs; dropped`)
       flaggedPitfalls.add(id)
       continue
     }
-    let trigger = p.trigger
-    if (trigger !== null) {
-      const own = triggerValue(trigger, values.map((value) => ({ value })))
-      const problem = triggerProblem(trigger) ??
-        (own === undefined ? undefined : `it names a task's own value ${JSON.stringify(own)}`) ??
-        detours.map((x) => mismatch(trigger!, x.run, x.detour.failed.call, x.detour.fixed.call)).find((m) => m !== undefined)
-      if (problem !== undefined) {
-        problems.push(`the trigger of pitfall ${id} (${describeTrigger(trigger)}): ${problem}; dropped the trigger`)
-        trigger = null
-      }
+    const leaked = leak(`pitfall ${id}`, p.text)
+    if (leaked && before === undefined) {
+      flaggedPitfalls.add(id)
+      continue
     }
-    pitfalls.push({
+    // Where its mistake happened: the detours it names, else (memory's own pitfall, which these runs didn't run into) those of the runs it was learned from.
+    const sites: ReadonlyArray<Site> = detours.length > 0
+      ? detours
+      : (before?.evidence ?? []).flatMap((r) => {
+        const run = pastRuns.get(r)
+        return run === undefined ? [] : run.detours.map((detour, index) => ({ run, index, detour }))
+      })
+    sitesOf.set(id, sites)
+    const fitting = (t: Trigger, from: string): boolean => {
+      const own = triggerValue(t, values.map((value) => ({ value })))
+      const problem = triggerProblem(t) ?? (own === undefined ? undefined : `it names a task's own value ${JSON.stringify(own)}`) ?? siteProblem(t, sites)
+      if (problem !== undefined) problems.push(`${from} of pitfall ${id} (${describeTrigger(t)}): ${problem}; dropped the trigger`)
+      return problem === undefined
+    }
+    const proposed = [...(p.trigger === null ? [] : [p.trigger]), ...p.also]
+    // Memory's own triggers were checked when it learned them; only new ones are checked here.
+    const had = new Set((before === undefined ? [] : triggersOf(before)).map(triggerKey))
+    let triggers = proposed.filter((t) => had.has(triggerKey(t)) || fitting(t, "a trigger"))
+    // None of the answer's fits: memory's own stay; else the messages it quotes that its failures printed.
+    if (triggers.length === 0 && before !== undefined) triggers = triggersOf(before)
+    if (triggers.length === 0) triggers = quotedTriggers(p.text, sites).filter((t) => fitting(t, "a trigger from its words"))
+    if (triggers.length === 0) {
+      problems.push(
+        `pitfall ${id} has no trigger that fits its detours: give it the exact message its failing call printed (\`error\`), or the risky command (\`command\`); without one it is dropped`
+      )
+      flaggedPitfalls.add(id)
+      continue
+    }
+    pitfalls.push(withTriggers({
       id,
       subject,
-      text: p.text.trim(),
-      // A trigger that doesn't single out the new detours keeps the one memory had.
-      trigger: trigger ?? before?.trigger ?? null,
+      text: leaked ? before!.text : p.text.trim(),
+      trigger: null,
       evidence: [...new Set([...(before?.evidence ?? []), ...detours.map((x) => x.run.record)])].sort(),
-      cost_tokens: median(detours.map((x) => x.detour.cost.tokens))
-    })
+      cost_tokens: detours.length > 0 ? median(detours.map((x) => x.detour.cost.tokens)) : before?.cost_tokens ?? 0
+    }, triggers))
   }
   const pitfallIds = new Set(pitfalls.map((p) => p.id))
 
@@ -530,7 +584,8 @@ export const checkAnswer = (answer: InductionAnswer, evidence: Evidence, tenant:
     },
     problems,
     entries,
-    flagged: { workflows: [...flaggedWorkflows], pitfalls: [...flaggedPitfalls], edges: flaggedEdges }
+    flagged: { workflows: [...flaggedWorkflows], pitfalls: [...flaggedPitfalls], edges: flaggedEdges },
+    pitfallDetours: new Map([...sitesOf].map(([id, sites]) => [id, sites.slice(0, MAX_SITES).map((s) => describeDetour(s.run, s.index).replace(/^- #\d+/, `- ${s.run.record}#${s.index}`))]))
   }
 }
 
@@ -539,6 +594,53 @@ const mismatch = (trigger: Trigger, run: RunEvidence, failedAt: number, fixedAt:
   if (run.calls.length === 0) return undefined
   const relative = relativizer(run.cwd)
   return triggerMismatch(trigger, run.calls, failedAt, fixedAt, (c: ToolCall | undefined) => (c === undefined ? undefined : eventOfCall(c, relative)))
+}
+
+/** A detour where a pitfall's mistake happened, in the run that made it. */
+export interface Site {
+  readonly run: RunEvidence
+  readonly index: number
+  readonly detour: Detour
+}
+
+const FIXED_TOO = "it also matches the call that fixed it"
+
+/** Detours of a pitfall shown to a second call that gives it a trigger. */
+const MAX_SITES = 6
+
+/**
+ * Why a trigger doesn't fire where its mistake happened, or undefined if it
+ * does: on the call that failed in one of its detours, and on no call that
+ * fixed one. Detours whose log is gone can't tell, and don't object.
+ */
+const siteProblem = (t: Trigger, sites: ReadonlyArray<Site>): string | undefined => {
+  if (sites.length === 0) return undefined
+  const found = sites.map((s) => mismatch(t, s.run, s.detour.failed.call, s.detour.fixed.call))
+  if (found.includes(FIXED_TOO)) return "it also matches a call that fixed its mistake"
+  return found.some((m) => m === undefined) ? undefined : found[0]
+}
+
+/** Messages a text quotes, in single or double quotes ('unexpected EOF', "missing: …"), not words with an apostrophe. */
+const QUOTED_MESSAGE = /(?<![A-Za-z])'([^'\n]{5,100})'(?![A-Za-z])|"([^"\n]{5,100})"/g
+
+/**
+ * Error triggers a pitfall's own words give: each message it quotes that a
+ * failing call of its detours printed. Learned pitfalls often name their
+ * errors and had no trigger written for them.
+ */
+export const quotedTriggers = (text: string, sites: ReadonlyArray<Site>): Array<Trigger> => {
+  const out: Array<Trigger> = []
+  for (const m of text.matchAll(QUOTED_MESSAGE)) {
+    const phrase = (m[1] ?? m[2]).replace(/\s*…$/, "").trim()
+    const t: Trigger = { on: "error", all: [phrase], none: [], file: null }
+    if (triggerProblem(t) !== undefined || out.some((x) => x.all[0] === phrase)) continue
+    const failed = (s: Site) => {
+      const call = s.run.calls[s.detour.failed.call]
+      return call !== undefined && matchTrigger(t, eventOfCall(call, relativizer(s.run.cwd)))
+    }
+    if (sites.some(failed)) out.push(t)
+  }
+  return out
 }
 
 const endOf = (x: string) => (x === START || x === END ? x : slug(x))
@@ -580,7 +682,7 @@ export const applyRevision = (current: WorkflowMemory, r: RevisionAnswer): Induc
   const changed = new Set(r.pitfalls.map((p) => slug(p.id)))
   const gone = new Set(r.removed_pitfalls.map(slug))
   const pitfalls = [
-    ...current.pitfalls.filter((p) => !changed.has(p.id) && !gone.has(p.id)).map((p) => ({ id: p.id, text: p.text, detours: [], trigger: p.trigger })),
+    ...current.pitfalls.filter((p) => !changed.has(p.id) && !gone.has(p.id)).map((p) => ({ id: p.id, text: p.text, detours: [], trigger: p.trigger, also: p.also ?? [] })),
     ...r.pitfalls
   ]
   return { workflows, edges, pitfalls, entries: r.entries, rationale: r.rationale }
@@ -590,8 +692,9 @@ const isFlagged = (f: Flagged) => f.workflows.length + f.pitfalls.length + f.edg
 
 /**
  * What a second call reads: only the parts of an answer the checks flagged,
- * what is wrong with each, the values memory may not hold, and for a pitfall
- * that named no detour of the runs, their detours.
+ * what is wrong with each, the values memory may not hold, for a pitfall
+ * that named no detour of the runs, their detours, and for one with no
+ * trigger, the detours where its mistake happened.
  */
 export const fixPrompt = (answer: InductionAnswer, checked: Checked, evidence: Evidence): string => {
   const f = checked.flagged
@@ -621,6 +724,19 @@ export const fixPrompt = (answer: InductionAnswer, checked: Checked, evidence: E
   if (problems.some((p) => p.includes("comes from no detour of these runs"))) {
     lines.push("## The runs' detours", "", "A pitfall names its detours as \"<run id>#<detour number>\".", "")
     for (const r of evidence.runs.filter((x) => x.detours.length > 0)) lines.push(`### Run ${r.record}`, ...r.detours.map((_, i) => describeDetour(r, i)), "")
+  }
+  const untriggered = f.pitfalls.filter((id) => problems.some((p) => p.startsWith(`pitfall ${id} has no trigger`)))
+  if (untriggered.length > 0) {
+    lines.push(
+      "## Where the pitfalls without a trigger happened",
+      "",
+      "Write each trigger from these failures' own words, or leave the pitfall out of your answer if none of them shows its mistake.",
+      ""
+    )
+    for (const id of untriggered) {
+      const seen = checked.pitfallDetours.get(id) ?? []
+      lines.push(`### ${id}`, ...(seen.length > 0 ? seen : ["(the logs of the runs it came from are gone)"]), "")
+    }
   }
   return lines.join("\n")
 }
@@ -674,7 +790,9 @@ export const induce = Effect.fn("induce")(function*(
   tenant: string,
   current?: WorkflowMemory,
   /** More sections for the model to read: how memory did on the runs, revisions rejected before. */
-  extra: ReadonlyArray<string> = []
+  extra: ReadonlyArray<string> = [],
+  /** The runs memory learned from before, which its pitfalls are checked against. */
+  options: CheckOptions = {}
 ) {
   const ask = <A>(prompt: string, schema: Schema.Decoder<A>, maxBudgetUsd: number) =>
     callModel({ cli: config.cli, system: INDUCE_PROMPT, prompt, schema, model: config.model, effort: config.effort, cwd: config.cwd, maxBudgetUsd, timeoutS: 1200 })
@@ -693,13 +811,13 @@ export const induce = Effect.fn("induce")(function*(
     answer = built.value
   }
   let calls = 1
-  let result = checkAnswer(answer, evidence, tenant, current)
+  let result = checkAnswer(answer, evidence, tenant, current, options)
   if (isFlagged(result.flagged)) {
     const fixed = yield* ask(fixPrompt(answer, result, evidence), FixAnswer, 1)
     calls++
     costUsd += fixed.costUsd ?? 0
     answer = applyFix(answer, fixed.value, result.flagged)
-    result = checkAnswer(answer, evidence, tenant, current)
+    result = checkAnswer(answer, evidence, tenant, current, options)
   }
   return { ...result, rationale: answer.rationale, costUsd, calls, removed } satisfies Induced
 })

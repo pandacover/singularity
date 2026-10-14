@@ -15,6 +15,7 @@ import { matchSubject } from "../records/Subjects.ts"
 import { isMiss, readSkips, type Skip } from "../workflows/Commits.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
 import { budgetReason, learnState, roundUsd, spentToday, waitReason } from "../workflows/Learn.ts"
+import { type PitfallTally, readTriggerLog, talliedChanges, tallyPitfalls } from "../workflows/Pitfalls.ts"
 import { WorkflowStore } from "../workflows/WorkflowStore.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
 import { learningQueue, lockInfo } from "./Background.ts"
@@ -112,6 +113,10 @@ export interface StatusReport {
     readonly last_learned: string | null
     readonly next: NextRound
     readonly left_out: ReadonlyArray<{ readonly reason: string; readonly count: number }>
+    /** Warnings of known mistakes in the last week, and how often a mistake was made again after its warning. */
+    readonly warnings: { readonly this_week: number; readonly made_anyway: number }
+    /** Each known mistake's tally: what memory's hook saw of it, and the stored changes it was learned from. */
+    readonly mistakes: ReadonlyArray<PitfallTally>
   }>
   readonly learning: {
     readonly auto: boolean
@@ -163,6 +168,8 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
   const prefs = yield* readLearn(home.root)
   const repo = yield* identifyRepo(o.cwd)
   const skips = yield* readSkips(home.tenantDir)
+  const triggerLog = yield* readTriggerLog(home.tenantDir).pipe(Effect.orElseSucceed(() => []))
+  const weekAgo = DateTime.toEpochMillis(yield* DateTime.now) - 7 * 24 * 3600 * 1000
   const { repos, spent, hereStored } = yield* Effect.gen(function*() {
     const subjects = yield* (yield* RecordStore).subjects()
     const here = repo === undefined ? undefined : matchSubject(subjects, repo)
@@ -171,6 +178,11 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
     const running = lockInfo(home.root)
     const queued = learningQueue(home.root)
     const repos: Array<StatusReport["repos"][number]> = []
+    // Lines of the hook's log in the last week about these pitfalls.
+    const thisWeek = (pitfalls: ReadonlyArray<{ readonly id: string }>, moment: string) => {
+      const ids = new Set(pitfalls.map((p) => p.id))
+      return triggerLog.filter((l) => l.moment === moment && Date.parse(l.at) >= weekAgo && l.pitfalls.some((p) => ids.has(p))).length
+    }
     for (const subject of subjects) {
       const state = yield* learnState(subject.id)
       const ids = new Set(state.records.map((r) => r.id))
@@ -194,7 +206,12 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
         learned_from: state.learned.length,
         last_learned: last ?? null,
         next,
-        left_out: leftOut(skips, subject.id, ids).map(([reason, count]) => ({ reason, count }))
+        left_out: leftOut(skips, subject.id, ids).map(([reason, count]) => ({ reason, count })),
+        warnings: {
+          this_week: thisWeek(state.memory.pitfalls, "trigger"),
+          made_anyway: thisWeek(state.memory.pitfalls, "again")
+        },
+        mistakes: tallyPitfalls(state.memory.pitfalls, talliedChanges(state.records, []), triggerLog)
       })
     }
     return { repos, spent, hereStored: here !== undefined }
@@ -264,6 +281,10 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
     say(`    ${x.name.padEnd(w)}${knows} · ${changes}${x.last_learned === null ? "" : ` · learned ${shortDate(x.last_learned)}`}${x.here ? s.cyan(" ← here") : ""}`)
     say(`    ${" ".repeat(w)}${next}`)
     if (x.left_out.length > 0) say(`    ${" ".repeat(w)}${s.dim(`left out: ${x.left_out.map((m) => `${m.count} ${m.reason}`).join("; ")}`)}`)
+    if (x.warnings.this_week > 0) {
+      const anyway = x.warnings.made_anyway > 0 ? `, a mistake made anyway ${plural(x.warnings.made_anyway, "time")} after its warning` : ""
+      say(`    ${" ".repeat(w)}${s.dim(`warned of known mistakes ${plural(x.warnings.this_week, "time")} this week${anyway}`)}`)
+    }
   }
   if (r.here !== null && !r.here.stored) say(`    ${s.dim(`${r.here.name} (here): no changes stored yet`)}`)
   if (r.repos.length === 0 && (r.here === null || r.here.stored)) say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)

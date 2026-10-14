@@ -3,12 +3,15 @@
  * what the agent is doing. Cheap enough to check on every tool call.
  *
  * - `command`: a shell command contains every string in `all` and none in `none`
- *   (`test:update` and `--watch=false`).
+ *   (`test:update` and `--watch=false`). A command that only reads never
+ *   matches: `grep "git add" notes.md` names the command, it doesn't run it.
  * - `edit`: an edit whose file path ends with `file` (if given) writes text
  *   containing every string in `all` and none in `none` (`<Excalidraw`, but not
  *   `handleKeyboardGlobally`).
- * - `error`: a tool call failed, and its output contains every string in `all`
- *   (`matches of the string to replace`).
+ * - `error`: a call failed at doing something (records/Outcome.ts), and its
+ *   output contains every string in `all` (`matches of the string to
+ *   replace`). What a read or a search prints never matches: a notes file may
+ *   quote any error.
  * - `page` (web): the page an agent just read shows every string in `all` and
  *   none in `none`; `action` (web): the control an action used is named with
  *   them. Code events never match these; src/web/Reader.ts does.
@@ -18,7 +21,8 @@
  */
 import { Schema } from "effect"
 import type { ToolCall } from "../traces/index.ts"
-import { EDIT_TOOLS, reportsFailure, SHELL_TOOLS, SHELL_WRITE } from "../traces/index.ts"
+import { EDIT_TOOLS, SHELL_TOOLS, SHELL_WRITE } from "../traces/index.ts"
+import { looksAround, mistakeMade } from "./Outcome.ts"
 
 export const TriggerOn = Schema.Literals(["command", "edit", "error", "page", "action"])
 export type TriggerOn = typeof TriggerOn.Type
@@ -47,6 +51,7 @@ export interface ToolEvent {
   readonly text: string | undefined
   /** The result, or the error text. Undefined before the call has run. */
   readonly output: string | undefined
+  /** It failed at doing something, not at looking around: a mistake (records/Outcome.ts). */
   readonly failed: boolean
 }
 
@@ -69,7 +74,7 @@ const containsNone = (text: string, none: ReadonlyArray<string>) => none.every((
 export const matchTrigger = (t: Trigger, e: ToolEvent): boolean => {
   switch (t.on) {
     case "command":
-      return e.command !== undefined && containsAll(e.command, t.all) && containsNone(e.command, t.none)
+      return e.command !== undefined && containsAll(e.command, t.all) && containsNone(e.command, t.none) && !looksAround(e.tool, e.command)
     case "edit": {
       if (e.text === undefined) return false
       if (t.file !== null) {
@@ -139,6 +144,6 @@ export const eventOfCall = (call: ToolCall, relative: (path: string) => string =
       ? editText(call.name, call.input)
       : command !== undefined && SHELL_WRITE.test(command) ? command : undefined,
     output,
-    failed: call.isError || (shell && output !== undefined && reportsFailure(output))
+    failed: output !== undefined && mistakeMade({ tool: call.name, command, output, isError: call.isError })
   }
 }

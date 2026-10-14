@@ -34,7 +34,7 @@ import { cuesPrompt, writeCues } from "../workflows/CueWriter.ts"
 import { describeMemory } from "../workflows/Describe.ts"
 import { gatherEvidence, withPlacesOf } from "../workflows/Evidence.ts"
 import { hasCues } from "../workflows/Cues.ts"
-import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord, withNewPitfalls } from "../workflows/Evolve.ts"
+import { describeReplay, handedTexts, lookupsText, passes, refine, replay, shownInRecord, withPitfallsOf } from "../workflows/Evolve.ts"
 import { withSnapshots } from "../workflows/Finish.ts"
 import { DEFAULT_INDUCE_EFFORT, DEFAULT_INDUCE_MODEL, induce } from "../workflows/Induce.ts"
 import * as JsonWorkflowStore from "../workflows/JsonWorkflowStore.ts"
@@ -287,19 +287,19 @@ ${yield* lookupsText(yield* store.memory(), handed, (run) => repo ?? newRecords.
     if (!verdict.commit) {
       yield* store.reject(candidate.id, verdict.reason)
       yield* Console.log(`rejected ${candidate.id}: ${verdict.reason}`)
-      // Its new pitfalls stay, checked against the runs' failures; the new runs are left for the next round.
-      const warned = withNewPitfalls(current, revision)
+      // Its pitfalls stay, checked against the runs' failures; the new runs are left for the next round.
+      const warned = withPitfallsOf(current, revision)
       if (warned === undefined) return
       const kept = yield* store.propose(warned, {
         baseVersion,
-        rationale: `the new pitfalls of ${candidate.id}, rejected: ${verdict.reason}`,
+        rationale: `the pitfalls of ${candidate.id}, rejected: ${verdict.reason}`,
         records: learned.map((r) => r.id),
         model: args.model,
         costUsd: 0,
         report: { problems: [], replay: null }
       })
       const version = yield* store.commit(kept.id)
-      return yield* Console.log(`kept its ${warned.pitfalls.length - current.pitfalls.length} new pitfalls as version ${version}`)
+      return yield* Console.log(`kept its pitfalls (${warned.pitfalls.length}, against ${current.pitfalls.length}) as version ${version}`)
     }
     // The runs it learned from become this home's records, so later rounds know them.
     for (const r of newRecords) if (!(yield* own.has(r.id))) yield* own.put(r)

@@ -7,6 +7,7 @@
  */
 import { DateTime } from "effect"
 import type { Trace } from "./Models.ts"
+import { isPersonPrompt } from "./Prompts.ts"
 
 export interface TraceWindow {
   /** Epoch milliseconds, exclusive; undefined from the session's start. */
@@ -22,7 +23,8 @@ const inside = (w: TraceWindow, t: number | undefined): t is number => t !== und
 /**
  * The trace's events inside `window`. Its prompts are those typed in the
  * window, led by the one still being worked on when it opened, if the
- * window's first step came before any prompt of its own. The session's
+ * window's first step came before any prompt of its own: the person's last
+ * before it, not a notice a tool sent meanwhile (Prompts.ts). The session's
  * running cost covers the whole session, so a part has none.
  */
 export const sliceTrace = (trace: Trace, window: TraceWindow): Trace => {
@@ -30,12 +32,13 @@ export const sliceTrace = (trace: Trace, window: TraceWindow): Trace => {
   const toolCalls = trace.toolCalls.filter((c) => inside(window, millis(c.startedAt)))
   const responses = trace.responses.filter((r) => inside(window, millis(r.timestamp)))
   const firstStep = Math.min(...[...toolCalls.map((c) => millis(c.startedAt)!), ...responses.map((r) => millis(r.timestamp)!)])
-  const firstPrompt = prompts.length === 0 ? Infinity : millis(prompts[0].timestamp)!
+  const own = prompts.filter(isPersonPrompt)
+  const firstPrompt = own.length === 0 ? Infinity : millis(own[0].timestamp)!
   const ongoing = window.from === undefined || firstStep >= firstPrompt
     ? undefined
     : trace.prompts.filter((p) => {
       const t = millis(p.timestamp)
-      return t !== undefined && t <= window.from!
+      return t !== undefined && t <= window.from! && isPersonPrompt(p)
     }).at(-1)
   const times = [
     ...prompts.map((p) => millis(p.timestamp)!),

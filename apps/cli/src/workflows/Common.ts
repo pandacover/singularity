@@ -52,11 +52,11 @@ The runs you are given did different tasks of one kind (named below). Find what 
 
 From the detours of all runs (a call that failed, and what it cost until fixed), keep the mistakes another task of this kind could make again, in general words: what goes wrong and what to do instead. One run's detour is enough when the mistake isn't about that task's own change. Memory's current pitfalls are listed: to attach one to a workflow, list it by its id with \`detours\` empty (or the detours these runs made of it). Leave out failures that were the task's work in progress (a test failing until the fix was in). Refer to detours as "<run id>#<detour number>", and list a pitfall's id in the workflows it belongs to.
 
-A pitfall may have an exact \`trigger\` that tells it is happening, checked on every tool call: plain substrings, never regular expressions, and never a task's own values.
-- \`on: "command"\`: a shell command containing every string in \`all\` and none in \`none\` (\`file\` null).
+Every new pitfall needs a trigger, checked after every tool call, so that its warning comes when the mistake is made; one without a trigger is dropped (a pitfall memory has keeps its own). Plain substrings, never regular expressions, and never a task's own values.
+- \`on: "error"\`: a call that failed printed every string in \`all\` (\`file\` null): the exact words of the message its detour shows, specific enough that no other failure prints them. It never fires on a read or a search.
+- \`on: "command"\`: a shell command containing every string in \`all\` and none in \`none\` (\`file\` null), for a mistake that prints no message of its own: the risky command. It never fires on a command that only reads.
 - \`on: "edit"\`: an edit (to a file whose path ends with \`file\`, if given) writing text that contains every string in \`all\` and none in \`none\`.
-- \`on: "error"\`: a failed tool call whose output contains every string in \`all\` (\`file\` null).
-It must match the call that failed and not the call that fixed it. Use null when there are no such strings.
+\`also\` lists more triggers for the same mistake, one per other way it shows. Each must match the call that failed in one of its detours and not the call that fixed it.
 
 \`entries\`: leave it empty.
 

@@ -60,14 +60,20 @@ export const mayFire = (stdin: string, session: string): boolean => {
     const triggers = (JSON.parse(session) as { triggers?: unknown }).triggers
     if (typeof input !== "object" || input === null || !Array.isArray(triggers)) return true
     let text: string | undefined
-    return triggers.some((p: unknown) => {
-      const trigger = typeof p === "object" && p !== null ? (p as { trigger?: unknown }).trigger : undefined
+    const may = (trigger: unknown): boolean => {
       if (trigger === null) return false
       if (!isTrigger(trigger)) return true
       // Pages and actions are a web reader's; code calls never match them.
       if (trigger.on === "page" || trigger.on === "action") return false
       const call = (text ??= callText(input as Record<string, unknown>))
       return trigger.all.flatMap((s) => s.split(/\s+/)).filter((w) => w !== "").every((w) => call.includes(w))
+    }
+    return triggers.some((p: unknown) => {
+      if (typeof p !== "object" || p === null) return true
+      const { trigger, also } = p as { trigger?: unknown; also?: unknown }
+      // More triggers for the same mistake (`also`), any of which fires it.
+      if (also !== undefined && (!Array.isArray(also) || also.some(may))) return true
+      return may(trigger)
     })
   } catch {
     return true

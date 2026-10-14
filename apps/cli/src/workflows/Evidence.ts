@@ -12,10 +12,10 @@ import { Effect, FileSystem, Option, Path } from "effect"
 import { createHash } from "node:crypto"
 import { fileAt, git } from "../local/Git.ts"
 import type { Detour, WorkflowRecord } from "../records/Models.ts"
-import { relativizer } from "../records/Extract.ts"
+import { extractMechanical, type Mechanical, relativizer, stillADetour } from "../records/Extract.ts"
 import { recordTrace } from "../records/Segment.ts"
 import { classifyKey } from "../records/Shell.ts"
-import { EDIT_TOOLS, type ToolCall } from "../traces/index.ts"
+import { EDIT_TOOLS, ownWords, type ToolCall } from "../traces/index.ts"
 import { editsOfDiff, placeOfEdit } from "./Edits.ts"
 import { type Looking, lookingOf } from "./Lookups.ts"
 import type { Place, WorkflowMemory } from "./Models.ts"
@@ -104,10 +104,14 @@ const MAX_DESCRIPTION = 1500
 
 const clipTo = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s)
 
-/** A change in daily use as `promptOf` describes it: its commit titles, then the prompts typed for it. */
+/**
+ * A change in daily use as `promptOf` describes it: its commit titles, then
+ * the prompts typed for it, in the person's own words (what they pasted or
+ * quoted is left out: it says what they read, not what they asked).
+ */
 export const describeChange = (titles: ReadonlyArray<string>, prompts: ReadonlyArray<string>): string =>
   clipTo(
-    [...titles.slice(0, MAX_TITLES), ...prompts.map((p) => clipTo(p.trim(), MAX_ASK))].map((s) => s.trim()).filter((s) => s !== "").join("\n\n"),
+    [...titles.slice(0, MAX_TITLES), ...prompts.map((p) => clipTo(ownWords(p), MAX_ASK))].map((s) => s.trim()).filter((s) => s !== "").join("\n\n"),
     MAX_DESCRIPTION
   )
 
@@ -166,7 +170,15 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
   const order = new Map<string, number>()
   const readFirst = new Map<string, Array<string>>()
   const spans: Array<ReadSpan & { readonly turn: number }> = []
-  const none = { order, readFirst, spans, calls: [] as ReadonlyArray<ToolCall>, cwd: undefined as string | undefined, looking: null as Looking | null }
+  const none = {
+    order,
+    readFirst,
+    spans,
+    calls: [] as ReadonlyArray<ToolCall>,
+    cwd: undefined as string | undefined,
+    looking: null as Looking | null,
+    mechanical: undefined as Mechanical | undefined
+  }
   if (!(yield* fs.exists(r.run.log).pipe(Effect.orElseSucceed(() => false)))) return none
   const trace = yield* recordTrace(r).pipe(Effect.option)
   if (Option.isNone(trace)) return none
@@ -188,7 +200,9 @@ const fromTranscript = Effect.fnUntraced(function*(r: WorkflowRecord, created: R
       readFirst.set(file, [...new Set(reads.filter((f) => f !== file && splitName(f).dir === dir))])
     }
   }
-  return { order, readFirst, spans, calls, cwd: trace.value.cwd, looking: lookingOf(trace.value, relative) }
+  // Its commands and detours as the rules judge them now (records/Outcome.ts): a record keeps what the rules said when it was made.
+  const mechanical = extractMechanical(trace.value, "", { succeeded: r.run.outcome === "success" })
+  return { order, readFirst, spans, calls, cwd: trace.value.cwd, looking: lookingOf(trace.value, relative), mechanical }
 })
 
 const IDENT = /[A-Za-z_$][\w$]{3,}/g
@@ -370,7 +384,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       pooled.set(id, p)
     }
     const uses: Array<PlaceUse & { readonly order: number }> = []
-    const { order, readFirst, spans, calls, cwd, looking } = yield* fromTranscript(r, d.created.map((c) => c.file))
+    const { order, readFirst, spans, calls, cwd, looking, mechanical } = yield* fromTranscript(r, d.created.map((c) => c.file))
     const orderOf = (file: string, fallback: number) => order.get(file) ?? 1000 + fallback
     const before: Array<{ readonly file: string; readonly added: ReadonlyArray<string>; readonly before: ReadonlyArray<string> | undefined }> = []
 
@@ -419,7 +433,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
 
     // For each command that checks (tests, typecheck, lint, build) and worked: the shortest line that ran it.
     const shortest = new Map<string, string>()
-    for (const c of r.commands.filter((c) => c.ok)) {
+    for (const c of (mechanical?.commands ?? r.commands).filter((c) => c.ok)) {
       for (const k of c.keys.filter((k) => ["test", "typecheck", "lint", "build"].includes(classifyKey(k)))) {
         const seen = shortest.get(k)
         if (seen === undefined || c.command.length < seen.length) shortest.set(k, c.command)
@@ -440,7 +454,7 @@ export const gatherEvidence = Effect.fn("gatherEvidence")(function*(records: Rea
       uses: uses.map(({ order: _order, ...u }) => u),
       snapshots: d.snapshots,
       checks,
-      detours: r.detours,
+      detours: mechanical?.detours ?? r.detours.filter(stillADetour),
       readFirst: [...readFirst.entries()].map(([created, read]) => ({ created, read })),
       values,
       calls,

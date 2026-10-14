@@ -196,8 +196,8 @@ describe("what runs looked up before their first edit", () => {
       workflows: [],
       edges: [],
       pitfalls: [
-        { id: "watch-flag", text: "The script already passes --watch.", detours: [], trigger: null },
-        { id: "made-up", text: "Something nobody hit.", detours: ["nowhere#0"], trigger: null }
+        { id: "watch-flag", text: "The script already passes --watch.", detours: [], trigger: null, also: [] },
+        { id: "made-up", text: "Something nobody hit.", detours: ["nowhere#0"], trigger: null, also: [] }
       ],
       entries: [],
       rationale: ""

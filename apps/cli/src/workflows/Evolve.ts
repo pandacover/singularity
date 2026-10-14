@@ -16,9 +16,10 @@
  *    and those memory already learned from), it shows at least as many of the
  *    places runs edited, less the places they left alone, as the current
  *    memory does, a place edited counting twice one left alone. Otherwise it
- *    is rejected, with the reason, for next time; its new pitfalls stay
- *    (`withNewPitfalls`): each comes from a failure the runs had, checked
- *    against it, and says nothing about places.
+ *    is rejected, with the reason, for next time; its pitfalls stay
+ *    (`withPitfallsOf`: those it learned, merged, gave triggers to or took
+ *    out): each comes from a failure the runs had, checked against it, and
+ *    says nothing about places.
  *    Memory picked by cues is replayed with cues: they are written again for
  *    the revision first (CueWriter.ts), so the gate judges what tasks will get.
  */
@@ -26,10 +27,10 @@ import { Effect, FileSystem, Path } from "effect"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { choiceByCues, hasCues } from "./Cues.ts"
 import type { Evidence, RunEvidence } from "./Evidence.ts"
-import { describePlace, type InduceConfig, induce } from "./Induce.ts"
+import { type CheckOptions, describePlace, type InduceConfig, induce } from "./Induce.ts"
 import { type CodeSource, type Located, locatePlaces } from "./Locate.ts"
 import { describeLookup } from "./Lookups.ts"
-import { isReadPlace, type Place, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
+import { isReadPlace, type Place, triggersOf, withShow, type Workflow, type WorkflowMemory } from "./Models.ts"
 import { selectWorkflows, type SelectorConfig, wordChoice } from "./Select.ts"
 import { handedAtStart } from "./Session.ts"
 import type { ReplayNumbers, WorkflowCandidate } from "./WorkflowStore.ts"
@@ -168,23 +169,27 @@ export const passes = (candidate: ReplayNumbers, current: ReplayNumbers): { read
 }
 
 /**
- * The current memory with the pitfalls a rejected revision learned: those it
- * has and memory doesn't, each in the current workflows that do what the
- * revision's workflows listing it do (the same id, or a step at the same
- * place). Undefined when it learned none.
+ * The current memory with the pitfalls of a rejected revision: what it
+ * learned, merged, gave triggers to or took out, all checked against the
+ * runs' failures and none of it against places. A new one goes in the
+ * current workflows that do what the revision's workflows listing it do (the
+ * same id, or a step at the same place); one it took out leaves them.
+ * Undefined when its pitfalls are memory's.
  */
-export const withNewPitfalls = (current: WorkflowMemory, revision: WorkflowMemory): WorkflowMemory | undefined => {
+export const withPitfallsOf = (current: WorkflowMemory, revision: WorkflowMemory): WorkflowMemory | undefined => {
+  if (JSON.stringify(current.pitfalls) === JSON.stringify(revision.pitfalls)) return undefined
   const known = new Set(current.pitfalls.map((p) => p.id))
+  const ids = new Set(revision.pitfalls.map((p) => p.id))
   const fresh = revision.pitfalls.filter((p) => !known.has(p.id))
-  if (fresh.length === 0) return undefined
   const placesOf = (w: Workflow) => new Set(w.steps.flatMap((s) => (s.place === null ? [] : [s.place])))
   const workflows = current.workflows.map((w) => {
     const mine = placesOf(w)
     const alike = revision.workflows.filter((o) => o.id === w.id || [...placesOf(o)].some((p) => mine.has(p)))
     const added = fresh.filter((p) => alike.some((o) => o.pitfalls.includes(p.id))).map((p) => p.id)
-    return added.length === 0 ? w : { ...w, pitfalls: [...w.pitfalls, ...added] }
+    const kept = w.pitfalls.filter((id) => ids.has(id))
+    return added.length === 0 && kept.length === w.pitfalls.length ? w : { ...w, pitfalls: [...kept, ...added] }
   })
-  return { ...current, workflows, pitfalls: [...current.pitfalls, ...fresh] }
+  return { ...current, workflows, pitfalls: revision.pitfalls }
 }
 
 export interface EvolveResult {
@@ -212,7 +217,9 @@ export const refine = Effect.fn("refine")(function*(
    * run's base commit (without one, the repo each run's record names), and
    * the hand-over texts runs got, by record.
    */
-  looked?: { readonly repo: string | undefined; readonly texts: ReadonlyMap<string, string> }
+  looked?: { readonly repo: string | undefined; readonly texts: ReadonlyMap<string, string> },
+  /** More for the model to read (the repo's own instructions, what pitfalls did), and the runs memory learned from before. */
+  more: { readonly notes?: ReadonlyArray<string>; readonly checks?: CheckOptions } = {}
 ) {
   let costUsd = 0
   let calls = 0
@@ -245,7 +252,7 @@ export const refine = Effect.fn("refine")(function*(
   const repoOf = (run: RunEvidence) => looked?.repo ?? records.get(run.record)?.run.repo ?? undefined
   const lookups = looked === undefined ? "" : yield* lookupsText(current, results, repoOf, looked.texts)
   const notes = [resultsText(results, places, current), lookups, rejectionsText(rejected)].filter((t) => t !== "")
-  const induced = yield* induce(config, merged, current.tenant, current, notes)
+  const induced = yield* induce(config, merged, current.tenant, current, [...notes, ...(more.notes ?? [])], more.checks)
   // A workflow that keeps its id keeps the runs it was learned from, and the kind of task it serves.
   const before = new Map(current.workflows.map((w) => [w.id, w]))
   const workflows = induced.memory.workflows.map((w) => {
@@ -261,7 +268,7 @@ export const refine = Effect.fn("refine")(function*(
   const entries = new Set(induced.entries)
   // A pitfall with a trigger warns on its own when its mistake comes back: one the checks dropped stays, one the model took out goes.
   const kept = new Set([...induced.memory.pitfalls.map((p) => p.id), ...induced.removed.pitfalls])
-  const carried = current.pitfalls.filter((p) => p.trigger !== null && !kept.has(p.id))
+  const carried = current.pitfalls.filter((p) => triggersOf(p).length > 0 && !kept.has(p.id))
   const memory: WorkflowMemory = {
     ...induced.memory,
     pitfalls: [...induced.memory.pitfalls, ...carried],

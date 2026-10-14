@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest"
 import { spawnSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { decodeHookInput, eventOfHook } from "../../src/handover/HookInput.ts"
 import { loadHome } from "../../src/local/Home.ts"
@@ -63,7 +64,8 @@ describe("the tool-call hook's first look", () => {
         expect(mayFire(stdin, sessionText([pitfall("other", { on: "command", all: ["no such words"], none: [], file: null }), p])), `${call.tool_name}: ${JSON.stringify(p.trigger)}`).toBe(true)
       }
     }
-    expect(matched).toBeGreaterThan(500)
+    // Enough pairs to mean something; reads and calls that didn't fail match no trigger, so not every stretch does.
+    expect(matched).toBeGreaterThan(400)
   })
 
   it("passes over a call none can match, and leaves to the match what it can't read", () => {
@@ -110,8 +112,25 @@ describe("the tool-call hook's first look", () => {
       })
     const quiet = hook({ tool_name: "Bash", tool_input: { command: "npx tsc --noEmit" }, tool_response: { stdout: "", stderr: "" } })
     expect([quiet.status, quiet.stdout]).toEqual([0, ""])
+    // A helper agent reading notes that quote the message: a read, never a failure.
+    const read = hook({ agent_id: "a1", tool_name: "Bash", tool_input: { command: "sed -n 1,80p notes.md" }, tool_response: { stdout: "error TS1002: Unterminated string literal. exit code 1", stderr: "" } })
+    expect([read.status, read.stdout]).toEqual([0, ""])
     const failed = hook({ hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "npx tsc --noEmit" }, error: "a.ts(1,7): error TS1002: Unterminated string literal." })
     expect(failed.status).toBe(0)
     expect(JSON.parse(failed.stdout).hookSpecificOutput).toMatchObject({ hookEventName: "PostToolUseFailure", additionalContext: expect.stringContaining("Mind p-tsc.") })
+    // Made again after the warning: not said twice, but kept for the tally.
+    const again = hook({ hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "npx tsc --noEmit" }, error: "b.ts(2,1): error TS1002: Unterminated string literal." })
+    expect([again.status, again.stdout]).toEqual([0, ""])
+    const log = readFileSync(join(home.tenantDir, "workflows", "handovers.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l) as { moment: string; pitfalls: Array<string> })
+    expect(log.map((l) => [l.moment, l.pitfalls])).toEqual([["trigger", ["p-tsc"]], ["again", ["p-tsc"]]])
   }, 60_000)
+
+  it("looks at every trigger of a pitfall, its others too", () => {
+    const stdin = JSON.stringify({ session_id: "s", tool_name: "Bash", tool_input: { command: "node edit.mjs" }, error: "Error: missing: const x = 1" })
+    const merged = { ...pitfall("p-edit", { on: "error", all: ["Unterminated string literal"], none: [], file: null }), also: [{ on: "error" as const, all: ["missing:"], none: [], file: null }] }
+    expect(mayFire(stdin, sessionText([merged]))).toBe(true)
+    expect(mayFire(stdin, sessionText([{ ...merged, also: [] }]))).toBe(false)
+    const event = eventOfHook(asClaudeCall(decodeHookInput(stdin)!), "/repo")!
+    expect(firing([merged], new Set(), event).map((p) => p.id)).toEqual(["p-edit"])
+  })
 })

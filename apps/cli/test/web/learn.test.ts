@@ -100,7 +100,7 @@ describe("a learning round whose workflows the replay turns down", () => {
     writeFileSync(answers, JSON.stringify([{
       workflows: [],
       edges: [],
-      pitfalls: [{ id: "reminders-only-when-asked", text: "Untick Send SMS reminder unless the member asked for reminders.", detours: ["r3#feedback"], trigger: { on: "page", all: ["Send SMS reminder"], none: [], file: null } }],
+      pitfalls: [{ id: "reminders-only-when-asked", text: "Untick Send SMS reminder unless the member asked for reminders.", detours: ["r3#feedback"], trigger: { on: "page", all: ["Send SMS reminder"], none: [], file: null }, also: [] }],
       entries: [],
       rationale: "a rule from the feedback"
     }]))

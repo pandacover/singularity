@@ -176,6 +176,21 @@ const SUBCOMMAND_RUNNERS = new Set([
 const RUN_WORDS = new Set(["run", "run-script", "exec", "dlx", "x"])
 const INTERPRETERS = new Set(["node", "python", "python3", "py", "ruby", "perl", "php", "bash", "sh", "pwsh", "powershell", "tsx", "ts-node"])
 const PREFIXES = new Set(["sudo", "time", "env", "nice", "command", "exec", "nohup", "cmd", "/c"])
+/** Shell keywords before a command (`do npm test`, `if grep -q x f`): the command follows them. */
+const LEADING_KEYWORDS = new Set(["if", "then", "else", "elif", "while", "until", "do", "!"])
+/**
+ * Segments that run nothing of their own: a loop's or a case's head and end
+ * (`for f in a b`, `done`), a function's definition (`t() {`), and builtins
+ * that set the shell's state (`local s=1`, `export X=1`).
+ */
+const NO_COMMAND = new Set([
+  "for", "select", "case", "in", "done", "fi", "esac", "function", "{", "}", "}}", "]]", "local", "export", "declare",
+  "typeset", "readonly", "unset", "shift", "return", "break", "continue", ":", "set", "setopt", "trap", "wait"
+])
+/** Interpreters' options that take the next word as their value: `python -X utf8 -`, `node -r ts-node/register x.ts`. */
+const VALUE_OPTIONS = new Set(["-X", "-W", "-r", "--require", "--import", "--loader", "--experimental-loader", "--env-file", "-C", "--conditions"])
+/** Options that say the code comes inline or on stdin: `node -e`, `python -c`, `python -`. */
+const INLINE_OPTIONS = new Set(["-e", "-c", "-", "--eval", "-p", "--print", "-Command"])
 /** Programs that run another for at most a while: `timeout 600 npm test`. */
 const TIME_LIMITS = new Set(["timeout", "gtimeout"])
 
@@ -187,15 +202,16 @@ const isFlag = (word: string) => word.startsWith("-") && word.length > 1
 const isAssignment = (word: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)
 
 /**
- * Where the command proper starts among a segment's words: after variable
- * assignments, prefixes (`sudo`, `nice -n 5`), a time limit with its options
- * and duration (`timeout -k 5 600`), and PowerShell's call operator.
+ * Where the command proper starts among a segment's words: after shell
+ * keywords (`do`, `if`), variable assignments, prefixes (`sudo`, `nice -n
+ * 5`), a time limit with its options and duration (`timeout -k 5 600`), and
+ * PowerShell's call operator.
  */
 const commandStart = (ws: ReadonlyArray<string>): number => {
   let i = 0
   while (i < ws.length) {
     const w = ws[i].toLowerCase()
-    if (isAssignment(ws[i])) i++
+    if (isAssignment(ws[i]) || LEADING_KEYWORDS.has(w)) i++
     else if (TIME_LIMITS.has(programName(w))) {
       i++
       while (i < ws.length && isFlag(ws[i])) i += /^(-k|-s|--kill-after|--signal)$/.test(ws[i]) ? 2 : 1
@@ -215,13 +231,15 @@ export const commandWords = (segment: Segment): ReadonlyArray<string> => segment
 
 /**
  * What a segment runs: `yarn test:update`, `npx vitest`, `git diff`,
- * `node -e`, `python3 script.py`, `grep`. Undefined for an empty segment.
+ * `node -e`, `python3 script.py`, `grep`. Undefined for an empty segment,
+ * and for one that runs nothing of its own (`done`, `local x=1`).
  * A task runner's tasks (`turbo run typecheck test`) are `segmentKeys`.
  */
 export const segmentKey = (segment: Segment): string | undefined => {
   const ws = segment.words.slice(commandStart(segment.words))
   if (ws.length === 0) return undefined
   const program = programName(ws[0])
+  if (NO_COMMAND.has(program) || /^[\w.:-]+\(\)$/.test(program)) return undefined
   const args = ws.slice(1)
   // `git -C dir diff`: -C and -c take a value.
   if (program === "git") {
@@ -238,13 +256,219 @@ export const segmentKey = (segment: Segment): string | undefined => {
     return `${program} ${sub}`
   }
   if (INTERPRETERS.has(program)) {
-    const flag = args[0]
-    if (flag === "-m" && args[1] !== undefined) return `${program} -m ${args[1]}`
-    if (flag === "-e" || flag === "-c" || flag === "-" || flag === "--eval" || flag === "-Command") return `${program} ${flag}`
-    const script = firstArg()
-    return script === undefined ? program : `${program} ${posix.basename(script.replace(/\\/g, "/"))}`
+    // Past the interpreter's own options: what it runs is a module, inline code, or a script.
+    for (let i = 0; i < args.length; i++) {
+      const w = args[i]
+      if (w === "-m" && args[i + 1] !== undefined) return `${program} -m ${args[i + 1]}`
+      if (INLINE_OPTIONS.has(w)) return `${program} ${w}`
+      if (VALUE_OPTIONS.has(w)) i++
+      else if (!isFlag(w)) return `${program} ${posix.basename(w.replace(/\\/g, "/"))}`
+    }
+    return program
   }
   return program
+}
+
+/** Package managers and their runners: what they run is a script of the package or a tool it has. */
+const PACKAGE_RUNNERS = new Set(["npm", "yarn", "pnpm", "bun", "npx", "pnpx", "bunx"])
+
+/** Interpreters run alike, whichever name they go by: `python3` and `python`, `node` and `tsx`. */
+const FAMILY: Readonly<Record<string, string>> = {
+  python3: "python", py: "python", tsx: "node", "ts-node": "node", sh: "bash", pwsh: "powershell"
+}
+
+/**
+ * What a key's run is about, whichever command ran it: a script by its file
+ * (`python3 build.py` and `python build.py` run `build.py`), code an
+ * interpreter ran inline (`node (inline)`), a package's script or tool by
+ * its name (`yarn test:update`, `npm run test:update`: `test:update`), or the
+ * key itself (`git checkout`). A check also targets its kind of check
+ * (`check:test`): running the tests another way runs the same check.
+ */
+export const keyTargets = (key: string): Array<string> => {
+  const [program, ...rest] = key.split(" ")
+  const args = rest.join(" ")
+  let target = key
+  if (INTERPRETERS.has(program)) {
+    const family = FAMILY[program] ?? program
+    target = args === "" || INLINE_OPTIONS.has(args) ? `${family} (inline)` : args.startsWith("-m ") ? `${family} ${args}` : args
+  } else if (PACKAGE_RUNNERS.has(program) && args !== "") {
+    target = args
+  }
+  const check = classifyKey(key)
+  return ["test", "typecheck", "lint", "build"].includes(check) ? [target, `check:${check}`] : [target]
+}
+
+/** Files a piece of inline code names, by their extension. */
+const FILE_IN_CODE = /["'`]([\w@.\/\\:-]*\w\.(?:tsx?|jsx?|mjs|cjs|json|jsonc|md|mdx|py|html|css|scss|ya?ml|toml|txt|sh|ps1))["'`]/g
+/** Inline code that writes files: Node's and Python's writers. */
+const WRITES_IN_CODE = /writeFileSync\(|writeFile\(|write_text\(|\.write\(|open\([^)]*["'][wa]\+?["']/
+
+/** A file's name as targets compare it: the last part of its path, in lower case. */
+export const fileTarget = (path: string): string => `file:${(path.replace(/\\/g, "/").split("/").pop() ?? path).toLowerCase()}`
+
+/**
+ * Files a segment edits in place: `sed -i`'s and `perl -i`'s files, and the
+ * files inline code names when it writes (`node -e '…writeFileSync("a.ts")…'`).
+ */
+export const editedFiles = (segment: Segment): Array<string> => {
+  const ws = commandWords(segment)
+  const program = programName(ws[0] ?? "")
+  if (program === "sed" || program === "perl") {
+    if (!ws.slice(1).some((w) => /^-[a-zA-Z]*i/.test(w) || w.startsWith("--in-place"))) return []
+    const files: Array<string> = []
+    let script = !ws.some((w) => w === "-e" || w === "--expression")
+    for (let i = 1; i < ws.length; i++) {
+      if (ws[i] === "-e" || ws[i] === "--expression") i++
+      else if (isFlag(ws[i])) continue
+      else if (script) script = false
+      else files.push(ws[i])
+    }
+    return files
+  }
+  if (INTERPRETERS.has(program) && WRITES_IN_CODE.test(segment.text)) {
+    return [...new Set([...segment.text.matchAll(FILE_IN_CODE)].map((m) => m[1]))]
+  }
+  return []
+}
+
+/**
+ * What a segment's run is about: its keys' targets (`keyTargets`), or for a
+ * segment that edits files in place, those files (`file:a.ts`): a broken
+ * `sed -i` on a file is fixed by the next edit of that file that works,
+ * whichever way it is made.
+ */
+export const segmentTargets = (segment: Segment): Array<string> => placedTargets(segment, undefined).map((t) => t.target)
+
+/** Programs that move the shell to another folder. */
+const MOVES_TO = new Set(["cd", "pushd", "chdir", "set-location", "sl", "push-location"])
+
+/**
+ * A folder as places are compared: forward slashes, Git Bash's drives
+ * (`/c/x`) as Windows writes them (`c:/x`), no quotes or trailing slash, `.`
+ * and `..` worked out, in lower case.
+ */
+export const folderKey = (path: string): string => {
+  const p = path.trim().replace(/^["']+|["']+$/g, "").replace(/\\/g, "/").replace(/^\/([a-zA-Z])(?=\/|$)/, "$1:")
+  const drive = /^[a-zA-Z]:/.exec(p)?.[0]
+  const parts: Array<string> = []
+  for (const part of (drive === undefined ? p : p.slice(2)).split("/")) {
+    if (part === "" || part === ".") continue
+    if (part === "..") parts.pop()
+    else parts.push(part)
+  }
+  const body = parts.join("/")
+  return (drive !== undefined ? `${drive}/${body}` : p.startsWith("/") ? `/${body}` : body).toLowerCase()
+}
+
+/**
+ * Paths no folder can be told for: a variable, `~`, `cd -`, and Git Bash's
+ * `/tmp`, which is the Windows user's temp folder under another name.
+ */
+const UNTOLD = /[$`]|^~|^-$|^\/tmp(?:\/|$)/
+
+const isAbsolute = (key: string) => /^[a-z]:\//.test(key) || key.startsWith("/")
+
+/** A path from `folder`: where it is, or undefined when it can't be told (`UNTOLD`, or no folder to start from). */
+export const resolveFolder = (folder: string | undefined, path: string): string | undefined => {
+  const p = path.trim().replace(/^["']+|["']+$/g, "").replace(/\\/g, "/")
+  if (p === "" || UNTOLD.test(p)) return undefined
+  const key = folderKey(p)
+  if (isAbsolute(key)) return key
+  return folder === undefined ? undefined : folderKey(`${folder}/${p}`)
+}
+
+/**
+ * The folder of a file a segment names: its own, when the path is absolute;
+ * else the folder the segment ran in. Claude Code keeps a `cd` made in an
+ * earlier call while it stays in the session's folder, so a relative path is
+ * somewhere inside the folder the segment seems to run in, not exactly there.
+ */
+const placeOfFile = (folder: string | undefined, file: string): string | undefined => {
+  const p = file.trim().replace(/^["']+|["']+$/g, "").replace(/\\/g, "/")
+  if (p === "" || UNTOLD.test(p)) return undefined
+  const key = folderKey(p)
+  if (!isAbsolute(key)) return folder
+  const slash = key.lastIndexOf("/")
+  return slash <= 0 ? "/" : key.slice(0, slash).replace(/^([a-z]:)$/, "$1/")
+}
+
+/**
+ * Where each segment of a line runs: `cwd`, moved by every `cd` before it
+ * (`mkdir -p x && cd x && npm test` runs the tests in x). Undefined where it
+ * can't be told.
+ */
+export const segmentFolders = (line: string, cwd: string | undefined): Array<{ readonly segment: Segment; readonly folder: string | undefined }> => {
+  let folder = cwd === undefined ? undefined : folderKey(cwd)
+  const out: Array<{ readonly segment: Segment; readonly folder: string | undefined }> = []
+  for (const segment of mainSegments(splitCommand(line))) {
+    out.push({ segment, folder })
+    const ws = commandWords(segment)
+    if (MOVES_TO.has(programName(ws[0] ?? ""))) {
+      const to = ws.slice(1).find((w) => !isFlag(w))
+      folder = to === undefined ? undefined : resolveFolder(folder, to)
+    }
+  }
+  return out
+}
+
+/** Whether two folders are one place: one is inside the other. A folder that can't be told is anywhere. */
+export const samePlace = (a: string | undefined, b: string | undefined): boolean => {
+  if (a === undefined || b === undefined || a === b) return true
+  const within = (x: string, y: string) => x.startsWith(y.endsWith("/") ? y : `${y}/`)
+  return within(a, b) || within(b, a)
+}
+
+/** A target with the folder it is in: where its segment ran, or the folder of the file it names. */
+export interface Placed {
+  readonly target: string
+  readonly place: string | undefined
+}
+
+/**
+ * A segment's targets (`segmentTargets`) with their places: a file it edits
+ * in place is where that file is; a file named inside inline code, joined
+ * and escaped as code does, has no place that can be told; a script an
+ * interpreter runs is the same script by its name wherever its file is (one
+ * copied or moved to where it works, `node /c/scratch/x.ts` then `node
+ * scratch/x.ts`, is still it; the CLI run from a worktree or the installed
+ * copy too); anything else, a check, a package's script, a program, is where
+ * the segment runs.
+ */
+export const placedTargets = (segment: Segment, folder: string | undefined): Array<Placed> => {
+  const files = editedFiles(segment)
+  const keys = segmentKeys(segment)
+  const ws = commandWords(segment)
+  const checks = keys.flatMap(keyTargets).filter((t) => t.startsWith("check:")).map((target) => ({ target, place: folder }))
+  if (files.length > 0) {
+    const inPlace = ["sed", "perl"].includes(programName(ws[0] ?? ""))
+    return [...files.map((f) => ({ target: fileTarget(f), place: inPlace ? placeOfFile(folder, f) : undefined })), ...checks]
+  }
+  return keys.flatMap((key) =>
+    keyTargets(key).map((target) => {
+      const script = INTERPRETERS.has(key.split(" ")[0]) && !target.startsWith("check:") && !target.includes(" ")
+      return { target, place: script ? undefined : folder }
+    })
+  )
+}
+
+/** The code of a segment that runs inline code: below its first line (a heredoc, a quoted script over lines), or after the program and its options. */
+const codeOf = (text: string): string =>
+  text.includes("\n") ? text.slice(text.indexOf("\n") + 1) : text.replace(/^\S+(?:\s+-\S*)*\s*/, "")
+
+/**
+ * Whether two segments run the same inline code, give or take a fix: half
+ * the words of the shorter code, at least three, are in the other.
+ */
+export const sameCode = (a: string, b: string): boolean => {
+  const words = (s: string) => new Set(codeOf(s).match(/[A-Za-z_][\w.]{2,}/g) ?? [])
+  const x = words(a)
+  const y = words(b)
+  const [small, large] = x.size <= y.size ? [x, y] : [y, x]
+  if (small.size < 3) return false
+  let shared = 0
+  for (const w of small) if (large.has(w)) shared++
+  return shared / small.size >= 0.5
 }
 
 /** Task runners whose arguments name the tasks they run: `turbo run typecheck test`, `nx run-many -t test`. */
@@ -335,17 +559,21 @@ export const commandKeys = (line: string): Array<string> => [
 /** Programs and subcommands that only look around: a failed search isn't a mistake to warn about. */
 const READ_ONLY = new Set([
   "grep", "egrep", "fgrep", "rg", "find", "ls", "dir", "cat", "head", "tail", "wc", "awk", "echo", "printf", "pwd",
-  "which", "where", "type", "tree", "stat", "file", "du", "cd", "pushd", "popd", "sed", "test", "true", "false",
+  "which", "where", "type", "tree", "stat", "file", "du", "cd", "pushd", "popd", "sed", "test", "[", "[[", "true", "false",
+  "date", "seq", "basename", "dirname", "realpath", "readlink", "cygpath", "whoami", "hostname", "uname", "nproc",
+  "printenv", "diff", "cmp", "sort", "uniq", "cut", "tr", "column", "jq", "less", "more", "nl", "tac", "xxd", "od",
   "get-content", "get-childitem", "select-string", "test-path", "get-item", "resolve-path", "get-location",
   "set-location", "write-output", "write-host", "gc", "gci", "sls", "cls", "clear", "sleep", "start-sleep",
+  "get-date", "get-process", "measure-object", "select-object", "format-hex",
   "git status", "git diff", "git log", "git show", "git grep", "git branch", "git rev-parse", "git ls-files",
-  "git blame", "git stash", "npm ls", "yarn list", "yarn why", "npm view", "npm why"
+  "git blame", "git stash", "git rev-list", "git describe", "git cat-file", "git merge-base", "git for-each-ref",
+  "git ls-remote", "git count-objects", "npm ls", "yarn list", "yarn why", "npm view", "npm why"
 ])
 
 export const isReadOnlyKey = (key: string): boolean => READ_ONLY.has(key)
 
 /** Whether a segment only looks around. `sed -i` edits, so it doesn't. */
-const isReadOnlySegment = (segment: Segment): boolean => {
+export const isReadOnlySegment = (segment: Segment): boolean => {
   const key = segmentKey(segment)
   if (key === undefined) return true
   if (key === "sed") return !segment.words.some((w) => /^-[a-zA-Z]*i/.test(w))
