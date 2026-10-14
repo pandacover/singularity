@@ -29,48 +29,31 @@ MIT licensed (`LICENSE`).
   (2026-10-08) are relative to `apps/cli`, except `runs/`.
 
 Layout of `apps/cli` (paths from here to the end are relative to it, except
-`node_modules/`, `runs/` and the install scripts, at the root): `src/traces/` (Claude Code log parser and metrics; what the
-person wrote in a prompt, without what tools add: `Prompts.ts`), `src/graph/` (the
-procedural graph store of the first graph setup), `src/eval/` (the eval
-harness and memory setups), `src/cli.ts` (the whole command line, run from
-the repo), `src/singularity.ts` (the `singularity` command setup installs:
-the six daily commands only, so nothing user-facing may point users or
-agents at another one). The local memory
-from the redesign: `src/local/` (the memory home in `~/.singularity`, and git),
-`src/records/` (workflow records: extraction, where edits went, the model's
-reading, the store; whether a call failed, the same for records and hooks:
-`Outcome.ts`), `src/memory/` (the memory graph: build, replay, store),
-`src/search/` (exact and word search), `src/handover/` (task start and the
-code at its places, triggers, session end, hook settings), `src/commands/` (their CLI commands) and `src/hook.ts` (the
-hook entry point). That local memory is v0, frozen at tag `memory-v0`.
-Memory v1 is `src/workflows/`: workflows with blanks induced from runs, a graph
-of them that learns from results, places kept as the blocks around an edit
-and found in the code at use, its own hooks (`src/workflows/hook.ts`) and eval
-setup (`src/eval/WorkflowsMemory.ts`). It is local first (tag
-`memory-local-first`): at task start workflows are picked by cues with no
-model call and the blanks the task states are filled in (`src/workflows/Cues.ts`,
-the `workflows-cues` setup); the cues are written once, when memory is built
-(`src/workflows/CueWriter.ts`). The `workflows` setup keeps v1 as first
-measured, picked by a model call. The change drafted at task start
-(`src/workflows/Draft.ts`, `workflows-draft`) was tested and dropped: memory
-helps the agent do the task, it never writes the change for it. Since: the
-finish in one command (`src/workflows/Finish.ts`), learning what runs still
-looked up before their first edit (`src/workflows/Lookups.ts`, in
-`workflows evolve`), the hand-over in up to two parts, from two
-task-start hooks (`workflows-split`), and a task that lists several changes
-picked and filled change by change (`partsChoice` in `Cues.ts`; the long task
-is `examples/excalidraw/long.toml`). A second repository's suite is
-`examples/validator/`. For kinds of task like bug fixes, what runs of
-different tasks did alike is learned in a pass of its own
-(`src/workflows/Common.ts`, `workflows common`), with places runs read as
-well as edited (`src/workflows/Reads.ts`), shown as outlines. Keep v0 and v1 apart: v1 reuses the
-records and the plumbing, never v0's memory. Tests mirror it under `test/`.
+`node_modules/`, `runs/` and the install scripts, at the root): `src/traces/`
+(Claude Code log parser and metrics; what the person wrote in a prompt,
+without what tools add: `Prompts.ts`), `src/eval/` (the eval harness and its
+setups: no memory and saved scripts), `src/cli.ts` (the whole command line,
+run from the repo), `src/singularity.ts` (the `singularity` command setup
+installs: the six daily commands only, so nothing user-facing may point users
+or agents at another one), `src/local/` (the memory home in `~/.singularity`,
+and git), `src/records/` (records of committed changes: extraction, where
+edits went, the store; whether a call failed: `Outcome.ts`), `src/commands/`
+(CLI commands). Memory is saved scripts, `src/scripts/`: at a session's first
+prompt the hook (`src/workflows/hook.ts`, which calls `src/scripts/Hook.ts`)
+hands over the stored commit most like the task, read from git, with no
+model call and no learning step. On this branch everything else was
+removed: memory v0 (`src/memory/`, `src/search/`, most of `src/handover/`,
+`src/hook.ts`; tag `memory-v0`), memory v1's learning and hand-over (the rest
+of `src/workflows/`; tag `memory-local-first`), the graph setup (`src/graph/`
+keeps only `Similarity.ts` and the store errors), `src/layer/`, `src/web/`,
+and learning in daily use. A second repository's suite is
+`examples/validator/`. Tests mirror it under `test/`.
 
 Daily use, for anyone (`singularity setup | status | recall | learn |
 update | uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
 the code into `~/.singularity/app` and run setup, which lives in
 `src/setup/`: the agents memory can be set up in and what each gets
-(`Agents.ts`: Claude Code, Codex and Hermes Agent learn and hand over, their
+(`Agents.ts`: Claude Code, Codex and Hermes Agent store and hand over, their
 sessions read as Claude Code's by `src/traces/Codex.ts` and
 `src/traces/Hermes.ts`; Codex, Gemini CLI and Droid hand over through hooks
 in Claude Code's format; Hermes Agent through a plugin of memory's own that
@@ -79,10 +62,8 @@ runs the same hook script, `HermesPlugin.ts`, enabled by an edit of its
 the skill), their hook files
 (`HookFiles.ts`; Codex runs a hook only once the user trusts it, which setup
 offers and status checks through `codex app-server`, `CodexHooks.ts`), the skill (`Skill.ts`), the
-`singularity` command on PATH (`Launcher.ts`), learning on its own after a
-stored change (`AutoLearn.ts`, started in the background by `Background.ts`;
-rounds run one at a time, by hand or not, under `learn.lock`, and one asked
-for meanwhile waits in `learn-queue/`, each repo once)
+`singularity` command on PATH (`Launcher.ts`), storing in the background
+(`Background.ts`, one run at a time under `store.lock`),
 the onboarding itself (`Setup.ts`), and updating (`Update.ts`: the clone
 fetched and its dependencies installed, then the new code, as `update
 --no-fetch`, rewrites hooks, plugin, skill and command where setup put them,
@@ -97,18 +78,7 @@ sweep for commits made outside the agent, which go to the session whose
 edits they hold. Commits left out are logged with the reason
 (`skipped.jsonl`), and status shows them. Which sessions ran in a repo, in
 any of its worktrees, is `src/workflows/Transcripts.ts`; `learn --past` and
-setup store what earlier sessions committed. Learning in daily use goes repo
-by repo (`src/workflows/Learn.ts`), with the model of the agent the user
-chose at setup (`learn.with` in `config.json`; `src/setup/Learner.ts`):
-Claude Code (`src/eval/Llm.ts`, Sonnet), Codex (`src/eval/CodexLlm.ts`,
-`codex exec --output-schema`, its cost counted from tokens at API prices)
-or Hermes Agent (`src/eval/HermesLlm.ts`, `hermes chat -Q`, JSON asked for
-in the prompt and checked, its cost read from Hermes's `state.db`), picked
-by `src/eval/ModelCall.ts`. Setup checks with one tiny call that the model
-answers, and when it doesn't, offers the ones the agent lists and keeps the
-choice as `learn.model` (`src/setup/LearnerModel.ts`). Learning never moves
-to another agent or model on its own. The eval harness and the commands that build memory by hand keep
-using Claude Code.
+setup store what earlier sessions committed.
 
 ## Writing Effect 4 code
 
@@ -141,24 +111,15 @@ Conventions in this repo:
   `test/eval/helpers.ts`, which provides a fresh one.
 - **Line endings:** this machine has `core.autocrlf=true`, and the Python
   version wrote text files with CRLF. Normalize `\r\n` when reading text that
-  came from git checkouts or old runs (see `Learn.ts`); write files byte-exact.
+  came from git checkouts or old runs (see `src/workflows/Commits.ts`); write files byte-exact.
 
 ## Data compatibility
 
 The code was ported from Python and verified against it (identical metrics on
 120 real transcripts, identical reports, a byte-identical graph store, an
-identical saved-scripts memory). Two helpers exist for that:
-`src/eval/PyFormat.ts` (Python's float formatting, which rounds ties to even)
-and `src/graph/PythonCompat.ts` (Python's JSON layout, sort order and
-`repr()`). Keep them unless they get in the way; they keep old and new data
-comparable.
-
-Graph `command_patterns` are JavaScript regular expressions. Prompts that ask
-an LLM to write them must say so. Warning triggers in the memory graph are
-plain substrings, never regular expressions, and prompts say that too. They
-never fire on a read or a search: what those print isn't judged
-(`src/records/Outcome.ts`). What memory's known mistakes did, and which to let
-go, is `src/workflows/Pitfalls.ts`.
+identical saved-scripts memory). `src/eval/PyFormat.ts` (Python's float
+formatting, which rounds ties to even) keeps old and new reports comparable;
+keep it. (`src/graph/PythonCompat.ts` went with the graph store.)
 
 Everything written to disk keeps the snake_case keys the Python version used:
 `results.jsonl`, saved-scripts memory entries, graph store files. Old runs in
@@ -187,14 +148,12 @@ records use those keys.
   repo, in `C:\singularity-workspaces`.
 - Hooks run in the user's own sessions once installed, in every agent setup
   wired (other agents send Claude Code's format with their own event and tool
-  names; `src/workflows/HookTool.ts` maps them). They must never break
-  a session (errors go to `~/.singularity/hook-errors.log`, exit 0), and the
-  tool-call hook runs after every call, so `src/hook.ts` and
-  `src/workflows/hook.ts` check the session file with plain `node:fs` and
-  load modules only for the event at hand; v1's loads its trigger matching
-  only when a trigger's words appear in the call (`src/workflows/HookFilter.ts`).
-  Keep it fast (about 0.1 s a call; 0.4 s for the rare call that loads the
-  matching). Tests use a temporary `SINGULARITY_HOME`, never the real one.
+  names). They must never break a session (errors go to
+  `~/.singularity/hook-errors.log`, exit 0), and the tool-call hook runs
+  after every call, so `src/workflows/hook.ts` loads modules only for the
+  event at hand and only when the call may have committed. Keep it fast
+  (about 0.1 s a call). Tests use a temporary `SINGULARITY_HOME`, never the
+  real one.
 - Two memory homes. `~/.singularity` is our own: the memory of the sessions
   we work in, with singularity set up in our Claude Code. Evals and
   benchmarks have `runs/eval-home` (`EVAL_HOME` in `src/local/Home.ts`): the
@@ -203,18 +162,11 @@ records use those keys.
   `--home runs/eval-home`, or run as `npm run cli:eval -- ...`; never record
   or build eval memory in `~/.singularity`. Runs work with singularity
   installed: the harness sets `SINGULARITY_HOOKS=off`, which silences the
-  installed hooks, and marks the run's own with `--eval-run`
-  (`RUN_HOOK_FLAG` in `src/handover/Install.ts`), which fire anyway.
+  installed hooks (a hook started with `--eval-run` would fire anyway).
 - Claude Code cuts a hook's text at 10,000 characters and hands the agent a
   file path instead. The hand-over at task start stays under
-  `MAX_HANDOVER_CHARS` (`src/handover/TaskStart.ts`); anything added to it
-  takes room from the code it shows.
-- Model calls that build memory (`record annotate`, `memory build
-  --conditions`) cost a few cents each; run them on a few records first.
-- Learning on its own spends on the user's account with the agent memory
-  learns with: only when they said yes at setup, within the daily limit in
-  `config.json`, and never in
-  eval runs (`SINGULARITY_AUTOLEARN=off`, set by the hook setups). Setup's
-  `--yes` never learns right away. Tests never run setup against the real
+  `MAX_HANDOVER_CHARS` (`src/scripts/Render.ts`); anything added to it
+  takes room from the diff it shows.
+- Tests never run setup against the real
   home or the real agents' settings: they pass a temporary home and an
   environment without agents on PATH.

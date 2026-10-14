@@ -39,7 +39,7 @@ const MARKER = "# Installed by `singularity setup`; `singularity uninstall` remo
 
 const MANIFEST = `${MARKER}
 name: ${PLUGIN_NAME}
-description: "Memory from singularity: hands over what earlier sessions learned in a repository when a task starts there, warns when a mistake made before is about to happen again, and learns from the changes its sessions commit with their checks passing."
+description: "Memory from singularity: hands over a past change in a repository like the task when a task starts there, and stores the changes its sessions commit with their checks passing."
 author: singularity
 provides_hooks:
   - pre_llm_call
@@ -52,11 +52,10 @@ export const pluginCode = (launch: Launch): string =>
   String.raw`${MARKER}
 """singularity's memory in Hermes Agent.
 
-When a task starts, hands over what earlier sessions learned in its repository
-(pre_llm_call); after a shell command or an edit, warns when a mistake made
-there before is about to happen again (transform_tool_result); when a session
-closes, stores the changes it committed with their checks passing, for
-memory to learn from (on_session_finalize). All run singularity's hook script in
+When a task starts, hands over the past change in its repository most like it
+(pre_llm_call); after a shell command that commits, stores the change
+(transform_tool_result); when a session closes, stores the changes it
+committed with their checks passing (on_session_finalize). All run singularity's hook script in
 Claude Code's hook format. A hook must never break the session it serves:
 errors go to hook-errors.log in singularity's home, and the agent carries on.
 """

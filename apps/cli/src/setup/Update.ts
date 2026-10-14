@@ -24,11 +24,9 @@ import { loadHome } from "../local/Home.ts"
 import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
 import { binDir, COMMAND, writeLaunchers } from "./Launcher.ts"
-import { learnIsSet, readLearn } from "./Preferences.ts"
 import { codexTrust, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
-import { LEARNER_NAMES } from "./Learner.ts"
-import { listWords, makeStyle, makeTree, marks, type Style, tilde, title, TITLED_ENV, usd, withSpinner } from "./Ui.ts"
+import { listWords, makeStyle, makeTree, marks, tilde, title, TITLED_ENV, withSpinner } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, nodeForHooks, skillDirsFor, wireHooks, wireSkills } from "./Wiring.ts"
 
 export class UpdateError extends Schema.TaggedError<UpdateError>()("UpdateError", {
@@ -156,13 +154,11 @@ export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
     yield* T.note("Run the installer (see the README), or in a clone of the repo, git pull and npm install.")
     return yield* stop
   }
-  // A round running now reads code and dependencies the update would replace under it.
-  for (const lock of ["learn.lock", "store.lock"]) {
-    if (lockHeld(memory.root, lock)) {
-      yield* T.item(M.warn(`memory is ${lock === "learn.lock" ? "learning" : "storing a change"} in the background now; nothing changed`))
-      yield* T.note(`run ${s.cyan("singularity update")} again when ${s.cyan("singularity status")} shows it done`)
-      return yield* stop
-    }
+  // A run storing a change now reads code and dependencies the update would replace under it.
+  if (lockHeld(memory.root, "store.lock")) {
+    yield* T.item(M.warn("memory is storing a change in the background now; nothing changed"))
+    yield* T.note(`run ${s.cyan("singularity update")} again in a minute`)
+    return yield* stop
   }
   const code = yield* updateCode(app, o.interactive)
   if (code.kind === "current") {
@@ -176,16 +172,6 @@ export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
   if (code.dependencies) yield* T.item(M.ok("dependencies"))
   yield* T.close
   return (yield* runInstalled(app, ["update", "--no-fetch"])) === 0
-})
-
-const describeLearning = Effect.fnUntraced(function*(root: string, s: Style) {
-  const M = marks(s)
-  if (!(yield* learnIsSet(root))) return M.warn(`not set up: ${s.cyan("singularity setup")} sets it up`)
-  const prefs = yield* readLearn(root)
-  const through = prefs.with === undefined ? "" : ` with ${LEARNER_NAMES[prefs.with]}`
-  return prefs.auto
-    ? M.ok(`on its own${through}, up to ${usd(prefs.max_usd_per_day)} a day`)
-    : M.skip(`when you run singularity learn${through}`)
 })
 
 /**
@@ -245,9 +231,6 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
   if (leftOut.length > 0) {
     yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))}: no memory · singularity setup adds ${leftOut.length === 1 ? "it" : "them"}`))
   }
-
-  yield* T.section("Learning")
-  yield* T.item(yield* describeLearning(memory.root, s))
 
   yield* T.head(ok
     ? `${s.green("✓")} ${s.bold("Up to date")}${withMemory.length > 0 ? `  ${s.dim("agents running now get it at their next start")}` : ""}`

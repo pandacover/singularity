@@ -2,12 +2,12 @@
  * The `singularity` command that setup puts on PATH: daily use only.
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
- *     singularity status [--json] | recall TASK... [--json] | learn [--past] [--all] | update | uninstall [--purge]
+ *     singularity status [--json] | recall TASK... [--json] | learn --past | update | uninstall [--purge]
  *
- * The commands for building and measuring memory (eval, records, workflows,
- * ...) are in src/cli.ts, which has these too: run it from the repo. Memory's
- * own background work (`record commits`, `learn --auto`) runs through it as
- * well (src/setup/Background.ts), so nothing here needs to offer it.
+ * The commands for measuring memory (eval, record, traces) are in src/cli.ts,
+ * which has these too: run it from the repo. Memory's own background work
+ * (`record commits`) runs through it as well (src/setup/Background.ts), so
+ * nothing here needs to offer it.
  */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -33,12 +33,9 @@ Command.make("singularity").pipe(
   Effect.catchTags({
     PlatformError: reportError,
     StoreError: reportError,
-    CandidateNotFound: reportError,
     HomeError: reportError,
     // A recall asked for in a folder that isn't there.
     RecallError: reportError,
-    // A learning round that failed: Codex out of its plan's limit, Hermes without a provider, a model refused.
-    LearnerError: reportError,
     // An update that couldn't fetch the code or install its dependencies.
     UpdateError: reportError
   }),

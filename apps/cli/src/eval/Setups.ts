@@ -1,9 +1,9 @@
 /**
  * Memory setups: what the agent is given before a run, and what it learns after.
  *
- * The evaluation compares setups on the same tasks: no memory, saved scripts,
- * the procedural graph, saved scripts with the graph's warnings, and the
- * local memory handed over by its hooks. Each one plugs in here.
+ * The evaluation compares setups on the same tasks: no memory and saved
+ * scripts. Each one plugs in here. (The graph, hooks and workflows setups
+ * were removed with the memory designs they measured.)
  */
 import type { FileSystem, Path } from "effect"
 import { Effect, Schema } from "effect"
@@ -81,25 +81,5 @@ export const NoMemory: MemorySetup = {
   afterRun: () => Effect.void
 }
 
-/**
- * Two setups as one: both prepare memory, the second's text after the first's,
- * and both learn from each run. The second's info is recorded under `key`.
- */
-export const combine = (name: string, first: MemorySetup, second: MemorySetup, key: string): MemorySetup => ({
-  name,
-  beforeRun: (task, workspace) =>
-    Effect.gen(function*() {
-      const a = yield* first.beforeRun(task, workspace)
-      const b = yield* second.beforeRun(task, workspace)
-      const texts = [a.systemPrompt, b.systemPrompt].filter((t): t is string => t !== undefined && t !== "")
-      return {
-        systemPrompt: texts.length > 0 ? texts.join("\n") : undefined,
-        info: { ...a.info, [key]: b.info },
-        spent: addSpent(a.spent, b.spent)
-      } satisfies Injection
-    }),
-  afterRun: (outcome) => Effect.andThen(first.afterRun(outcome), second.afterRun(outcome))
-})
-
-export const SETUPS = ["no-memory", "scripts", "saved-scripts", "saved-scripts-top2", "saved-scripts-warnings", "graph", "hooks", "workflows", "workflows-draft", "workflows-cues", "workflows-split"] as const
+export const SETUPS = ["no-memory", "scripts", "saved-scripts", "saved-scripts-top2"] as const
 export type SetupName = (typeof SETUPS)[number]

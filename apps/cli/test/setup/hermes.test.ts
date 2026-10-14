@@ -1,8 +1,6 @@
 import { describe, expect, it } from "@effect/vitest"
 import { agents, hermesHome } from "../../src/setup/Agents.ts"
 import { enablesPlugin, pluginCode, withoutPlugin, withPluginEnabled } from "../../src/setup/HermesPlugin.ts"
-import { asClaudeCall } from "../../src/workflows/HookTool.ts"
-import { eventOfHook } from "../../src/handover/HookInput.ts"
 
 const enabled = (text: string) => {
   const edit = withPluginEnabled(text)
@@ -112,33 +110,5 @@ describe("the plugin's code", () => {
     expect(code).toContain(`ctx.register_hook("on_session_finalize", on_session_finalize)`)
     // Python's escapes reach the file as written.
     expect(code).toContain(`return f"{result}\\n\\n{text}" if text else None`)
-  })
-})
-
-describe("Hermes Agent's tool calls", () => {
-  it("reads its terminal as Claude Code's Bash, with the output and exit code of its JSON result", () => {
-    const failed = asClaudeCall({
-      session_id: "s",
-      tool_name: "terminal",
-      tool_input: { command: "yarn test:update" },
-      tool_response: JSON.stringify({ output: "1 failed", exit_code: 1, error: null })
-    })
-    expect(failed).toMatchObject({ tool_name: "Bash", tool_input: { command: "yarn test:update" }, error: "1 failed" })
-    expect(eventOfHook(failed, "/repo")).toMatchObject({ tool: "Bash", command: "yarn test:update", output: "1 failed", failed: true })
-    const passed = asClaudeCall({ session_id: "s", tool_name: "terminal", tool_input: { command: "ls" }, tool_response: "{\"output\": \"a\", \"exit_code\": 0}" })
-    expect(passed.error).toBeUndefined()
-    expect(eventOfHook(passed, "/repo")).toMatchObject({ output: "a", failed: false })
-  })
-
-  it("reads its patch and write_file as Claude Code's Edit and Write, with the file", () => {
-    const patch = asClaudeCall({ session_id: "s", tool_name: "patch", tool_input: { path: "/repo/src/a.ts", old_string: "x", new_string: "<Excalidraw" } })
-    expect(patch).toMatchObject({ tool_name: "Edit", tool_input: { file_path: "/repo/src/a.ts", new_string: "<Excalidraw" } })
-    expect(eventOfHook(patch, "/repo")).toMatchObject({ file: "src/a.ts", text: "<Excalidraw" })
-    const write = asClaudeCall({ session_id: "s", tool_name: "write_file", tool_input: { path: "/repo/b.ts", content: "y" } })
-    expect(eventOfHook(write, "/repo")).toMatchObject({ tool: "Write", file: "b.ts", text: "y" })
-    const raw = asClaudeCall({ session_id: "s", tool_name: "patch", tool_input: { patch: "*** Begin Patch\n@@\n-old\n+new line\n context\n*** End Patch" } })
-    expect(raw.tool_input?.new_string).toBe("new line")
-    const refused = asClaudeCall({ session_id: "s", tool_name: "patch", tool_input: { path: "a.ts" }, tool_response: "{\"success\": false, \"error\": \"old_string not found\"}" })
-    expect(refused.error).toBe("old_string not found")
   })
 })

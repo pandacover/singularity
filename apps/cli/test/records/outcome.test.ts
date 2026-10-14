@@ -1,8 +1,6 @@
 import { assert, describe, it } from "@effect/vitest"
-import { decodeHookInput, eventOfHook } from "../../src/handover/HookInput.ts"
 import { callFailed, failedSegments, hiddenFailure, looksAround, mistakeMade } from "../../src/records/Outcome.ts"
 import { commandKeys, editedFiles, keyTargets, segmentKey, segmentTargets, sameCode, splitCommand } from "../../src/records/Shell.ts"
-import { matchTrigger, type Trigger } from "../../src/records/Triggers.ts"
 
 const shell = (command: string, output: string, isError = false) => ({ tool: "Bash", command, output, isError })
 
@@ -106,26 +104,3 @@ describe("targets", () => {
   })
 })
 
-describe("triggers on what the hook reports", () => {
-  const error: Trigger = { on: "error", all: ["Unterminated string literal"], none: [], file: null }
-  const commit: Trigger = { on: "command", all: ["git add"], none: [], file: null }
-  const event = (input: Record<string, unknown>) =>
-    eventOfHook(decodeHookInput(JSON.stringify({ session_id: "s", cwd: "/repo", hook_event_name: "PostToolUse", ...input }))!, "/repo")!
-
-  it("fire on a call that failed and printed the mistake's message", () => {
-    const failed = event({ hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "npx tsc --noEmit" }, error: "src/a.ts(3,9): error TS1002: Unterminated string literal.\nExit code 2" })
-    assert.isTrue(failed.failed)
-    assert.isTrue(matchTrigger(error, failed))
-  })
-
-  it("stay silent on reads and searches that print it, a helper agent's as much as the main thread's", () => {
-    // Both misfires so far: a read of a notes file that quotes the message.
-    const read = event({ agent_id: "a1b2", tool_name: "Bash", tool_input: { command: "sed -n 360,600p previous-findings.txt" }, tool_response: { stdout: "trigger: Unterminated string literal; exit code 1", stderr: "" } })
-    assert.isFalse(read.failed)
-    assert.isFalse(matchTrigger(error, read))
-    const grep = event({ tool_name: "Bash", tool_input: { command: "grep -rn \"git add\" HANDOFF.md" }, tool_response: { stdout: "HANDOFF.md:3: git add", stderr: "" } })
-    assert.isFalse(matchTrigger(commit, grep))
-    const add = event({ tool_name: "Bash", tool_input: { command: "git add -A && git commit -m 'x'" }, tool_response: { stdout: "", stderr: "" } })
-    assert.isTrue(matchTrigger(commit, add))
-  })
-})

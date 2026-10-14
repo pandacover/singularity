@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Path } from "effect"
+import { Effect, Layer } from "effect"
 import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -9,10 +9,7 @@ import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
 import { leftOut } from "../../src/setup/Status.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
-import { gatherEvidence } from "../../src/workflows/Evidence.ts"
 import { A_COPY, chainsOf, isDocs, MADE_TOGETHER, NOT_FROM_A_SESSION, readSkips, storeCommits, storePast } from "../../src/workflows/Commits.ts"
-import * as JsonWorkflowStore from "../../src/workflows/JsonWorkflowStore.ts"
-import { writeSession } from "../../src/workflows/Session.ts"
 import { commandOf, ranCommit } from "../../src/workflows/StoreTrigger.ts"
 import { projectDirName } from "../../src/workflows/Transcripts.ts"
 import { run, tempDir } from "../eval/helpers.ts"
@@ -85,11 +82,7 @@ const writeTranscript = (claudeHome: string, cwd: string, sessionId: string, ste
 const storesFor = (homeDir: string) =>
   Layer.unwrap(Effect.gen(function*() {
     const home = yield* loadHome(homeDir)
-    const path = yield* Path.Path
-    return Layer.merge(
-      JsonRecordStore.layer(home.tenantDir, home.tenant),
-      JsonWorkflowStore.layer(JsonWorkflowStore.workflowsDir(home.tenantDir, path), home.tenant)
-    )
+    return JsonRecordStore.layer(home.tenantDir, home.tenant)
   }))
 
 const setup = () => {
@@ -177,39 +170,9 @@ describe("storing commits", () => {
     expect([two.run.base_commit, two.run.head_commit]).toEqual([first, second])
     expect(two.commands.map((c) => c.command)).toEqual(["timeout 600 npx turbo run test", "git add -A && git commit -m 'Add green'"])
 
-    // What reads a record's log again reads its part only.
-    const evidence = await run(gatherEvidence([two], { repo: t.repo }))
-    expect(evidence.runs[0].calls.map((c) => c.name)).toEqual(["Edit", "Bash", "Bash"])
-
     // Whichever moment looks again, nothing is stored twice.
     expect((await store(t)).stored).toEqual([])
     expect((await store(t, { session: { sessionId: s1, transcript: "" } })).stored).toEqual([])
-  }, 60_000)
-
-  it("keeps a name a change brought in as its task's own only while files the change didn't touch don't use it", async () => {
-    const t = setup()
-    const first = commitColors(t.repo, 5, ["red", "blue", "teal"])
-    // The later change adds gold and a note that writes Blue.
-    writeFileSync(join(t.repo, "notes.md"), "Blue is the default.\n")
-    gitAt(t.repo, undefined, "add", "notes.md")
-    const second = commitColors(t.repo, 15, ["red", "blue", "teal", "gold"])
-    writeTranscript(t.claudeHome, t.repo, "ddddddd1-0000-0000-0000-000000000001", [
-      { prompt: "Add blue and teal to the colors", at: 0 },
-      { edit: ["red", "blue", "teal"], from: ["red"], at: 1 },
-      { bash: "npm test", at: 3 },
-      { bash: "git commit -am 'Add blue and teal'", at: 5 },
-      { prompt: "Add gold, and note that blue is the default", at: 10 },
-      { edit: ["red", "blue", "teal", "gold"], from: ["red", "blue", "teal"], at: 11 },
-      { bash: "npm test", at: 13 },
-      { bash: "git add notes.md && git commit -am 'Add gold'", at: 15 }
-    ])
-    expect((await store(t)).stored).toEqual([commitRecordId("app", first), commitRecordId("app", second)])
-    const [one, two] = await records(t)
-    // Read alone, both new names are the first change's own.
-    expect((await run(gatherEvidence([one]))).runs[0].values).toEqual(["blue", "teal"])
-    // The later change writes Blue in a file the first didn't touch: blue is now a word of the repo, which memory may write.
-    const both = await run(gatherEvidence([one, two]))
-    expect(both.runs.map((r) => [r.record, r.values])).toEqual([[one.id, ["teal"]], [two.id, ["gold", "notes"]]])
   }, 60_000)
 
   it("stores a commit made outside the session with the session whose edits it holds", async () => {
@@ -321,47 +284,6 @@ describe("storing commits", () => {
     ])
     expect((await store(t)).stored).toEqual([])
     expect((await store(t, { session: { sessionId: id, transcript } })).stored).toEqual([commitRecordId("app", commit)])
-  }, 60_000)
-
-  it("judges the memory handed over at a session's start by its first change only", async () => {
-    const t = setup()
-    const id = "aaaaaaa9-0000-0000-0000-000000000009"
-    commitColors(t.repo, 5, ["red", "blue"])
-    commitColors(t.repo, 15, ["red", "blue", "green"])
-    writeTranscript(t.claudeHome, t.repo, id, [
-      { prompt: "Add blue to the colors", at: 0 },
-      { edit: ["red", "blue"], from: ["red"], at: 1 },
-      { bash: "npm test", at: 3 },
-      { bash: "git commit -am blue", at: 5 },
-      { prompt: "Now add green", at: 10 },
-      { edit: ["red", "blue", "green"], from: ["red", "blue"], at: 11 },
-      { bash: "npm test", at: 13 },
-      { bash: "git commit -am green", at: 15 }
-    ])
-    // What the task-start hook kept when it handed memory over.
-    await run(Effect.gen(function*() {
-      const home = yield* loadHome(t.homeDir)
-      yield* writeSession(home.tenantDir, {
-        session_id: id,
-        tenant: home.tenant,
-        subject: "app",
-        repo: t.repo,
-        head: null,
-        started_at: at(0),
-        prompt: "Add blue to the colors",
-        version: 0,
-        workflows: [],
-        shown: [],
-        missing: [],
-        pitfalls: [],
-        triggers: [],
-        selection: null
-      })
-    }))
-    await store(t)
-    const [one, two] = await records(t)
-    expect(one.memory).toMatchObject({ setup: "workflows", version: 0 })
-    expect(two.memory).toBeNull()
   }, 60_000)
 
   it("stores the commit an agent just made from the tool-call hook, in the background", async () => {

@@ -18,30 +18,28 @@ const MARKER = "<!-- Installed by `singularity setup`; `singularity uninstall` r
 
 export const SKILL_TEXT = `---
 name: ${SKILL_NAME}
-description: Procedural memory for this machine's git repositories, learned from earlier coding sessions. Use when the user asks to use, check or teach singularity memory, or asks what memory knows about a repository. Memory usually arrives on its own when a task starts; don't look it up for every task.
+description: Procedural memory for this machine's git repositories, kept from earlier coding sessions. Use when the user asks to use, check or teach singularity memory, or asks what memory knows about a repository. Memory usually arrives on its own when a task starts; don't look it up for every task.
 ---
 
 ${MARKER}
 
 # singularity memory
 
-singularity learns how tasks get done in a repository: the places in the
-code a kind of change goes, the commands that check it, and mistakes earlier
-sessions paid for. When a similar task starts, it hands them over as a
-message headed "Workflows from earlier work in this repository". Places are
-found in the code as it is now; memory never stores code.
+singularity keeps the changes coding sessions commit in a repository, with
+their checks passing: the task, the files, the commands that worked and the
+mistakes made on the way. When a similar task starts, it hands over the one
+most like it, read from git as it is now, as a message headed "A past change
+in this repository like your task".
 
 Run these in the repository:
 
 - \`singularity recall "<the task, as the user wrote it>"\` prints what memory
   has for that task, or says it has nothing. Use it when the user asks you to
   use memory and nothing was handed over.
-- \`singularity status\` shows the agents memory is set up in and what it has
-  learned for each repository.
-- \`singularity learn\` turns the changes memory stored into workflows. It
-  calls the model of the agent the user chose to learn with (Claude Code,
-  Codex or Hermes Agent), on their account with it, cents to dimes a round:
-  run it only when the user asks.
+- \`singularity status\` shows the agents memory is set up in and how many
+  changes it has stored for each repository.
+- \`singularity learn --past\` stores the changes earlier sessions in this
+  repository committed. It calls no model.
 `
 
 export type SkillState = "missing" | "current" | "outdated" | "foreign"

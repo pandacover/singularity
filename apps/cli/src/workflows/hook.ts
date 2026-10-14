@@ -1,6 +1,6 @@
 /**
- * Claude Code hook entry point for memory, separate from the CLI and from
- * v0's hooks (src/hook.ts) so that each starts fast:
+ * Claude Code hook entry point for memory, separate from the CLI so that it
+ * starts fast:
  *
  *     node src/workflows/hook.ts user-prompt-submit   (UserPromptSubmit)
  *     node src/workflows/hook.ts user-prompt-submit-2 (kept for installed settings; hands over nothing)
@@ -26,8 +26,8 @@
  * A hook must never break the session it serves: any error is written to
  * `<home>/hook-errors.log` and the hook exits 0 with no output.
  * `SINGULARITY_HOOKS=off` turns every hook off, except an eval run's own,
- * which the harness marks with `--eval-run` (`RUN_HOOK_FLAG` in
- * handover/Install.ts): hooks installed for daily work stay silent in runs.
+ * which the harness would mark with `--eval-run`: hooks installed for daily
+ * work stay silent in runs.
  */
 import { appendFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"

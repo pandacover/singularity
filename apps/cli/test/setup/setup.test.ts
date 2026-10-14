@@ -9,13 +9,11 @@ import { CLI } from "../../src/setup/Background.ts"
 import { agents, hookEvents, isMemoryHookCommand, type Launch, slashes } from "../../src/setup/Agents.ts"
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
 import { cmdLauncher, COMMAND, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine } from "../../src/setup/Launcher.ts"
-import { readLearn } from "../../src/setup/Preferences.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
 import { runRefresh, runUpdate, updateCode } from "../../src/setup/Update.ts"
 import { agentStates, detectAgents, HOOK_SCRIPT, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
-import { asClaudeCall } from "../../src/workflows/HookTool.ts"
 import { FAKE_CODEX, fakeCommand, git, run, tempDir, withEnv } from "../eval/helpers.ts"
 
 const json = (file: string) => JSON.parse(readFileSync(file, "utf-8"))
@@ -133,15 +131,6 @@ describe("hook files", () => {
     }).pipe(Effect.provide(nodeLayer)))
 })
 
-describe("other agents' tool calls", () => {
-  it("reads Gemini CLI's and Droid's shell and edit tools as Claude Code's", () => {
-    expect(asClaudeCall({ session_id: "s", tool_name: "run_shell_command", tool_input: { command: "yarn test" } })).toMatchObject({ tool_name: "Bash", tool_input: { command: "yarn test" } })
-    expect(asClaudeCall({ session_id: "s", tool_name: "Execute", tool_input: { cmd: ["git", "status"] } })).toMatchObject({ tool_name: "Bash", tool_input: { command: "git status" } })
-    expect(asClaudeCall({ session_id: "s", tool_name: "replace", tool_input: { file_path: "a.ts", new_str: "x" } })).toMatchObject({ tool_name: "Edit", tool_input: { new_string: "x" } })
-    expect(asClaudeCall({ session_id: "s", tool_name: "Edit", tool_input: { file_path: "a.ts", new_string: "y" } }).tool_name).toBe("Edit")
-  })
-})
-
 describe("finding agents", () => {
   it("in WSL, leaves out the Windows programs WSL puts on PATH", () => {
     const wsl = { WSL_DISTRO_NAME: "Ubuntu" }
@@ -193,7 +182,7 @@ describe("the singularity command", () => {
     expect(failed.stderr.trim()).toBe(`error: ${missing} doesn't exist`)
     const empty = recall("--cwd", tempDir(), "--json")
     expect(empty.status).toBe(0)
-    expect(JSON.parse(empty.stdout)).toEqual({ repo: null, handed_over: false, text: null, places: [] })
+    expect(JSON.parse(empty.stdout)).toEqual({ repo: null, handed_over: false, text: null, picked: null, score: 0 })
   })
 
   it("knows whether a directory is on PATH, and puts one line in the shell's startup file", () => {
@@ -263,7 +252,7 @@ const sandbox = (agentDirs: ReadonlyArray<string>, onPath: { readonly claude?: b
 }
 
 describe("setup", () => {
-  it("sets memory up in every agent found, writes the command and the skill, and turns learning on", async () => {
+  it("sets memory up in every agent found, writes the command and the skill", async () => {
     const { home, memory, options } = sandbox([".claude", ".codex", ".gemini", ".factory", ".cursor"])
     // The user's own hooks and settings stay.
     writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({ model: "opus", hooks: { Stop: [{ hooks: [{ type: "command", command: "say done" }] }] } }))
@@ -281,11 +270,6 @@ describe("setup", () => {
     }
     // The command on PATH is the one for daily use, not the whole command line.
     expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
-    // Claude Code is the only agent here that can learn: learning goes through it.
-    expect(await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).toMatchObject({ auto: true, with: "claude" })
-    // The daily limit is the user's: given once, it stays until given again.
-    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, dailyLimit: 2.5 })))
-    expect((await withEnv({ SINGULARITY_HOME: memory }, () => run(readLearn(memory)))).max_usd_per_day).toBe(2.5)
 
     // Run again: nothing doubles.
     const before = readFileSync(join(home, ".claude", "settings.json"), "utf-8")
@@ -306,56 +290,6 @@ describe("setup", () => {
     expect(existsSync(join(home, ".codex", "hooks.json"))).toBe(false)
     expect(existsSync(join(home, ".gemini", "settings.json"))).toBe(false)
     expect(await run(skillState(join(home, ".agents", "skills")))).toBe("missing")
-  }, 60_000)
-
-  it("learns with Codex where Codex is the only agent that can, and with the one asked for where there are several", async () => {
-    const codexOnly = sandbox([".codex"], { codex: true })
-    const said = await captureLog(() => withEnv({ SINGULARITY_HOME: codexOnly.memory }, () => run(runSetup(codexOnly.options))))
-    expect(await run(readLearn(codexOnly.memory))).toMatchObject({ auto: true, with: "codex" })
-    expect(said).toContain("on its own with Codex, up to $1.00 a day  the model Codex is set to use, on your Codex account")
-    expect(said).not.toContain("Claude Code isn't")
-
-    const both = sandbox([".claude", ".codex"], { claude: true, codex: true })
-    await withEnv({ SINGULARITY_HOME: both.memory }, () => run(runSetup(both.options)))
-    expect((await run(readLearn(both.memory))).with).toBe("claude")
-    await withEnv({ SINGULARITY_HOME: both.memory }, () => run(runSetup({ ...both.options, learnWith: "codex" })))
-    expect((await run(readLearn(both.memory))).with).toBe("codex")
-    // Asked again, the answer given before is the default.
-    await withEnv({ SINGULARITY_HOME: both.memory }, () => run(runSetup(both.options)))
-    expect((await run(readLearn(both.memory))).with).toBe("codex")
-
-    // No agent here can learn: setup says so and sets the rest up.
-    const none = sandbox([".gemini"], {})
-    const told = await captureLog(() => withEnv({ SINGULARITY_HOME: none.memory }, () => run(runSetup(none.options))))
-    expect(told).toContain("Memory learns with the model of Claude Code, Codex or Hermes Agent, and none of them is here.")
-    expect(existsSync(join(none.home, ".gemini", "settings.json"))).toBe(true)
-  }, 60_000)
-
-  it("checks the model Codex would learn with, says how to choose another when it's refused, and keeps the one named", async () => {
-    const m = sandbox([".codex"], { codex: true })
-    const codexHome = join(m.home, ".codex")
-    writeFileSync(join(codexHome, "config.toml"), "model = \"gpt-5.6-sol\"\n")
-    writeFileSync(join(codexHome, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-5.6-sol", visibility: "list" }, { slug: "gpt-5.6-luna", visibility: "list" }] }))
-    const answers = join(m.root, "answers.json")
-    writeFileSync(answers, JSON.stringify([{ ok: true }]))
-    const env = { SINGULARITY_HOME: m.memory, CODEX_HOME: codexHome, FAKE_CODEX_ANSWERS: answers, FAKE_CODEX_REFUSE: "gpt-5.6-sol" }
-    const options = { ...m.options, env: { ...m.options.env, CODEX_HOME: codexHome } }
-
-    const said = await captureLog(() => withEnv(env, () => run(runSetup(options))))
-    expect(said).toContain("gpt-5.6-sol doesn't answer through Codex: The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.")
-    expect(said).toContain("Learning needs a model that answers: singularity setup --learn-model <model> (Codex lists gpt-5.6-luna and gpt-5.6-sol)")
-    expect((await run(readLearn(m.memory))).model).toBeUndefined()
-    // With nobody to ask, Codex's hooks stay for the user to trust.
-    expect(said).toContain("Codex runs new hooks only once you trust them: open Codex and type /hooks.")
-
-    const named = await captureLog(() => withEnv(env, () => run(runSetup({ ...options, learnModel: "gpt-5.6-luna" }))))
-    expect(named).toContain("✓ gpt-5.6-luna answers through Codex")
-    expect(named).toContain("on its own with Codex, up to $1.00 a day  gpt-5.6-luna, on your Codex account")
-    expect(await run(readLearn(m.memory))).toMatchObject({ with: "codex", model: "gpt-5.6-luna" })
-    // Run again: the model chosen stays, checked again.
-    const again = await captureLog(() => withEnv(env, () => run(runSetup(options))))
-    expect(again).toContain("✓ gpt-5.6-luna answers through Codex")
-    expect((await run(readLearn(m.memory))).model).toBe("gpt-5.6-luna")
   }, 60_000)
 
   it("puts Droid's hooks in its settings.json when the user keeps theirs there", async () => {

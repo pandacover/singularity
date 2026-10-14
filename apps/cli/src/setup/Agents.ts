@@ -2,20 +2,19 @@
  * The coding agents memory can be set up in, and what each one gets.
  *
  * - Claude Code: the whole memory. Its hooks hand memory over when a task
- *   starts (in two parts, as `workflows-split` was measured), warn when a
- *   known mistake's trigger appears, and store each change a session commits
- *   with its checks passing, which memory learns from (workflows/Commits.ts).
+ *   starts (saved scripts, src/scripts/) and store each change a session
+ *   commits with its checks passing (workflows/Commits.ts). Its settings
+ *   still name a second task-start hook, `user-prompt-submit-2`, from when
+ *   the hand-over came in two parts; it hands over nothing now.
  * - Codex has hooks in Claude Code's format: memory is handed over at task
- *   start (in one part), warnings arrive during the task, and its changes are
- *   stored like Claude Code's, its log read as Claude Code's
- *   (traces/Codex.ts).
+ *   start, and its changes are stored like Claude Code's, its log read as
+ *   Claude Code's (traces/Codex.ts).
  * - Hermes Agent gets what Codex gets through a plugin of memory's own, which runs
- *   the same hook script (HermesPlugin.ts): its shell hooks can add text to a
- *   prompt but not to a tool's result, where warnings go. Its sessions are
- *   read from its database (traces/Hermes.ts).
+ *   the same hook script (HermesPlugin.ts). Its sessions are read from its
+ *   database (traces/Hermes.ts).
  * - Gemini CLI and Droid have hooks in Claude Code's format: memory is
- *   handed over at task start and warnings arrive during the task. Their
- *   transcripts aren't read, so their sessions aren't recorded.
+ *   handed over at task start. Their transcripts aren't read, so their
+ *   sessions aren't recorded.
  * - Cursor and OpenCode have no hook that can add text to a prompt: the skill
  *   lets the agent look memory up when the user asks for it.
  *
@@ -35,7 +34,7 @@ export const slashes = (p: string): string => p.replace(/\\/g, "/")
 export const AGENT_IDS = ["claude", "codex", "gemini", "droid", "hermes", "cursor", "opencode"] as const
 export type AgentId = (typeof AGENT_IDS)[number]
 
-/** What memory does in an agent: hands over and learns from its sessions, hands over, or is there when asked. */
+/** What memory does in an agent: hands over and stores its sessions' changes, hands over, or is there when asked. */
 export type Reach = "learns" | "hands-over" | "on-request"
 
 export interface HookHandler {
@@ -300,7 +299,7 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
           hooks: [{
             type: "command",
             name: "singularity-handover",
-            description: "Hands over what memory learned for this task",
+            description: "Hands over a past change like this task",
             command: o("user-prompt-submit"),
             timeout: START_TIMEOUT_S * 1000
           }]

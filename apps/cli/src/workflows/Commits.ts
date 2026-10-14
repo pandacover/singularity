@@ -28,10 +28,8 @@ import { DateTime, Effect, FileSystem, Option, Path, Predicate, Schema } from "e
 import { git, identifyRepo } from "../local/Git.ts"
 import { buildRecord, commitRecordId, recordId } from "../records/Build.ts"
 import { extractMechanical, relativizer } from "../records/Extract.ts"
-import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { classifyKey } from "../records/Shell.ts"
-import { eventOfCall } from "../records/Triggers.ts"
 import {
   EDIT_TOOLS,
   parseSession,
@@ -44,13 +42,8 @@ import {
   traceUsage,
   usageTotal
 } from "../traces/index.ts"
-import { gatherEvidence } from "./Evidence.ts"
-import { feedbackOf } from "./Feedback.ts"
-import { isReadPlace } from "./Models.ts"
-import { readFired, readSession } from "./Session.ts"
 import { COMMITTING } from "./StoreTrigger.ts"
 import { type AgentHomes, inside, pastSessions, type PastSession, pathKey, peekTranscript } from "./Transcripts.ts"
-import { WorkflowStore } from "./WorkflowStore.ts"
 
 /** A commit on one of the repo's branches. */
 export interface BranchCommit {
@@ -512,37 +505,7 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
     },
     createdAt: ctx.createdAt
   })
-  // The memory handed over at the session's start goes with its first change.
-  const memory = window.from === undefined ? yield* feedbackFor(record, part, ctx) : null
-  return { record: { ...record, memory } }
-})
-
-/** What became of the memory the session was handed at its start, judged by its first change. */
-const feedbackFor = Effect.fnUntraced(function*(record: WorkflowRecord, part: Trace, ctx: RecordContext) {
-  const state = yield* readSession(ctx.tenantDir, part.sessionId)
-  if (state === undefined) return null
-  const evidence = yield* gatherEvidence([record], { repo: ctx.repo })
-  const edited = new Map((evidence.runs[0]?.uses ?? []).map((u) => [u.place, u.file] as const))
-  const handed = yield* (yield* WorkflowStore).memory(state.version).pipe(Effect.orElseSucceed(() => undefined))
-  const placesOf = (wid: string) => handed?.workflows.find((w) => w.id === wid)?.steps.flatMap((s) => (s.place === null ? [] : [s.place])) ?? []
-  const relative = relativizer(part.cwd)
-  const end = millis(part.endedAt) ?? Infinity
-  const fired = (yield* readFired(ctx.tenantDir, part.sessionId)).filter((x) => Date.parse(x.at) <= end)
-  return feedbackOf(
-    {
-      version: state.version,
-      workflows: state.workflows.map((w) => ({ id: w.id, places: placesOf(w.id) })),
-      shown: state.shown.map((s) => s.place),
-      read: (handed?.places ?? []).filter(isReadPlace).map((p) => p.id),
-      pitfalls: state.pitfalls,
-      fired: fired.map((x) => ({ pitfall: x.pitfall, at: Date.parse(x.at) })),
-      triggers: state.triggers
-    },
-    {
-      edited,
-      events: part.toolCalls.filter((c) => c.agentId === undefined).map((c) => ({ event: eventOfCall(c, relative), at: millis(c.startedAt) }))
-    }
-  )
+  return { record }
 })
 
 /** Every commit a repo's sessions still on disk made or wrote: memory set up in a repo with a past, or reading it again (`learn --past`). */
