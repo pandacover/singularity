@@ -33,12 +33,17 @@ describe("search", () => {
   })
 })
 
-const cmd = (command: string, ok = true): CommandRun => ({ command, keys: [], ok, error: null, turn: 0 })
+const cmd = (command: string, ok = true): CommandRun => ({ command, keys: [command.replace(/ run /, " ")], ok, error: null, turn: 0 })
 
 describe("render", () => {
-  it("keeps commands that worked and change or check something, each once, latest last", () => {
+  it("keeps the project commands that worked, in the order first run", () => {
     expect(commandsToShow([cmd("cat a.ts"), cmd("npm test"), cmd("npm run lint", false), cmd("git commit -m x"), cmd("npm run build"), cmd("npm test")]))
-      .toEqual(["npm run build", "npm test"])
+      .toEqual(["npm test", "npm build"])
+    expect(commandsToShow([
+      { command: "cat x | grep y; npm run build-docs", ok: true, keys: ["cat", "grep", "npm build-docs"] },
+      { command: "npm test && npm run lint", ok: false, keys: ["npm test", "npm lint"] },
+      { command: "sed -i s/a/b/ x && npm test", ok: true, keys: ["sed", "npm test"] }
+    ])).toEqual(["npm build-docs", "npm test"])
   })
 
   it("names a failed command with what worked instead", () => {
@@ -58,7 +63,7 @@ describe("render", () => {
     expect(mistakesToShow([d])).toEqual(["- `yarn test:update --watch=false` failed: Expected a single value for option --watch. What worked instead: `yarn test:update`"])
   })
 
-  it("shows the change file by file while there is room and names the rest", () => {
+  it("gives every file of the change a share of the room", () => {
     const chunk = (path: string, n: number) => ({ path, text: `diff --git a/${path} b/${path}\n${"+x\n".repeat(n)}` })
     const text = renderScript({
       prompt: RULE,
@@ -78,8 +83,9 @@ describe("render", () => {
     expect(text).toContain("- doc-src/md061.md (+5 -0; was doc-build/md061.md then)")
     expect(text).toContain("- old.js (+1 -1; no longer exists)")
     expect(text).toContain("diff --git a/lib/md061.mjs")
-    expect(text).toContain("`git show 0123456789 -- <file>`")
-    expect(text).not.toContain("diff --git a/doc-build")
+    expect(text).toContain("diff --git a/doc-build/md061.md")
+    expect(text).toMatch(/… \(\d+ more lines\)/)
+    expect(text).toContain("`git show 0123456789`")
   })
 })
 
@@ -125,7 +131,7 @@ describe("task start", () => {
         expect(got.picked?.commit).toBe(head)
         expect(got.text).toContain("doc-src/md061.md (+1 -0; was doc-build/md061.md then)")
         expect(got.text).toContain("+- MD061")
-        expect(got.text).toContain("- `npm test`")
+        expect(got.text).toContain("`npm test`")
         const none = yield* startScripts({ sessionId: "s3", prompt: RENAME, cwd: repo }, { tenantDir })
         expect(none.text).toBeUndefined()
       }).pipe(Effect.provide(JsonRecordStore.layer(tenantDir, "local"))))

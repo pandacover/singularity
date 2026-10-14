@@ -12,6 +12,7 @@ export const MAX_HANDOVER_CHARS = 9800
 const MAX_PROMPT_CHARS = 1500
 const MAX_COMMANDS = 8
 const MAX_MISTAKES = 4
+const MAX_COMMAND_CHARS = 200
 
 /** Lines a diff chunk adds and removes. */
 export const countLines = (chunk: string): { added: number; removed: number } => {
@@ -32,8 +33,7 @@ export const diffChunks = (diff: string): Array<{ path: string; text: string }> 
     return { path: at >= 0 ? first.slice(at + 3) : first, text }
   })
 
-/** A test snapshot: regenerated, not written. */
-export const isSnapshot = (path: string) => path.endsWith(".snap") || path.includes("/__snapshots__/")
+export { isSnapshot } from "../records/Extract.ts"
 
 /** A file the script changed, and where it is today. */
 export interface FileNow extends FileChange {
@@ -59,18 +59,29 @@ export interface ScriptView {
 /** Commands that only look (read, list, search, git's views) teach nothing to repeat. */
 const LOOKS = /^(cat|ls|dir|head|tail|grep|rg|find|wc|echo|pwd|type|sed -n|git (log|show|diff|status|blame|branch|rev-parse|ls-files))\b/
 
-/** Commands worth repeating: they worked, they change or check something, each once, the last ones kept. */
-export const commandsToShow = (commands: ReadonlyArray<Pick<CommandRun, "command" | "ok">>): Array<string> => {
+/** What a project's own tools run: the package manager's scripts, builds, test runners. */
+const PROJECT_TOOL = /^(npm|yarn|pnpm|npx|bun|deno|make|cargo|go|gradle|mvn|pytest|tsc|vitest|jest|dotnet|mix|bundle|rake)\b/
+
+/**
+ * The project's commands a run used, in the order it first ran each: what it
+ * runs (a record's `keys`, as `npm test`, `npm build-docs`), from the
+ * commands that worked. Agents chain them in one-off shell lines and scripts,
+ * so the line itself is rarely worth repeating; without keys (an eval's saved
+ * run), the short single-line commands that change or check something.
+ */
+export const commandsToShow = (commands: ReadonlyArray<Pick<CommandRun, "command" | "ok"> & { readonly keys?: ReadonlyArray<string> }>): Array<string> => {
   const kept: Array<string> = []
   for (const c of commands) {
+    if (!c.ok) continue
+    if (c.keys !== undefined) {
+      for (const k of c.keys) if (PROJECT_TOOL.test(k) && !kept.includes(k)) kept.push(k)
+      continue
+    }
     const cmd = c.command.trim()
-    if (!c.ok || cmd === "" || LOOKS.test(cmd) || /^git (add|commit)\b/.test(cmd)) continue
-    const one = cmd.length > 300 ? cmd.slice(0, 300) + " …" : cmd
-    const at = kept.indexOf(one)
-    if (at >= 0) kept.splice(at, 1)
-    kept.push(one)
+    if (cmd === "" || cmd.includes("\n") || cmd.length > MAX_COMMAND_CHARS || LOOKS.test(cmd) || /^git (add|commit)\b/.test(cmd)) continue
+    if (!kept.includes(cmd)) kept.push(cmd)
   }
-  return kept.slice(-MAX_COMMANDS)
+  return kept.slice(0, MAX_COMMANDS)
 }
 
 /**
@@ -99,11 +110,11 @@ export const mistakesToShow = (detours: ReadonlyArray<Detour>): Array<string> =>
   const out: Array<string> = []
   for (const d of detours) {
     const failed = d.failed.command?.trim()
-    if (failed === undefined || failed === "" || seen.has(failed)) continue
+    if (failed === undefined || failed === "" || failed.includes("\n") || seen.has(failed)) continue
     seen.add(failed)
     const symptom = d.symptom.replace(/\s+/g, " ").trim().slice(0, 200)
     const fixed = d.fixed.command?.trim()
-    const then = fixed === undefined || fixed === "" || fixed === failed ? "" : ` What worked instead: \`${fixed.slice(0, 200)}\``
+    const then = fixed === undefined || fixed === "" || fixed === failed || fixed.includes("\n") ? "" : ` What worked instead: \`${fixed.slice(0, 200)}\``
     out.push(`- \`${failed.slice(0, 200)}\` failed: ${symptom}.${then}`)
     if (out.length === MAX_MISTAKES) break
   }
@@ -115,6 +126,19 @@ const fileLine = (f: FileNow): string => {
   if (f.now === null) return `- ${f.path} (${counts}; no longer exists)`
   if (f.now !== f.path) return `- ${f.now} (${counts}; was ${f.path} then)`
   return `- ${f.path} (${counts})`
+}
+
+/** The largest length each of `sizes` may keep so that together they fit in `room`. */
+export const shareOf = (sizes: ReadonlyArray<number>, room: number): number => {
+  if (sizes.reduce((a, b) => a + b, 0) <= room) return Math.max(0, ...sizes)
+  let lo = 0
+  let hi = Math.max(0, ...sizes)
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    if (sizes.reduce((a, x) => a + Math.min(x, mid), 0) <= room) lo = mid
+    else hi = mid - 1
+  }
+  return lo
 }
 
 export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string => {
@@ -138,31 +162,29 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
     ...sources.map(fileLine)
   ]
   if (snapshots.length > 0) head.push("", "Snapshots it regenerated:", "", ...snapshots.map(fileLine))
-  if (s.commands.length > 0) head.push("", "## Commands that worked", "", ...s.commands.map((c) => `- \`${c}\``))
+  if (s.commands.length > 0) head.push("", "## Project commands it ran, in order", "", s.commands.map((c) => `\`${c}\``).join(", "))
   if (s.mistakes.length > 0) head.push("", "## Mistakes it made", "", ...s.mistakes)
   if (s.nearby.length > 0) head.push("", "## Mistakes other changes to these files made", "", ...s.nearby)
   const intro = head.join("\n")
 
-  // The change, file by file, smallest first while there's room, so a large generated file
-  // doesn't crowd out the hand-written ones; shown in the diff's own order, the rest named.
+  // Every file gets a share of the room: files that fit their share whole, the
+  // rest their first lines, cut at the same length. A large generated file then
+  // can't crowd out the hand-written ones, and every place the change touched
+  // is shown; the full change is a git command away.
   const open = "\n\n## Its change\n\n```diff\n"
   const close = "```\n"
-  const fits = new Set<number>()
-  let used = intro.length + open.length + close.length + 400
-  const bySize = s.diff.map((c, i) => ({ i, size: c.text.replace(/\n*$/, "\n").length })).sort((a, b) => a.size - b.size)
-  for (const { i, size } of bySize) {
-    if (used + size > budget) break
-    fits.add(i)
-    used += size
-  }
-  const shown = s.diff.flatMap((c, i) => (fits.has(i) ? [c.text.replace(/\n*$/, "\n")] : []))
-  const left = s.diff.flatMap((c, i) => (fits.has(i) ? [] : [c.path]))
+  const room = budget - intro.length - open.length - close.length - 300
+  const texts = s.diff.map((c) => c.text.replace(/^index .*\n/m, "").replace(/\n*$/, "\n"))
+  const cap = shareOf(texts.map((t) => t.length), room)
+  const cut: Array<string> = []
+  const shown = texts.map((t, i) => {
+    if (t.length <= cap) return t
+    cut.push(s.diff[i].path)
+    const lines = t.slice(0, cap).split("\n").slice(0, -1)
+    return lines.join("\n") + `\n… (${t.slice(lines.join("\n").length).split("\n").length - 2} more lines)\n`
+  }).filter((t) => cap >= 200 || t.length <= cap)
   let out = intro
   if (shown.length > 0) out += open + shown.join("") + close
-  if (left.length > 0) {
-    const see = sha === undefined ? "" : ` See them with \`git show ${sha} -- <file>\`.`
-    const more = `\nNot shown for room: ${left.map((p) => `\`${p}\``).join(", ")}.${see}\n`
-    out += out.length + more.length <= budget ? more : sha === undefined ? `\nNot shown for room: ${left.length} more files.\n` : `\nThe rest of the change: \`git show ${sha}\`.\n`
-  }
+  if (cut.length > 0 && sha !== undefined) out += `\nThe whole change: \`git show ${sha}\` (add \`-- <file>\` for one file).\n`
   return out.length <= budget ? out : out.slice(0, budget - 40) + "\n… (cut for room)\n"
 }
