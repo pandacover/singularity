@@ -22,7 +22,7 @@ import type { Injection, MemorySetup, Outcome, SetupServices } from "./Setups.ts
 import { MemoryError } from "./Setups.ts"
 import { isoNow } from "./Time.ts"
 import { extractMechanical } from "../records/Extract.ts"
-import { commandsToShow, countLines, diffChunks, mistakesToShow, renderScript } from "../scripts/Render.ts"
+import { commandsToShow, countLines, diffChunks, mistakesNearby, mistakesToShow, renderScript } from "../scripts/Render.ts"
 import { MIN_SCORE as SCRIPTS_MIN_SCORE, rank as rankScripts } from "../scripts/Search.ts"
 
 /** Below this prompt similarity, nothing is injected. */
@@ -73,16 +73,17 @@ export const makeScripts = (memoryDir: string, frozen = false): SavedScripts => 
     if (top === undefined || top.score < SCRIPTS_MIN_SCORE) {
       return { systemPrompt: undefined, info: { ...info, retrieved: null } } satisfies Injection
     }
+    const text = renderEntry(top.doc, top.score, all.filter((e) => e.id !== top.doc.id).reverse())
     return {
-      systemPrompt: renderEntry(top.doc, top.score),
-      info: { ...info, retrieved: { id: top.doc.id, task_id: top.doc.task_id }, chars: renderEntry(top.doc, top.score).length }
+      systemPrompt: text,
+      info: { ...info, retrieved: { id: top.doc.id, task_id: top.doc.task_id }, chars: text.length }
     } satisfies Injection
   })
   return { ...base, name: "scripts", beforeRun }
 }
 
 /** A saved run as the daily hook shows a stored commit. */
-export const renderEntry = (entry: Entry, score: number): string => {
+export const renderEntry = (entry: Entry, score: number, others: ReadonlyArray<Entry> = []): string => {
   const chunks = diffChunks(entry.source_diff)
   const counts = new Map(chunks.map((c) => [c.path, countLines(c.text)] as const))
   return renderScript({
@@ -95,6 +96,7 @@ export const renderEntry = (entry: Entry, score: number): string => {
     ],
     commands: commandsToShow(entry.commands.map((command) => ({ command, ok: true }))),
     mistakes: entry.mistakes ?? [],
+    nearby: mistakesNearby(entry.files_changed, others.map((o) => ({ files: o.files_changed, mistakes: o.mistakes ?? [] })), entry.mistakes ?? []),
     diff: chunks
   })
 }

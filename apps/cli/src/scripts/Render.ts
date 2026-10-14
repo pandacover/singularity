@@ -50,6 +50,8 @@ export interface ScriptView {
   /** Commands worth repeating (`commandsToShow`) and mistakes (`mistakesToShow`), as shown. */
   readonly commands: ReadonlyArray<string>
   readonly mistakes: ReadonlyArray<string>
+  /** Mistakes other stored changes made in the files this one changed (`mistakesNearby`). */
+  readonly nearby: ReadonlyArray<string>
   /** The change, one chunk per file (`diff --git` onwards), snapshots left out. */
   readonly diff: ReadonlyArray<{ readonly path: string; readonly text: string }>
 }
@@ -69,6 +71,26 @@ export const commandsToShow = (commands: ReadonlyArray<Pick<CommandRun, "command
     kept.push(one)
   }
   return kept.slice(-MAX_COMMANDS)
+}
+
+/**
+ * Mistakes other stored changes made, newest first, from those that changed
+ * at least one of `files`: a trap seen once in a part of the code is worth
+ * saying whichever change of that part is handed over. Not the ones `own`
+ * already says.
+ */
+export const mistakesNearby = (
+  files: ReadonlyArray<string>,
+  others: ReadonlyArray<{ readonly files: ReadonlyArray<string>; readonly mistakes: ReadonlyArray<string> }>,
+  own: ReadonlyArray<string>
+): Array<string> => {
+  const mine = new Set(files)
+  const out: Array<string> = []
+  for (const o of others) {
+    if (!o.files.some((f) => mine.has(f))) continue
+    for (const m of o.mistakes) if (!own.includes(m) && !out.includes(m)) out.push(m)
+  }
+  return out.slice(0, MAX_MISTAKES)
 }
 
 /** Mistakes of shell commands, with the command that then worked. */
@@ -118,23 +140,23 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   if (snapshots.length > 0) head.push("", "Snapshots it regenerated:", "", ...snapshots.map(fileLine))
   if (s.commands.length > 0) head.push("", "## Commands that worked", "", ...s.commands.map((c) => `- \`${c}\``))
   if (s.mistakes.length > 0) head.push("", "## Mistakes it made", "", ...s.mistakes)
+  if (s.nearby.length > 0) head.push("", "## Mistakes other changes to these files made", "", ...s.nearby)
   const intro = head.join("\n")
 
-  // The change, file by file, while there's room; the rest named with the command that shows it.
+  // The change, file by file, smallest first while there's room, so a large generated file
+  // doesn't crowd out the hand-written ones; shown in the diff's own order, the rest named.
   const open = "\n\n## Its change\n\n```diff\n"
   const close = "```\n"
-  const shown: Array<string> = []
-  const left: Array<string> = []
+  const fits = new Set<number>()
   let used = intro.length + open.length + close.length + 400
-  for (const chunk of s.diff) {
-    const text = chunk.text.replace(/\n*$/, "\n")
-    if (left.length === 0 && used + text.length <= budget) {
-      shown.push(text)
-      used += text.length
-    } else {
-      left.push(chunk.path)
-    }
+  const bySize = s.diff.map((c, i) => ({ i, size: c.text.replace(/\n*$/, "\n").length })).sort((a, b) => a.size - b.size)
+  for (const { i, size } of bySize) {
+    if (used + size > budget) break
+    fits.add(i)
+    used += size
   }
+  const shown = s.diff.flatMap((c, i) => (fits.has(i) ? [c.text.replace(/\n*$/, "\n")] : []))
+  const left = s.diff.flatMap((c, i) => (fits.has(i) ? [] : [c.path]))
   let out = intro
   if (shown.length > 0) out += open + shown.join("") + close
   if (left.length > 0) {

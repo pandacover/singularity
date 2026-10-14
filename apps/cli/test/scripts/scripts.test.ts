@@ -71,6 +71,7 @@ describe("render", () => {
       ],
       commands: ["npm test"],
       mistakes: [],
+      nearby: [],
       diff: [chunk("lib/md061.mjs", 10), chunk("doc-build/md061.md", 2000)]
     }, 2000)
     expect(text.length).toBeLessThanOrEqual(2000)

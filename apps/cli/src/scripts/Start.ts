@@ -14,7 +14,7 @@ import { git, hasCommit, identifyRepo } from "../local/Git.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { logHandover } from "../workflows/Session.ts"
-import { commandsToShow, diffChunks, type FileNow, isSnapshot, MAX_HANDOVER_CHARS, mistakesToShow, renderScript } from "./Render.ts"
+import { commandsToShow, diffChunks, type FileNow, isSnapshot, MAX_HANDOVER_CHARS, mistakesNearby, mistakesToShow, renderScript } from "./Render.ts"
 import { MIN_SCORE, rank } from "./Search.ts"
 
 export interface ScriptsStart {
@@ -71,13 +71,19 @@ export const startScripts = Effect.fn("startScripts")(function*(
     const diff = yield* git(repo.root, ["diff", base, head]).pipe(Effect.orElseSucceed(() => ""))
     const now = yield* pathsNow(repo.root, head, record.files.map((f) => f.path))
     const files: Array<FileNow> = record.files.map((f) => ({ ...f, now: now.get(f.path) ?? f.path }))
+    const own = mistakesToShow(record.detours)
     text = renderScript({
       prompt: record.task.prompt,
       commit: head,
       score: picked.score,
       files,
       commands: commandsToShow(record.commands),
-      mistakes: mistakesToShow(record.detours),
+      mistakes: own,
+      nearby: mistakesNearby(
+        record.files.map((f) => f.path),
+        [...stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
+        own
+      ),
       diff: readableChunks(diff)
     }, options.budget ?? MAX_HANDOVER_CHARS)
   }
