@@ -25,7 +25,7 @@ import { MemoryError } from "./Setups.ts"
 import { isoNow } from "./Time.ts"
 import { extractMechanical } from "../records/Extract.ts"
 import { commandsToShow, countLines, diffChunks, mistakesNearby, mistakesToShow, renderScript } from "../scripts/Render.ts"
-import { MIN_SCORE, rank } from "../scripts/Search.ts"
+import { MIN_SCORE, rank, tellingFiles } from "../scripts/Search.ts"
 
 export const MAX_COMMANDS = 8
 
@@ -100,6 +100,7 @@ export const makeScripts = (memoryDir: string, frozen = false): SavedScripts => 
 /** A saved run as the daily hook shows a stored commit. */
 export const renderEntry = (entry: Entry, score: number, others: ReadonlyArray<Entry> = []): string => {
   const chunks = diffChunks(entry.source_diff)
+  const links = tellingFiles([entry, ...others].map((e) => ({ files: e.files_changed })), 2)
   const counts = new Map(chunks.map((c) => [c.path, countLines(c.text)] as const))
   return renderScript({
     prompt: entry.prompt,
@@ -111,7 +112,7 @@ export const renderEntry = (entry: Entry, score: number, others: ReadonlyArray<E
     ],
     commands: commandsToShow(entry.commands.map((command) => ({ command, ok: true }))),
     mistakes: entry.mistakes ?? [],
-    nearby: mistakesNearby(entry.files_changed, others.map((o) => ({ files: o.files_changed, mistakes: o.mistakes ?? [] })), entry.mistakes ?? []),
+    nearby: mistakesNearby(entry.files_changed.filter(links), others.map((o) => ({ files: o.files_changed, mistakes: o.mistakes ?? [] })), entry.mistakes ?? []),
     diff: chunks
   })
 }

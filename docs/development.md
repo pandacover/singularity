@@ -122,13 +122,20 @@ else each source file an equal share), then tests, then docs, examples,
 fixtures, snapshots and config (`fileKind`); a file left under 200
 characters is only named, with `git show <sha> -- <file>`.
 
+Mistakes other stored changes made come along only when the two changes
+share a code or test file few stored changes touched (`Search.tellingFiles`,
+with two at least). Linked through any shared file (most changes edit
+`README.md`), one session's failed `npm run build-declaration` reached every
+later hand-over in two markdownlint passes, and agents ran it.
+
 ### A hand-over by file
 
 A task start that hands over nothing writes the files to watch instead
 (`Search.watchFiles`, `<home>/watch/<session>.json`): the non-docs,
 non-snapshot files of stored changes whose task scores at least
 `FILE_MIN_SCORE` (0.2) against the new one, each changed by at most
-`MAX_FILE_SHARE` (20%, one at least) of the stored changes, with up to
+`MAX_FILE_SHARE` (20%, one at least) of the stored changes
+(`Search.tellingFiles`), with up to
 three changes per file, best first. The tool-call hook (`Watch.ts`, plain
 node) checks each call of a watching session: an edit tool's file, a
 patch's files, or a watched file a shell command names that `git status`

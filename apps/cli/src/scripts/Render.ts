@@ -98,7 +98,9 @@ export const commandsToShow = (commands: ReadonlyArray<Pick<CommandRun, "command
  * Mistakes other stored changes made, newest first, from those that changed
  * at least one of `files`: a trap seen once in a part of the code is worth
  * saying whichever change of that part is handed over. Not the ones `own`
- * already says.
+ * already says. Callers pass only the files that mark a part of the code
+ * (Search.ts `tellingFiles`): through a README most changes edit, one
+ * session's failed command reached every later hand-over, and agents ran it.
  */
 export const mistakesNearby = (
   files: ReadonlyArray<string>,

@@ -140,3 +140,10 @@ changes touch (7 and 9 of 11 in pass 1).
 
 One agent ran `singularity recall` in the 36 runs: t01 of pass 2, with
 nothing stored yet.
+
+Fix, not yet measured in runs: other changes' mistakes now come only through
+a code or test file few stored changes touched (`Search.tellingFiles`).
+Replayed on the 37 hand-overs of the five saved-scripts passes
+(`check-other-mistakes.ts`), they show 11 of the 81 other changes' mistakes
+they showed, and 1 of the 9 hand-overs whose mistakes named
+`build-declaration` still does: t05's own, handed over to t11 by file.

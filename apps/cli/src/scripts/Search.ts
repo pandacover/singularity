@@ -116,16 +116,28 @@ export interface FileDoc extends SearchDoc {
   readonly files: ReadonlyArray<string>
 }
 
-/** The files to watch for a task, each with the stored changes to it to hand over, best first. */
-export const watchFiles = <D extends FileDoc>(prompt: string, docs: ReadonlyArray<D>): Map<string, Array<Ranked<D>>> => {
+/**
+ * Whether a file says something about the changes to it: code or a test
+ * (not `fileKind` "rest", nor a snapshot) that at most `MAX_FILE_SHARE` of
+ * the stored changes touched, `least` at least. The file watch takes files a
+ * single change touched (`least` 1); linking two changes by a file they share
+ * (`Start.ts`, other changes' mistakes) takes two.
+ */
+export const tellingFiles = (docs: ReadonlyArray<{ readonly files: ReadonlyArray<string> }>, least = 1): (file: string) => boolean => {
   const changes = new Map<string, number>()
   for (const d of docs) for (const f of new Set(d.files)) changes.set(f, (changes.get(f) ?? 0) + 1)
-  const most = Math.max(1, Math.floor(MAX_FILE_SHARE * docs.length))
+  const most = Math.max(least, Math.floor(MAX_FILE_SHARE * docs.length))
+  return (f) => fileKind(f) !== "rest" && !isSnapshot(f) && (changes.get(f) ?? 0) <= most
+}
+
+/** The files to watch for a task, each with the stored changes to it to hand over, best first. */
+export const watchFiles = <D extends FileDoc>(prompt: string, docs: ReadonlyArray<D>): Map<string, Array<Ranked<D>>> => {
+  const telling = tellingFiles(docs)
   const watched = new Map<string, Array<Ranked<D>>>()
   for (const r of rank(prompt, docs)) {
     if (r.score < FILE_MIN_SCORE) break
     for (const f of new Set(r.doc.files)) {
-      if (fileKind(f) === "rest" || isSnapshot(f) || changes.get(f)! > most) continue
+      if (!telling(f)) continue
       const these = watched.get(f) ?? []
       if (these.length === 0 && watched.size === MAX_WATCHED) continue
       if (these.length < MAX_PER_FILE) watched.set(f, [...these, r])

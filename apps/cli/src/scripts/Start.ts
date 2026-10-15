@@ -41,7 +41,7 @@ import {
   renderScript
 } from "./Render.ts"
 import { readRetired, retire, type Retirement } from "./Retired.ts"
-import { MIN_SCORE, rank, rankRecall, score, watchFiles } from "./Search.ts"
+import { MIN_SCORE, rank, rankRecall, score, tellingFiles, watchFiles } from "./Search.ts"
 
 export interface ScriptsStart {
   readonly text: string | undefined
@@ -214,6 +214,9 @@ const show = Effect.fn("scripts.show")(function*(
   const record = picked.record
   const head = record.run.head_commit
   const own = mistakesToShow(record.detours)
+  // Other changes' mistakes come through a file the two share only when few changes touch it: a README or a
+  // test file most changes edit linked every change to every other, and with it every trap seen anywhere.
+  const links = tellingFiles(s.stored.map((r) => ({ files: r.files.map((f) => f.path) })), 2)
   return renderScript({
     prompt: record.task.prompt,
     commit: head,
@@ -222,7 +225,7 @@ const show = Effect.fn("scripts.show")(function*(
     commands: yield* liveCommands(s.today, head, commandsToShow(record.commands), record.files.map((f) => f.path)),
     mistakes: own,
     nearby: mistakesNearby(
-      record.files.map((f) => f.path),
+      record.files.map((f) => f.path).filter(links),
       [...s.stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
       own
     ),
