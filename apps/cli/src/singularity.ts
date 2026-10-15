@@ -2,7 +2,7 @@
  * The `singularity` command that setup puts on PATH: daily use only.
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
- *     singularity status [--json] | recall TASK... [--json] | store | update | uninstall [--purge]
+ *     singularity status [--json] | changes [COMMIT] [--json] | recall TASK... [--json] | store | update | uninstall [--purge]
  *
  * The commands for measuring memory (eval, record, traces) are in src/cli.ts,
  * which has these too: run it from the repo. Memory's own background work
@@ -36,6 +36,8 @@ Command.make("singularity").pipe(
     HomeError: reportError,
     // A recall asked for in a folder that isn't there.
     RecallError: reportError,
+    // A change asked for that memory doesn't have.
+    ChangesError: reportError,
     // An update that couldn't fetch the code or install its dependencies.
     UpdateError: reportError
   }),

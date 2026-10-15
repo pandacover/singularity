@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { constants } from "node:os"
 import { join } from "node:path"
 import { agentEnv, buildCommand, defaultClaude, parseResult } from "../../src/eval/Agent.ts"
-import { lowerPriority, runProcess } from "../../src/eval/Proc.ts"
+import { lowerPriority, runProcess, runQuick } from "../../src/eval/Proc.ts"
 import type { RunRecord } from "../../src/eval/Report.ts"
 import { compare, loadRecords, summarize } from "../../src/eval/Report.ts"
 import { runSuite } from "../../src/eval/Runner.ts"
@@ -268,6 +268,35 @@ describe("processes", () => {
     const r = await run(runProcess(process.execPath, ["-e", script], { cwd: tempDir(), timeoutS: 1, env: process.env }))
     assert.isTrue(r.timedOut)
     assert.isUndefined(r.exitCode)
+  })
+})
+
+describe("quick commands (git)", () => {
+  const quick = (script: string, timeoutS = 30, input?: string) =>
+    run(runQuick(process.execPath, ["-e", script], { cwd: tempDir(), timeoutS, env: process.env, input }))
+
+  it("keep the exit code and output of a command that fails, and return without a tree kill's wait", async () => {
+    const started = performance.now()
+    const r = await quick("process.stdout.write('out'); process.stderr.write('err'); process.exit(3)")
+    assert.deepInclude(r, { exitCode: 3, timedOut: false, stdout: "out", stderr: "err" })
+    // Effect's spawner waits for `taskkill /T` after a nonzero exit on Windows, about 200 ms.
+    assert.isBelow(performance.now() - started, 1000)
+  })
+
+  it("keep output of any size, write their input, and time out", async () => {
+    const big = await quick("process.stdout.write('x'.repeat(3 * 1024 * 1024))")
+    assert.strictEqual(big.stdout.length, 3 * 1024 * 1024)
+    const echoed = await quick("process.stdin.pipe(process.stdout)", 30, "héllo")
+    assert.strictEqual(echoed.stdout, "héllo")
+    const slow = await quick("setInterval(() => {}, 1000)", 1)
+    assert.isTrue(slow.timedOut)
+    assert.isUndefined(slow.exitCode)
+  })
+
+  it("fail a command that can't start as one that exits nonzero", async () => {
+    const r = await run(runQuick("no-such-command-here", [], { cwd: tempDir(), timeoutS: 5, env: process.env }))
+    assert.notStrictEqual(r.exitCode, 0)
+    assert.match(r.stderr, /ENOENT/)
   })
 })
 

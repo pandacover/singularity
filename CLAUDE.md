@@ -34,7 +34,7 @@ Layout of `apps/cli` (paths from here to the end are relative to it, except
 without what tools add: `Prompts.ts`), `src/eval/` (the eval harness and its
 setups: no memory and saved scripts), `src/cli.ts` (the whole command line,
 run from the repo), `src/singularity.ts` (the `singularity` command setup
-installs: the six daily commands only, so nothing user-facing may point users
+installs: the seven daily commands only, so nothing user-facing may point users
 or agents at another one), `src/local/` (the memory home in `~/.singularity`,
 and git), `src/records/` (records of committed changes: extraction, where
 edits went, the store; whether a call failed: `Outcome.ts`), `src/commands/`
@@ -51,8 +51,9 @@ keeps only `Similarity.ts` and the store errors), `src/layer/`, `src/web/`,
 and learning in daily use. A second repository's suite is
 `examples/validator/`. Tests mirror it under `test/`.
 
-Daily use, for anyone (`singularity setup | status | recall | store |
-update | uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
+Daily use, for anyone (`singularity setup | status | changes | recall |
+store | update | uninstall`, `src/commands/Setup.ts`; what memory stored,
+listed or one in full: `src/setup/Changes.ts`): `install.sh` and `install.ps1` clone
 the code into `~/.singularity/app` and run setup, which lives in
 `src/setup/`: the agents memory can be set up in and what each gets
 (`Agents.ts`: Claude Code, Codex and Hermes Agent store and hand over, their
@@ -107,6 +108,10 @@ Conventions in this repo:
   `Predicate` module instead of writing `isString`-style helpers.
 - **Files and processes:** `FileSystem` and `Path` from `effect`, child processes
   from `effect/process`, with `NodeServices.layer` from `@effect/platform-node`.
+  Except git (`runQuick` in `src/eval/Proc.ts`): after any nonzero exit,
+  Effect's spawner waits for `taskkill /T` on Windows, about 200 ms a call,
+  and git answers no often (a grep that finds nothing); that tripled a
+  recall's time. Agents and checks keep `runProcess`, which kills their tree.
 - **Pure logic** (similarity, report formatting, graph traversal) stays plain
   TypeScript functions. Use Effect where there's I/O, failure or resources.
 - **Imports** use the `.ts` extension. Only erasable TypeScript syntax: no

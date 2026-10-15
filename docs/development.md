@@ -26,9 +26,9 @@ npm run cli -- <args>  # the whole command line, same as node apps/cli/src/cli.t
 
 Commands here run from the repo root, where eval runs go (`runs/`). There
 are two entry points: `apps/cli/src/singularity.ts` is the `singularity`
-command setup installs, with the six daily commands only, so nothing
+command setup installs, with the seven daily commands only, so nothing
 user-facing points anywhere else; `apps/cli/src/cli.ts` is the whole command
-line, with those six too, and runs memory's background work. To set memory
+line, with those seven too, and runs memory's background work. To set memory
 up from a clone instead of the installer's copy:
 `node apps/cli/src/singularity.ts setup`.
 

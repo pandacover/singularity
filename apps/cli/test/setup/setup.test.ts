@@ -176,7 +176,7 @@ describe("the singularity command", () => {
     const help = (cli: string) => spawnSync(process.execPath, [cli, "--help"], { encoding: "utf-8" }).stdout
     const subcommands = (text: string) => [...text.split("SUBCOMMANDS")[1].matchAll(/^ {2}(\S+)/gm)].map((m) => m[1])
     expect(slashes(COMMAND)).toMatch(/\/src\/singularity\.ts$/)
-    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "recall", "store", "update", "uninstall"])
+    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "changes", "recall", "store", "update", "uninstall"])
     expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["store", "record", "eval"]))
   })
 
