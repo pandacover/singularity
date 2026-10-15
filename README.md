@@ -84,8 +84,10 @@ to see what a task would get in the current repository.
 
 ```
 singularity status              # which agents have memory, how many changes it stored per repo
+singularity changes             # the changes stored for this repo, newest first, with their commits
+singularity changes <commit>    # one of them, as an agent would be handed it now
 singularity recall "<task>"     # the past change here most like a task
-singularity status --json       # the same as JSON, for agents and scripts (recall too)
+singularity status --json       # the same as JSON, for agents and scripts (changes and recall too)
 singularity store               # store what this repo's earlier sessions committed
 singularity setup               # set up again, or change your answers
 singularity update              # get the latest version, keeping your answers
@@ -112,6 +114,9 @@ singularity uninstall [--purge] # take memory out of every agent; --purge delete
   session.
 - singularity helps with tasks like ones earlier sessions committed in the
   same repository. Clones of a repository on one machine share its memory.
+- `singularity changes` lists the changes singularity stored in a repository,
+  and the ones it no longer hands over and why, such as a revert or a newer
+  change of the same files.
 - `singularity status` lists the commits singularity didn't store and why,
   such as a failing check before the commit.
 

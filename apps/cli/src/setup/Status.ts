@@ -53,7 +53,7 @@ export const leftOut = (skips: ReadonlyArray<Skip>, subject: string, stored: Rea
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 }
 
-const shortDate = (iso: string): string => {
+export const shortDate = (iso: string): string => {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en", { month: "short", day: "numeric" })
 }
@@ -190,6 +190,9 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
   }
   if (r.here !== null && !r.here.stored) say(`    ${s.dim(`${r.here.name} (here): no changes stored yet`)}`)
   if (r.repos.length === 0 && (r.here === null || r.here.stored)) say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)
+  if (r.repos.some((x) => x.changes_stored > 0)) {
+    say(`    ${s.dim("see them with")} ${s.cyan(r.here?.stored === true ? "singularity changes" : "singularity changes --repo NAME")}`)
+  }
 
 
   const e = r.hook_errors

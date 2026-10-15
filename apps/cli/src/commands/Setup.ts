@@ -23,6 +23,7 @@ import { startScripts } from "../scripts/Start.ts"
 import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
 import { runSetup } from "../setup/Setup.ts"
+import { runChanges } from "../setup/Changes.ts"
 import { runStatus } from "../setup/Status.ts"
 import { runRefresh, runUpdate } from "../setup/Update.ts"
 import { confirm, makeStyle, plural, tilde, wantsColor, withSpinner } from "../setup/Ui.ts"
@@ -70,6 +71,26 @@ const status = Command.make(
     yield* runStatus({ home: homedir(), env: process.env, cwd: process.cwd(), color: wantsColor(), json: args.json, memoryHome: Option.getOrUndefined(args.home) })
   })
 ).pipe(Command.withDescription("which agents have memory, and what it stored in each repo"))
+
+const changes = Command.make(
+  "changes",
+  {
+    change: Argument.String("commit").pipe(Argument.optional, Argument.withDescription("one change to print in full: its commit (4 characters or more) or record id")),
+    repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo: a name status shows, or a folder in it (default: here)")),
+    home: homeFlag,
+    json: jsonFlag
+  },
+  Effect.fn(function*(args) {
+    yield* runChanges({
+      cwd: process.cwd(),
+      change: Option.getOrUndefined(args.change),
+      repo: Option.getOrUndefined(args.repo),
+      memoryHome: Option.getOrUndefined(args.home),
+      color: wantsColor(),
+      json: args.json
+    })
+  })
+).pipe(Command.withDescription("list the changes memory stored in this repo, newest first, or print one as an agent would read it"))
 
 const recall = Command.make(
   "recall",
@@ -181,4 +202,4 @@ const uninstall = Command.make(
   })
 ).pipe(Command.withDescription("take memory out of every agent and remove the singularity command (memory stays unless --purge)"))
 
-export const setupCommands = [setup, status, recall, store, update, uninstall] as const
+export const setupCommands = [setup, status, changes, recall, store, update, uninstall] as const

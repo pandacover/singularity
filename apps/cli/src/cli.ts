@@ -317,6 +317,8 @@ Command.make("singularity").pipe(
     StoreError: reportError,
     HomeError: reportError,
     RecallError: reportError,
+    // A change asked for that memory doesn't have.
+    ChangesError: reportError,
     UpdateError: reportError,
     RecordNotFound: reportError
   }),

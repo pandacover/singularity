@@ -234,6 +234,19 @@ const show = Effect.fn("scripts.show")(function*(
   }, budget)
 })
 
+/**
+ * A stored change as an agent would read it now, whatever its task
+ * (`singularity changes <commit>`), retired or not; undefined when its commit
+ * isn't in this clone. Nothing is retired or logged.
+ */
+export const renderStored = Effect.fn("scripts.renderStored")(function*(cwd: string, tenantDir: string, record: WorkflowRecord) {
+  const s = yield* openStore(cwd, tenantDir)
+  const head = record.run.head_commit
+  if (s === undefined || head === null || !(yield* hasCommit(s.root, head))) return undefined
+  const stored = { ...record, run: { ...record.run, head_commit: head } }
+  return yield* show(s, { record: stored, score: 1, judged: yield* judgeScript(s.today, stored) }, MAX_HANDOVER_CHARS)
+})
+
 const round3 = (x: number) => Math.round(x * 1000) / 1000
 
 export const startScripts = Effect.fn("startScripts")(function*(

@@ -42,6 +42,10 @@ Run these in the repository:
   step, and not for the task you were just handed a change for.
 - \`singularity status\` shows the agents memory is set up in and how many
   changes it has stored for each repository.
+- \`singularity changes\` lists the changes stored for this repository,
+  newest first, with their commits; \`singularity changes <commit>\` prints
+  one as it would be handed over now. Use it when the user asks what memory
+  has stored.
 - \`singularity store\` stores the changes earlier sessions in this
   repository committed. It calls no model; new ones are stored as they are
   committed.
