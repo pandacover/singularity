@@ -62,6 +62,8 @@ export interface ScriptView {
   readonly nearby: ReadonlyArray<string>
   /** The change, one chunk per file (`diff --git` onwards), snapshots left out. */
   readonly diff: ReadonlyArray<{ readonly path: string; readonly text: string }>
+  /** Handed over mid-task because the agent edited this file (Watch.ts): said so, and its change shown first. */
+  readonly touched?: string | undefined
 }
 
 /** Commands that only look (read, list, search, git's views) teach nothing to repeat. */
@@ -96,7 +98,9 @@ export const commandsToShow = (commands: ReadonlyArray<Pick<CommandRun, "command
  * Mistakes other stored changes made, newest first, from those that changed
  * at least one of `files`: a trap seen once in a part of the code is worth
  * saying whichever change of that part is handed over. Not the ones `own`
- * already says.
+ * already says. Callers pass only the files that mark a part of the code
+ * (Search.ts `tellingFiles`): through a README most changes edit, one
+ * session's failed command reached every later hand-over, and agents ran it.
  */
 export const mistakesNearby = (
   files: ReadonlyArray<string>,
@@ -190,12 +194,23 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   const prompt = s.prompt.length > MAX_PROMPT_CHARS ? s.prompt.slice(0, MAX_PROMPT_CHARS) + " …" : s.prompt
   const sources = s.files.filter((f) => !f.snapshot)
   const snapshots = s.files.filter((f) => f.snapshot)
+  const committed = sha === undefined ? "" : `, and its change was committed as ${sha}`
   const head = [
-    "# A past change in this repository like your task",
-    "",
-    `An earlier task here asked for something like yours${sha === undefined ? "" : `, and its change was committed as ${sha}`}. ` +
-    "Use it as a worked example where it applies: names, values and details of your task differ, " +
-    "and your task may need more or less than it did.",
+    ...(s.touched === undefined
+      ? [
+        "# A past change in this repository like your task",
+        "",
+        `An earlier task here asked for something like yours${committed}. ` +
+        "Use it as a worked example where it applies: names, values and details of your task differ, " +
+        "and your task may need more or less than it did."
+      ]
+      : [
+        "# A past change to a file you're editing",
+        "",
+        `You just edited ${s.touched}. An earlier task here changed it too${committed}. ` +
+        "That task asked for something else: use it for how this part of the code works and what had to " +
+        "change along with it (tests, types, generated files, docs), not as a model of your change."
+      ]),
     "",
     "## Its task",
     "",
@@ -217,7 +232,8 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   // examples and config (`fileKind`). A file left too little shows only its
   // file line; the change is a git command away. Files rewritten or deleted
   // since (Fresh.ts), their code nowhere else, aren't shown at all: their
-  // change would mislead.
+  // change would mislead. A hand-over for a file the agent edited shows that
+  // file's change before all others.
   const open = "\n\n## Its change\n\n```diff\n"
   const close = "```\n"
   let room = budget - intro.length - open.length - close.length - 300
@@ -230,8 +246,11 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   const cut: Array<string> = []
   const left: Array<string> = []
   const shown: Array<string> = []
-  for (const kind of KINDS) {
-    const these = chunks.filter((c) => c.kind === kind)
+  const groups = [
+    ...(s.touched === undefined ? [] : [chunks.filter((c) => c.path === s.touched)]),
+    ...KINDS.map((kind) => chunks.filter((c) => c.kind === kind && c.path !== s.touched))
+  ]
+  for (const these of groups) {
     const cap = shareOf(these.map((c) => c.text.length), Math.max(0, room))
     for (const c of these) {
       if (c.text.length <= cap) {

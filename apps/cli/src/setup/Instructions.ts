@@ -2,8 +2,10 @@
  * The recall note: a short block in an agent's user-level instruction file
  * (Claude Code's CLAUDE.md, Codex's and OpenCode's AGENTS.md; Agents.ts says
  * which file each reads) telling the agent it can run `singularity recall`
- * mid-task. The hand-over comes once, at task start; the note is how an
- * agent knows to look again when the task turns to something done before.
+ * mid-task. Memory hands over at most once a task, at its start or, after
+ * nothing then, at the first edit of a file a stored change touched
+ * (src/scripts/Watch.ts); the note is how an agent knows to look again when
+ * the task turns to something done before.
  *
  * The block sits between two marker comments, so setup adds it once and
  * replaces it in place when its text changes, and uninstall takes it out

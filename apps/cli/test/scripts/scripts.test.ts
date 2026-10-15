@@ -7,8 +7,8 @@ import { buildRecord } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import type { CommandRun, Detour } from "../../src/records/Models.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { commandsToShow, mistakesToShow, renderScript } from "../../src/scripts/Render.ts"
-import { MIN_SCORE, pick, rank, rankRecall, score } from "../../src/scripts/Search.ts"
+import { commandsToShow, mistakesNearby, mistakesToShow, renderScript } from "../../src/scripts/Render.ts"
+import { MIN_SCORE, pick, rank, rankRecall, score, tellingFiles } from "../../src/scripts/Search.ts"
 import { startScripts } from "../../src/scripts/Start.ts"
 import { bash, session } from "../records/fixtures.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
@@ -76,6 +76,21 @@ describe("render", () => {
       cost: { tokens: 0, calls: 1, turns: 1 }
     }
     expect(mistakesToShow([d])).toEqual(["- `yarn test:update --watch=false` failed: Expected a single value for option --watch. What worked instead: `yarn test:update`"])
+  })
+
+  it("says other changes' mistakes only through a file few stored changes touch", () => {
+    const stored = [
+      { files: ["README.md", "test/rules.test.mjs", "lib/md061.mjs"], mistakes: ["- mine"] },
+      { files: ["README.md", "test/rules.test.mjs", "lib/md062.mjs"], mistakes: ["- `npm run build-declaration` failed"] },
+      { files: ["test/rules.test.mjs", "lib/md061.mjs"], mistakes: ["- `npm test` failed: MD061 expected 2 errors"] }
+    ]
+    const links = tellingFiles(stored, 2)
+    expect(["README.md", "test/rules.test.mjs", "lib/md061.mjs", "lib/md062.mjs"].map(links)).toEqual([false, false, true, true])
+    const [first, ...others] = stored
+    expect(mistakesNearby(first.files.filter(links), others, first.mistakes)).toEqual(["- `npm test` failed: MD061 expected 2 errors"])
+    // A file only one change touched is enough to watch, but can't link two.
+    expect(tellingFiles(stored)("lib/md061.mjs")).toBe(false)
+    expect(tellingFiles(stored)("lib/md062.mjs")).toBe(true)
   })
 
   it("gives every file of the change a share of the room", () => {

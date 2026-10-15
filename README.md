@@ -80,9 +80,12 @@ status` says when Codex is still skipping them.
    change from git as the code is now, and adds it to the agent's first
    prompt: its task, the files it changed, the commands that worked, the
    mistakes made, and the diff. When no stored change is alike enough,
-   nothing is handed over.
+   nothing is handed over then; instead, the first time the agent edits a
+   file that a stored change with a somewhat similar task touched (and few
+   other changes did), that change is handed over, with its edit of that
+   file first. One hand-over a task, at most.
 
-3. **Recall mid-task.** The hand-over comes once, at task start. Setup adds
+3. **Recall mid-task.** Setup adds
    a short note to your agents' instructions, between
    `<!-- singularity:start ... -->` and `<!-- singularity:end -->`, telling
    them that when they are about to do something likely done before in the

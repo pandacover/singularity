@@ -48,7 +48,7 @@ Under `apps/cli/src`:
 | Directory | What it holds |
 |---|---|
 | `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the recall note in agents' instruction files (`Instructions.ts`), the `singularity` command, Codex hook trust (`CodexHooks.ts`), updating to the latest code with what setup put in place kept current (`Update.ts`) |
-| `scripts/` | memory: at task start, the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`) |
+| `scripts/` | memory: at task start, the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`); after nothing at the start, a stored commit to the first watched file the agent edits (`Watch.ts`) |
 | `workflows/` | the hook script (`hook.ts`) and storing commits (`Commits.ts`, `StoreTrigger.ts`, `Transcripts.ts`); the hand-over log (`Session.ts`) |
 | `records/` | records: what a committed change shows, read from its session and its diff |
 | `traces/` | reading session logs: Claude Code's, and Codex's and Hermes Agent's as Claude Code's |
@@ -121,6 +121,33 @@ commit and is in none of them today; builtins and tools are kept.
 else each source file an equal share), then tests, then docs, examples,
 fixtures, snapshots and config (`fileKind`); a file left under 200
 characters is only named, with `git show <sha> -- <file>`.
+
+Mistakes other stored changes made come along only when the two changes
+share a code or test file few stored changes touched (`Search.tellingFiles`,
+with two at least). Linked through any shared file (most changes edit
+`README.md`), one session's failed `npm run build-declaration` reached every
+later hand-over in two markdownlint passes, and agents ran it.
+
+### A hand-over by file
+
+A task start that hands over nothing writes the files to watch instead
+(`Search.watchFiles`, `<home>/watch/<session>.json`): the non-docs,
+non-snapshot files of stored changes whose task scores at least
+`FILE_MIN_SCORE` (0.2) against the new one, each changed by at most
+`MAX_FILE_SHARE` (20%, one at least) of the stored changes
+(`Search.tellingFiles`), with up to
+three changes per file, best first. The tool-call hook (`Watch.ts`, plain
+node) checks each call of a watching session: an edit tool's file, a
+patch's files, or a watched file a shell command names that `git status`
+shows changed (agents also edit with sed and scripts). The first match
+takes the watch and hands over the first of its changes still worth it,
+examined as at task start (`Start.fileHandover`), with its own intro and
+the edited file's change shown first; the log line has `moment: "file"`.
+One hand-over a session; the watch also ends at session end, and a watch
+older than a day is swept at the next task start. The common call costs
+one look at the watch folder (timed at about 0.1 s a call either way).
+`node apps/cli/examples/scripts/check-file-handover.ts` shows what it would
+hand over on the markdownlint and excalidraw tasks.
 
 `node apps/cli/examples/scripts/check-staleness.ts [repo ...]` replays the
 staleness rules over a repo's history (read-only: files are read at each

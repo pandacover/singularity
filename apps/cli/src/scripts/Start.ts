@@ -17,6 +17,11 @@
  *   then on when the call may write (`persist`; `recall` doesn't);
  * - every file is rewritten or deleted on another branch than theirs: only
  *   this time, since the branch may come back.
+ *
+ * When the start hands over nothing, it can name files to watch instead
+ * (Search.ts `watchFiles`): the first of them the agent edits brings a
+ * stored change to it, chosen and shown the same way (`fileHandover`,
+ * started by Watch.ts). At most one hand-over a session, either way.
  */
 import { DateTime, Effect } from "effect"
 import { git, hasCommit, identifyRepo } from "../local/Git.ts"
@@ -36,7 +41,7 @@ import {
   renderScript
 } from "./Render.ts"
 import { readRetired, retire, type Retirement } from "./Retired.ts"
-import { MIN_SCORE, rank, rankRecall } from "./Search.ts"
+import { MIN_SCORE, rank, rankRecall, score, tellingFiles, watchFiles } from "./Search.ts"
 
 export interface ScriptsStart {
   readonly text: string | undefined
@@ -45,6 +50,12 @@ export interface ScriptsStart {
   readonly score: number
   /** Candidates above the bar passed over before the pick, and why. */
   readonly passed: ReadonlyArray<{ readonly id: string; readonly reason: string }>
+  /**
+   * When nothing was handed over and the caller asked (`watch`): the files
+   * to watch for a hand-over mid-task (Search.ts `watchFiles`), each with
+   * the stored changes to it, best first (Watch.ts).
+   */
+  readonly watch?: { readonly root: string; readonly files: Readonly<Record<string, ReadonlyArray<string>>> } | undefined
 }
 
 /** How many candidates above the bar are examined (each costs a few git calls) before giving up. */
@@ -120,6 +131,111 @@ const newer = Effect.fnUntraced(function*(root: string, a: Stored, b: Stored) {
   return when(a) > when(b)
 })
 
+/** What a hand-over is chosen from: the repo's stored changes, not retired, and the time. */
+interface Store {
+  readonly root: string
+  readonly subject: string
+  readonly stored: ReadonlyArray<Stored>
+  readonly today: Today
+  readonly now: string
+}
+
+const openStore = Effect.fn("scripts.openStore")(function*(cwd: string, tenantDir: string) {
+  const records = yield* RecordStore
+  const repo = yield* identifyRepo(cwd)
+  const subject = repo === undefined ? undefined : yield* records.subjectFor(repo)
+  if (repo === undefined || subject === undefined) return undefined
+  const retired = yield* readRetired(tenantDir)
+  const stored = (yield* records.find({ subject: subject.id, outcome: "success" }))
+    .filter((r): r is Stored => r.run.head_commit !== null && !retired.has(r.id))
+  return { root: repo.root, subject: subject.id, stored, today: { root: repo.root }, now: DateTime.formatIso(yield* DateTime.now) } satisfies Store
+})
+
+interface Candidate {
+  readonly record: Stored
+  readonly score: number
+}
+
+/**
+ * The first of `candidates` (best first) still worth handing over, read from
+ * git as it is now; the ones passed over before it, and why; and of those,
+ * the ones to retire from then on.
+ */
+const choose = Effect.fn("scripts.choose")(function*(s: Store, candidates: ReadonlyArray<Candidate>) {
+  const retiring: Array<Retirement> = []
+  const passed: Array<{ id: string; reason: string }> = []
+  const pass = (r: Stored, reason: string, keep: boolean) => {
+    passed.push({ id: r.id, reason })
+    if (keep) retiring.push({ id: r.id, commit: r.run.head_commit, reason, at: s.now })
+  }
+  for (const c of candidates.slice(0, MAX_EXAMINED)) {
+    const record = c.record
+    const head = record.run.head_commit
+    if (!(yield* hasCommit(s.root, head))) {
+      pass(record, "its commit isn't in this repo", false)
+      continue
+    }
+    const revert = yield* revertedBy(s.today, head)
+    if (revert !== undefined) {
+      pass(record, `reverted by ${revert.slice(0, 12)}`, true)
+      continue
+    }
+    const files = record.files.filter((f) => !f.snapshot).map((f) => f.path)
+    let superseded: Stored | undefined
+    for (const other of s.stored) {
+      if (other.id === record.id || !sameChange({ files, prompt: record.task.prompt }, { files: other.files.filter((f) => !f.snapshot).map((f) => f.path), prompt: other.task.prompt })) continue
+      if ((yield* hasCommit(s.root, other.run.head_commit)) && (yield* newer(s.root, other, record))) {
+        superseded = other
+        break
+      }
+    }
+    if (superseded !== undefined) {
+      pass(record, `superseded by ${superseded.id}`, true)
+      continue
+    }
+    const judged = yield* judgeScript(s.today, record)
+    if (allGone(judged.files)) {
+      // Gone for good only where the change was committed to: on another branch it may come back.
+      pass(record, "gone", yield* isAncestor(s.root, head, "HEAD"))
+      continue
+    }
+    return { picked: { ...c, judged }, passed, retiring }
+  }
+  return { picked: undefined, passed, retiring }
+})
+
+/** The chosen change as the agent reads it; `touched` for a hand-over mid-task, by the file the agent edited. */
+const show = Effect.fn("scripts.show")(function*(
+  s: Store,
+  picked: Candidate & { readonly judged: Effect.Success<ReturnType<typeof judgeScript>> },
+  budget: number,
+  touched?: string
+) {
+  const record = picked.record
+  const head = record.run.head_commit
+  const own = mistakesToShow(record.detours)
+  // Other changes' mistakes come through a file the two share only when few changes touch it: a README or a
+  // test file most changes edit linked every change to every other, and with it every trap seen anywhere.
+  const links = tellingFiles(s.stored.map((r) => ({ files: r.files.map((f) => f.path) })), 2)
+  return renderScript({
+    prompt: record.task.prompt,
+    commit: head,
+    score: picked.score,
+    files: picked.judged.files.map(({ verdict: _, ...f }) => f),
+    commands: yield* liveCommands(s.today, head, commandsToShow(record.commands), record.files.map((f) => f.path)),
+    mistakes: own,
+    nearby: mistakesNearby(
+      record.files.map((f) => f.path).filter(links),
+      [...s.stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
+      own
+    ),
+    diff: picked.judged.diff,
+    touched
+  }, budget)
+})
+
+const round3 = (x: number) => Math.round(x * 1000) / 1000
+
 export const startScripts = Effect.fn("startScripts")(function*(
   input: { readonly sessionId: string; readonly prompt: string; readonly cwd: string },
   options: {
@@ -129,105 +245,88 @@ export const startScripts = Effect.fn("startScripts")(function*(
     readonly minScore?: number | undefined
     /** A recall mid-task: `prompt` is a short line of what the agent is about to do (`Search.rankRecall`). */
     readonly query?: boolean | undefined
+    /** When nothing is handed over, say which files to watch for a hand-over mid-task (`ScriptsStart.watch`). */
+    readonly watch?: boolean | undefined
   }
 ) {
   const nothing: ScriptsStart = { text: undefined, picked: null, score: 0, passed: [] }
-  const records = yield* RecordStore
-  const repo = yield* identifyRepo(input.cwd)
-  const subject = repo === undefined ? undefined : yield* records.subjectFor(repo)
-  if (repo === undefined || subject === undefined) return nothing
-  const retired = yield* readRetired(options.tenantDir)
-  const stored = (yield* records.find({ subject: subject.id, outcome: "success" }))
-    .filter((r): r is Stored => r.run.head_commit !== null && !retired.has(r.id))
-  const docs = stored.map((r) => ({ id: r.id, prompt: r.task.prompt, files: r.files.map((f) => f.path), record: r }))
+  const s = yield* openStore(input.cwd, options.tenantDir)
+  if (s === undefined) return nothing
+  const docs = s.stored.map((r) => ({ id: r.id, prompt: r.task.prompt, files: r.files.map((f) => f.path), record: r }))
   const ranked = options.query === true
     ? rankRecall(input.prompt, docs)
     : rank(input.prompt, docs).map((r) => ({ ...r, matches: r.score >= (options.minScore ?? MIN_SCORE) }))
-  const today: Today = { root: repo.root }
-  const now = DateTime.formatIso(yield* DateTime.now)
-  const retiring: Array<Retirement> = []
-  const passed: Array<{ id: string; reason: string }> = []
-  const pass = (r: Stored, reason: string, keep: boolean) => {
-    passed.push({ id: r.id, reason })
-    if (keep) retiring.push({ id: r.id, commit: r.run.head_commit, reason, at: now })
-  }
-
-  let picked: { readonly r: (typeof ranked)[number]; readonly judged: Effect.Success<ReturnType<typeof judgeScript>> } | undefined
-  for (const r of ranked.slice(0, MAX_EXAMINED)) {
-    if (!r.matches) break
-    const record = r.doc.record
-    const head = record.run.head_commit
-    if (!(yield* hasCommit(repo.root, head))) {
-      pass(record, "its commit isn't in this repo", false)
-      continue
-    }
-    const revert = yield* revertedBy(today, head)
-    if (revert !== undefined) {
-      pass(record, `reverted by ${revert.slice(0, 12)}`, true)
-      continue
-    }
-    const files = record.files.filter((f) => !f.snapshot).map((f) => f.path)
-    let superseded: Stored | undefined
-    for (const other of stored) {
-      if (other.id === record.id || !sameChange({ files, prompt: record.task.prompt }, { files: other.files.filter((f) => !f.snapshot).map((f) => f.path), prompt: other.task.prompt })) continue
-      if ((yield* hasCommit(repo.root, other.run.head_commit)) && (yield* newer(repo.root, other, record))) {
-        superseded = other
-        break
-      }
-    }
-    if (superseded !== undefined) {
-      pass(record, `superseded by ${superseded.id}`, true)
-      continue
-    }
-    const judged = yield* judgeScript(today, record)
-    if (allGone(judged.files)) {
-      // Gone for good only where the change was committed to: on another branch it may come back.
-      pass(record, "gone", yield* isAncestor(repo.root, head, "HEAD"))
-      continue
-    }
-    picked = { r, judged }
-    break
-  }
-
-  let text: string | undefined
-  if (picked !== undefined) {
-    const record = picked.r.doc.record
-    const head = record.run.head_commit
-    const own = mistakesToShow(record.detours)
-    text = renderScript({
-      prompt: record.task.prompt,
-      commit: head,
-      score: picked.r.score,
-      files: picked.judged.files.map(({ verdict: _, ...f }) => f),
-      commands: yield* liveCommands(today, head, commandsToShow(record.commands), record.files.map((f) => f.path)),
-      mistakes: own,
-      nearby: mistakesNearby(
-        record.files.map((f) => f.path),
-        [...stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
-        own
-      ),
-      diff: picked.judged.diff
-    }, options.budget ?? MAX_HANDOVER_CHARS)
-  }
+  const { picked, passed, retiring } = yield* choose(s, ranked.filter((r) => r.matches).map((r) => ({ record: r.doc.record, score: r.score })))
+  const text = picked === undefined ? undefined : yield* show(s, picked, options.budget ?? MAX_HANDOVER_CHARS)
+  const watched = picked !== undefined || options.watch !== true ? undefined : watchFiles(input.prompt, docs)
+  const watch = watched === undefined || watched.size === 0
+    ? undefined
+    : { root: s.root, files: Object.fromEntries([...watched].map(([file, rs]) => [file, rs.map((r) => r.doc.id)] as const)) }
   const result: ScriptsStart = {
     text,
-    picked: picked === undefined ? null : { id: picked.r.doc.id, commit: picked.r.doc.record.run.head_commit },
-    score: Math.round((picked?.r.score ?? ranked[0]?.score ?? 0) * 1000) / 1000,
+    picked: picked === undefined ? null : { id: picked.record.id, commit: picked.record.run.head_commit },
+    score: round3(picked?.score ?? ranked[0]?.score ?? 0),
+    passed,
+    ...(watch === undefined ? {} : { watch })
+  }
+  if (options.persist === false) return result
+  yield* retire(options.tenantDir, retiring)
+  yield* logHandover(options.tenantDir, {
+    at: s.now,
+    session_id: input.sessionId,
+    moment: "start",
+    memory: "scripts",
+    subject: s.subject,
+    stored: s.stored.length,
+    picked: result.picked,
+    score: result.score,
+    // The runner-ups, to read later how close the pick was.
+    others: ranked.slice(picked === undefined ? 0 : 1, 4).map((r) => ({ id: r.doc.id, score: round3(r.score) })),
+    passed,
+    chars: text?.length ?? 0,
+    text: text ?? null,
+    ...(watch === undefined ? {} : { watching: Object.keys(watch.files).length })
+  })
+  return result
+})
+
+/**
+ * A hand-over mid-task (Watch.ts): the agent of a task the start handed
+ * nothing edited `file`, which the stored changes `ids` changed (best
+ * first, as `watchFiles` ranked them for the task's `prompt`). The first
+ * still worth handing over is shown, its change to `file` first, or nothing.
+ */
+export const fileHandover = Effect.fn("scripts.fileHandover")(function*(
+  input: { readonly sessionId: string; readonly prompt: string; readonly cwd: string; readonly file: string; readonly ids: ReadonlyArray<string> },
+  options: { readonly tenantDir: string; readonly persist?: boolean | undefined; readonly budget?: number | undefined }
+) {
+  const nothing: ScriptsStart = { text: undefined, picked: null, score: 0, passed: [] }
+  const s = yield* openStore(input.cwd, options.tenantDir)
+  if (s === undefined) return nothing
+  const candidates = input.ids.flatMap((id) => {
+    const record = s.stored.find((r) => r.id === id)
+    return record === undefined ? [] : [{ record, score: score(input.prompt, record.task.prompt) }]
+  })
+  const { picked, passed, retiring } = yield* choose(s, candidates)
+  const text = picked === undefined ? undefined : yield* show(s, picked, options.budget ?? MAX_HANDOVER_CHARS, input.file)
+  const result: ScriptsStart = {
+    text,
+    picked: picked === undefined ? null : { id: picked.record.id, commit: picked.record.run.head_commit },
+    score: round3(picked?.score ?? 0),
     passed
   }
   if (options.persist === false) return result
   yield* retire(options.tenantDir, retiring)
   yield* logHandover(options.tenantDir, {
-    at: now,
+    at: s.now,
     session_id: input.sessionId,
-    moment: "start",
+    moment: "file",
     memory: "scripts",
-    subject: subject.id,
-    stored: stored.length,
+    subject: s.subject,
+    stored: s.stored.length,
+    file: input.file,
     picked: result.picked,
     score: result.score,
-    // The runner-ups, to read later how close the pick was.
-    others: ranked.slice(picked === undefined ? 0 : 1, 4).map((r) => ({ id: r.doc.id, score: Math.round(r.score * 1000) / 1000 })),
     passed,
     chars: text?.length ?? 0,
     text: text ?? null
