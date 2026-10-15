@@ -7,8 +7,10 @@
  *     node src/workflows/hook.ts session-end          (SessionEnd)
  *
  * Memory is saved scripts (src/scripts/): at a session's first prompt, the
- * stored change most like the task is handed over, read from git, or nothing.
- * There is no learning step and no warning during the task. The same script
+ * stored change most like the task is handed over, read from git, or nothing;
+ * after nothing, the session watches the files stored changes touched, and
+ * the first tool call that edits one hands a change to it over
+ * (src/scripts/Watch.ts). There is no learning step. The same script
  * serves Codex, Gemini CLI and Droid, whose hooks speak Claude Code's format,
  * and Hermes Agent, whose plugin (src/setup/HermesPlugin.ts) speaks it for
  * Hermes. Memory stores a change when it is committed: after a tool call that
@@ -19,8 +21,9 @@
  *
  * The event's JSON comes on stdin; what the model should see goes to stdout as
  * `hookSpecificOutput.additionalContext`. Each event loads only its own
- * modules: the tool-call hook runs after every call and never touches git or
- * a model unless the call committed.
+ * modules: the tool-call hook runs after every call and touches git only
+ * when the call committed, or, in a session watching files, when a command
+ * names a watched file.
  *
  * A hook must never break the session it serves: any error is written to
  * `<home>/hook-errors.log` and the hook exits 0 with no output.
@@ -28,7 +31,7 @@
  * which the harness would mark with `--eval-run`: hooks installed for daily
  * work stay silent in runs.
  */
-import { appendFileSync, mkdirSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -57,7 +60,18 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
     const stdin = await readStdin()
     let out: string | undefined
     if (event === "post-tool-use") {
-      // Saved scripts give no warnings during a task: the hook only starts storing after a commit.
+      // A hand-over by file, in a session watching files. Most sessions have no watch: one look at the folder.
+      // Its failure is logged apart, so a commit is still stored.
+      if (existsSync(join(home(), "watch"))) {
+        try {
+          const watching = await import("../scripts/Watch.ts")
+          const found = watching.watchOf(home(), stdin)
+          const edited = found === undefined ? undefined : watching.editedFile(found.call, found.watch)
+          if (found !== undefined && edited !== undefined) out = await (await import("../scripts/Hook.ts")).handOverFile(found, edited)
+        } catch (error) {
+          logError(event, error)
+        }
+      }
       // Most calls end here: no word a committing command has (StoreTrigger's MAY_COMMIT), no module loaded.
       if (!evalRun && /commit|merge|cherry-pick|revert|\bam\b|pull|rebase/i.test(stdin)) {
         const trigger = await import("./StoreTrigger.ts")
@@ -70,6 +84,7 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
       // The second task-start hook of a hand-over in two parts, which setup no longer writes. Settings
       // not yet updated (`singularity update` takes it out) still run it: do nothing, and log nothing.
     } else if (event === "session-end") {
+      if (existsSync(join(home(), "watch"))) (await import("../scripts/Watch.ts")).endWatch(home(), stdin)
       if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
     } else {
       logError(event, new Error(`unknown hook event ${JSON.stringify(event)}`))

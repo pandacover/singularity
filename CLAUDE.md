@@ -41,7 +41,9 @@ edits went, the store; whether a call failed: `Outcome.ts`), `src/commands/`
 (CLI commands). Memory is saved scripts, `src/scripts/`: at a session's first
 prompt the hook (`src/workflows/hook.ts`, which calls `src/scripts/Hook.ts`)
 hands over the stored commit most like the task, read from git, with no
-model call and no learning step. On this branch everything else was
+model call and no learning step; when it hands over nothing, the first file
+the agent edits that a stored commit touched brings that commit
+(`src/scripts/Watch.ts`, from the tool-call hook). On this branch everything else was
 removed: memory v0 (`src/memory/`, `src/search/`, most of `src/handover/`,
 `src/hook.ts`; tag `memory-v0`), memory v1's learning and hand-over (the rest
 of `src/workflows/`; tag `memory-local-first`), the graph setup (`src/graph/`

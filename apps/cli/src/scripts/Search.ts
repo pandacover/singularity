@@ -19,6 +19,7 @@
  * Pure functions; the callers read the store.
  */
 import { cosine, words } from "../graph/Similarity.ts"
+import { fileKind, isSnapshot } from "./Render.ts"
 
 /** A saved script, as the search sees it. */
 export interface SearchDoc {
@@ -90,4 +91,45 @@ export const rankRecall = <D extends RecallDoc>(query: string, docs: ReadonlyArr
     const matches = asTask >= MIN_SCORE || (covered >= QUERY_MIN && (held.length >= 2 || q.length === 1))
     return { doc, score: Math.max(asTask, covered), matches }
   }).sort((x, y) => Number(y.matches) - Number(x.matches) || y.score - x.score)
+}
+
+/**
+ * A hand-over mid-task, by file (src/scripts/Watch.ts): when the task start
+ * handed over nothing, the first watched file the agent edits brings the
+ * stored change to it whose task is most like the new one. A file is
+ * watched when a stored change whose task is still somewhat like the new
+ * one (`FILE_MIN_SCORE`, below `MIN_SCORE`) changed it, and few stored
+ * changes did (`MAX_FILE_SHARE` of them, one at least): a file most changes
+ * touch (a test file every change extends, an app's main component) says
+ * little about the task. Docs, config and data files (`fileKind` "rest") and
+ * snapshots are never watched. Set from the check in
+ * examples/scripts/check-file-handover.ts.
+ */
+export const FILE_MIN_SCORE = 0.2
+export const MAX_FILE_SHARE = 0.2
+/** Stored changes kept per watched file, and files watched per task. */
+const MAX_PER_FILE = 3
+const MAX_WATCHED = 200
+
+export interface FileDoc extends SearchDoc {
+  /** The paths of the files it changed, as they were then. */
+  readonly files: ReadonlyArray<string>
+}
+
+/** The files to watch for a task, each with the stored changes to it to hand over, best first. */
+export const watchFiles = <D extends FileDoc>(prompt: string, docs: ReadonlyArray<D>): Map<string, Array<Ranked<D>>> => {
+  const changes = new Map<string, number>()
+  for (const d of docs) for (const f of new Set(d.files)) changes.set(f, (changes.get(f) ?? 0) + 1)
+  const most = Math.max(1, Math.floor(MAX_FILE_SHARE * docs.length))
+  const watched = new Map<string, Array<Ranked<D>>>()
+  for (const r of rank(prompt, docs)) {
+    if (r.score < FILE_MIN_SCORE) break
+    for (const f of new Set(r.doc.files)) {
+      if (fileKind(f) === "rest" || isSnapshot(f) || changes.get(f)! > most) continue
+      const these = watched.get(f) ?? []
+      if (these.length === 0 && watched.size === MAX_WATCHED) continue
+      if (these.length < MAX_PER_FILE) watched.set(f, [...these, r])
+    }
+  }
+  return watched
 }
