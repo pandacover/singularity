@@ -27,7 +27,7 @@ describe("Hermes Agent's home", () => {
     expect(hermes.plugin).toEqual({ dir: "/home/a/.hermes/plugins/singularity", config: "/home/a/.hermes/config.yaml" })
     expect(hermes.skillDirs).toEqual(["/home/a/.hermes/skills"])
     expect(hermes.commands).toEqual([])
-    expect(hermes.reach).toBe("learns")
+    expect(hermes.reach).toBe("stores")
   })
 })
 

@@ -3,7 +3,6 @@
  * starts fast:
  *
  *     node src/workflows/hook.ts user-prompt-submit   (UserPromptSubmit)
- *     node src/workflows/hook.ts user-prompt-submit-2 (kept for installed settings; hands over nothing)
  *     node src/workflows/hook.ts post-tool-use        (PostToolUse and PostToolUseFailure)
  *     node src/workflows/hook.ts session-end          (SessionEnd)
  *
@@ -68,7 +67,8 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
       out = await (await import("../scripts/Hook.ts")).userPromptSubmit(stdin)
       if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
     } else if (event === "user-prompt-submit-2") {
-      // Saved scripts hand over in one part.
+      // The second task-start hook of a hand-over in two parts, which setup no longer writes. Settings
+      // not yet updated (`singularity update` takes it out) still run it: do nothing, and log nothing.
     } else if (event === "session-end") {
       if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
     } else {

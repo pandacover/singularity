@@ -60,7 +60,6 @@ foreach ($name in 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'HERMES_HOME', 'XDG_CONFIG_
 $env:SINGULARITY_HOME = $memory
 $env:SINGULARITY_REPO = "file:///$($served -replace '\\', '/')"
 $env:SINGULARITY_REF = 'main'
-$env:SINGULARITY_AUTOLEARN = 'off'
 if ($OwnNode) { $env:SINGULARITY_OWN_NODE = '1' }
 
 # `singularity setup` on its own, from this checkout, kept off PATH.

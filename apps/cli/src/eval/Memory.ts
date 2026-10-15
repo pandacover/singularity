@@ -2,7 +2,8 @@
  * Build a memory setup by name.
  */
 import { Effect } from "effect"
-import { makeSavedScripts, makeScripts } from "./SavedScripts.ts"
+import { withRecall } from "./Recall.ts"
+import { makeScripts } from "./SavedScripts.ts"
 import type { MemorySetup } from "./Setups.ts"
 import { MemoryError, NoMemory, SETUPS } from "./Setups.ts"
 
@@ -20,8 +21,7 @@ export const makeSetup = (
   }
   if (name === NoMemory.name) return Effect.succeed(NoMemory)
   if (memoryDir === undefined) return Effect.fail(new MemoryError({ message: `${name} needs a memory directory (--memory)` }))
-  if (name === "saved-scripts") return Effect.succeed(makeSavedScripts(memoryDir, frozen))
-  if (name === "scripts") return Effect.succeed(makeScripts(memoryDir, frozen))
-  if (name === "saved-scripts-top2") return Effect.succeed(makeSavedScripts(memoryDir, frozen, 2))
+  // The recall note and command come with it, as setup gives them in daily use (Recall.ts).
+  if (name === "scripts") return Effect.succeed(withRecall(makeScripts(memoryDir, frozen), memoryDir))
   return Effect.fail(new MemoryError({ message: `unknown setup ${JSON.stringify(name)}` }))
 }

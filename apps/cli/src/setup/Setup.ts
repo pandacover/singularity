@@ -4,7 +4,8 @@
  *
  *   1. The machine: only what is missing (git).
  *   2. Your agents: memory's hooks where the agent has them, the skill
- *      everywhere (Agents.ts says what each agent gets).
+ *      everywhere, and the recall note in the instruction file of the
+ *      agents whose file is known (Agents.ts says what each agent gets).
  *   3. The `singularity` command, on PATH for new terminals (said at the end).
  *   4. This repo: in a repo with past sessions, the changes they committed.
  *
@@ -21,7 +22,7 @@ import { type Agent, type AgentDirs, type AgentId, CODEX_TRUST_NOTE, type Reach,
 import { codexHooks, trustCodexHooks } from "./CodexHooks.ts"
 import { addToPath, COMMAND, type PathChange, writeLaunchers } from "./Launcher.ts"
 import { askMany, confirm, listWords, makeStyle, makeTree, marks, plural, type Style, tilde, title, TITLED_ENV, type Tree, withSpinner } from "./Ui.ts"
-import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, versionOf, wireHooks, wireSkills } from "./Wiring.ts"
+import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, unwireNote, versionOf, wireHooks, wireNote, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
   /** Take every default and ask nothing. */
@@ -50,7 +51,7 @@ export const WINDOWS_INSTALL = "irm https://raw.githubusercontent.com/pandacover
 
 /** What memory does in an agent, by how far it reaches there. */
 export const REACH: Record<Reach, string> = {
-  "learns": "memory at task start, stores its changes",
+  "stores": "memory at task start, stores its changes",
   "hands-over": "memory at task start",
   "on-request": "memory when you ask for it"
 }
@@ -122,7 +123,10 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     chosen = found.filter((a) => picked.includes(a.id))
     // Memory's hooks stay out of agents left out, including hooks an earlier setup put there.
     const leftOut = found.filter((a) => !chosen.includes(a))
-    for (const a of leftOut) yield* unwireHooks(a)
+    for (const a of leftOut) {
+      yield* unwireHooks(a)
+      yield* unwireNote(a)
+    }
     const launches = {
       claude: { node: process.execPath, script: HOOK_SCRIPT },
       other: { node: yield* nodeForHooks(), script: HOOK_SCRIPT }
@@ -139,6 +143,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
     if (chosen.length > 0) {
       const blocked = yield* wireSkills(skillDirsFor(chosen, dirs))
       for (const d of blocked) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
+      yield* noteLines(s, T, chosen, o.home)
     }
     if (leftOut.length > 0) yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))} left out`))
   }
@@ -163,7 +168,7 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   yield* T.section(`This repo  ${s.dim(path.basename(repo.root))}`)
   const read = yield* withSpinner(`reading ${pastCount(past.map((p) => p.agent))}`, storePast(repo.root, homes, home.tenantDir).pipe(Effect.provide(layers), Effect.result), o.interactive)
   if (read._tag === "Failure") {
-    yield* T.item(M.fail(`couldn't read its past sessions (${read.failure.message}); ${s.cyan("singularity learn --past")} tries again`))
+    yield* T.item(M.fail(`couldn't read its past sessions (${read.failure.message}); ${s.cyan("singularity store")} tries again`))
     return yield* end()
   }
   const n = read.success.stored.length + read.success.existing.length
@@ -173,6 +178,21 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   }
   yield* T.item(M.ok(`${n === 1 ? "one change" : `${n} changes`} committed with passing checks`, `from ${pastCount(past.map((p) => p.agent))}`))
   return yield* end()
+})
+
+/**
+ * Put the recall note in the chosen agents' instruction files, and say where:
+ * how an agent knows it can run `singularity recall` mid-task.
+ */
+export const noteLines = Effect.fnUntraced(function*(s: Style, T: Tree, chosen: ReadonlyArray<Agent>, home: string) {
+  const M = marks(s)
+  const files: Array<string> = []
+  for (const a of chosen) {
+    const wired = yield* wireNote(a)
+    if (wired.problem !== undefined) yield* T.item(M.warn(`recall note not added: ${wired.problem}`))
+    else if (wired.file !== undefined && !files.includes(wired.file)) files.push(wired.file)
+  }
+  if (files.length > 0) yield* T.item(M.ok("recall note", `in ${files.map((f) => tilde(f, home)).join(", ")}`))
 })
 
 /**
@@ -214,8 +234,8 @@ const done = Effect.fnUntraced(function*(
   yield* T.section("Commands")
   const commands: ReadonlyArray<readonly [string, string]> = [
     ["singularity status", "what memory knows, repo by repo"],
-    ["singularity recall \"<task>\"", "what a task would be handed"],
-    ["singularity learn --past", "store what past sessions committed"],
+    ["singularity recall \"<what>\"", "the past change most like it"],
+    ["singularity store", "store what past sessions here committed"],
     ["singularity update", "get the latest version"],
     ["singularity uninstall", "take it all out (memory stays)"]
   ]

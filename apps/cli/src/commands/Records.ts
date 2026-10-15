@@ -1,5 +1,6 @@
 /**
- * `node src/cli.ts record ...`: build, list and show workflow records.
+ * `node src/cli.ts record ...`: store, build, list and show records of
+ * committed changes (memory's saved scripts are these records).
  */
 import { Console, DateTime, Effect, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
@@ -47,7 +48,6 @@ const list = Command.make(
     kind: Flag.String("kind").pipe(Flag.optional, Flag.withDescription("only this task kind")),
     step: Flag.String("step").pipe(Flag.optional, Flag.withDescription("only records with this step")),
     key: Flag.String("key").pipe(Flag.optional, Flag.withDescription("only records with a command, file or error containing this")),
-    unannotated: Flag.Boolean("unannotated").pipe(Flag.withDefault(false), Flag.withDescription("only records without the model's reading")),
     json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     home: homeFlag
   },
@@ -57,8 +57,7 @@ const list = Command.make(
       subject: Option.getOrUndefined(args.subject),
       kind: Option.getOrUndefined(args.kind),
       step: Option.getOrUndefined(args.step),
-      key: Option.getOrUndefined(args.key),
-      annotated: args.unannotated ? false : undefined
+      key: Option.getOrUndefined(args.key)
     })
     if (args.json) {
       const encoded = yield* Effect.forEach(records, (r) => encodeRecord(r))
@@ -136,6 +135,6 @@ const commits = Command.make(
 ).pipe(Command.withDescription("store the changes sessions committed, one record per commit (the hooks run this on their own)"))
 
 export const recordCommand = Command.make("record").pipe(
-  Command.withDescription("workflow records: what finished runs show"),
+  Command.withDescription("records of committed changes: what memory hands over"),
   Command.withSubcommands([importRuns, commits, list, show])
 )

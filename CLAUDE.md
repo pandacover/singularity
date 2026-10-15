@@ -49,7 +49,7 @@ keeps only `Similarity.ts` and the store errors), `src/layer/`, `src/web/`,
 and learning in daily use. A second repository's suite is
 `examples/validator/`. Tests mirror it under `test/`.
 
-Daily use, for anyone (`singularity setup | status | recall | learn |
+Daily use, for anyone (`singularity setup | status | recall | store |
 update | uninstall`, `src/commands/Setup.ts`): `install.sh` and `install.ps1` clone
 the code into `~/.singularity/app` and run setup, which lives in
 `src/setup/`: the agents memory can be set up in and what each gets
@@ -64,9 +64,13 @@ the skill), their hook files
 offers and status checks through `codex app-server`, `CodexHooks.ts`), the skill (`Skill.ts`), the
 `singularity` command on PATH (`Launcher.ts`), storing in the background
 (`Background.ts`, one run at a time under `store.lock`),
+the recall note, a marked block in the user-level instruction file of
+Claude Code (`CLAUDE.md`), Codex and OpenCode (`AGENTS.md`) that tells the
+agent it can run `singularity recall` mid-task (`Instructions.ts`; other
+agents' files aren't confirmed, so they get only the skill),
 the onboarding itself (`Setup.ts`), and updating (`Update.ts`: the clone
 fetched and its dependencies installed, then the new code, as `update
---no-fetch`, rewrites hooks, plugin, skill and command where setup put them,
+--no-fetch`, rewrites hooks, plugin, skill, note and command where setup put them,
 asking nothing again; the installer, run again where memory is set up, does
 that second step instead of setup). In daily use memory stores a change
 when it is committed, one record per commit (or per command that made
@@ -77,8 +81,8 @@ command (`src/workflows/StoreTrigger.ts`), and task start and session end
 sweep for commits made outside the agent, which go to the session whose
 edits they hold. Commits left out are logged with the reason
 (`skipped.jsonl`), and status shows them. Which sessions ran in a repo, in
-any of its worktrees, is `src/workflows/Transcripts.ts`; `learn --past` and
-setup store what earlier sessions committed.
+any of its worktrees, is `src/workflows/Transcripts.ts`; `singularity store`
+(once `learn --past`) and setup store what earlier sessions committed.
 
 ## Writing Effect 4 code
 

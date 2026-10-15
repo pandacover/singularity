@@ -1,11 +1,11 @@
+import type { InstructionFiles } from "./Instructions.ts"
+
 /**
  * The coding agents memory can be set up in, and what each one gets.
  *
  * - Claude Code: the whole memory. Its hooks hand memory over when a task
  *   starts (saved scripts, src/scripts/) and store each change a session
- *   commits with its checks passing (workflows/Commits.ts). Its settings
- *   still name a second task-start hook, `user-prompt-submit-2`, from when
- *   the hand-over came in two parts; it hands over nothing now.
+ *   commits with its checks passing (workflows/Commits.ts).
  * - Codex has hooks in Claude Code's format: memory is handed over at task
  *   start, and its changes are stored like Claude Code's, its log read as
  *   Claude Code's (traces/Codex.ts).
@@ -20,7 +20,11 @@
  *
  * Every agent gets the skill (Skill.ts). Agents that read the shared
  * `~/.agents/skills` (Codex, Gemini CLI, Cursor, OpenCode, and other agents
- * that follow the Agent Skills standard) find it there.
+ * that follow the Agent Skills standard) find it there. Claude Code, Codex
+ * and OpenCode also get the recall note in their user-level instruction file
+ * (Instructions.ts), so they know they can recall mid-task: the files are the
+ * ones their docs name. Other agents' files aren't confirmed, so they get
+ * only the skill.
  *
  * Hook commands: Claude Code's keep the form its measurements ran with (the
  * full path to node, quoted). Other agents run hook commands in whatever
@@ -35,7 +39,7 @@ export const AGENT_IDS = ["claude", "codex", "gemini", "droid", "hermes", "curso
 export type AgentId = (typeof AGENT_IDS)[number]
 
 /** What memory does in an agent: hands over and stores its sessions' changes, hands over, or is there when asked. */
-export type Reach = "learns" | "hands-over" | "on-request"
+export type Reach = "stores" | "hands-over" | "on-request"
 
 export interface HookHandler {
   readonly type: "command"
@@ -98,6 +102,8 @@ export interface Agent {
   readonly sharedSkills: boolean
   /** One line for the user after setup, when the agent needs something from them. */
   readonly note?: string
+  /** Its user-level instruction files, where the recall note goes (Instructions.ts); undefined when not confirmed. */
+  readonly instructions?: InstructionFiles
 }
 
 /** Path parts joined with forward slashes. */
@@ -142,23 +148,26 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
     {
       id: "claude",
       name: "Claude Code",
-      reach: "learns",
+      reach: "stores",
       dir: claude,
       commands: ["claude"],
       hooks: { file: join(claude, "settings.json"), layout: "wrapped" },
       skillDirs: [join(claude, "skills")],
-      sharedSkills: false
+      sharedSkills: false,
+      instructions: { reads: [join(claude, "CLAUDE.md")], create: join(claude, "CLAUDE.md") }
     },
     {
       id: "codex",
       name: "Codex",
-      reach: "learns",
+      reach: "stores",
       dir: codex,
       commands: ["codex"],
       hooks: { file: join(codex, "hooks.json"), layout: "wrapped" },
       skillDirs: [],
       sharedSkills: true,
-      note: CODEX_TRUST_NOTE
+      note: CODEX_TRUST_NOTE,
+      // Codex reads the first of these that isn't empty.
+      instructions: { reads: [join(codex, "AGENTS.override.md"), join(codex, "AGENTS.md")], create: join(codex, "AGENTS.md") }
     },
     {
       id: "gemini",
@@ -184,7 +193,7 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
     {
       id: "hermes",
       name: "Hermes Agent",
-      reach: "learns",
+      reach: "stores",
       dir: hermes,
       // Only its home says it is here: a `hermes` on PATH may be the JavaScript engine of that name.
       commands: [],
@@ -212,16 +221,22 @@ export const agents = (dirs: AgentDirs): ReadonlyArray<Agent> => {
       commands: ["opencode"],
       hooks: undefined,
       skillDirs: [],
-      sharedSkills: true
+      sharedSkills: true,
+      // Its global rules; without them it reads Claude Code's ~/.claude/CLAUDE.md, so the note goes
+      // there when that is the file it reads, and a new AGENTS.md never hides it.
+      instructions: {
+        reads: [join(xdg, "opencode", "AGENTS.md"), join(dirs.home, ".claude", "CLAUDE.md")],
+        create: join(xdg, "opencode", "AGENTS.md")
+      }
     }
   ]
 }
 
-/** The agents memory learns from: those whose sessions it can read. */
-export const LEARNS_FROM = ["claude", "codex", "hermes"] as const
+/** The agents memory stores changes from: those whose sessions it can read. */
+export const STORES_FROM = ["claude", "codex", "hermes"] as const
 
-/** Where the agents memory learns from keep their sessions: those of `ids`, or all of them. */
-export const sessionHomes = (dirs: AgentDirs, ids: ReadonlyArray<AgentId> = LEARNS_FROM) => ({
+/** Where the agents memory stores changes from keep their sessions: those of `ids`, or all of them. */
+export const sessionHomes = (dirs: AgentDirs, ids: ReadonlyArray<AgentId> = STORES_FROM) => ({
   claude: ids.includes("claude") ? claudeDir(dirs) : undefined,
   codex: ids.includes("codex") ? codexHome(dirs) : undefined,
   hermes: ids.includes("hermes") ? hermesHome(dirs) : undefined
@@ -238,7 +253,7 @@ export const droidHookFiles = (dir: string): ReadonlyArray<HookFile> => [
   { file: join(dir, "settings.json"), layout: "wrapped" }
 ]
 
-/** Claude Code's tool calls that can trip a pitfall's trigger: shell commands and edits. */
+/** Claude Code's tool calls the tool-call hook looks at: shell commands (which may commit) and edits. */
 export const CLAUDE_TOOLS = "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit"
 
 export interface Launch {
@@ -269,10 +284,7 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
   switch (id) {
     case "claude":
       return {
-        UserPromptSubmit: [
-          { hooks: [{ type: "command", command: c("user-prompt-submit --parts=2"), timeout: START_TIMEOUT_S }] },
-          { hooks: [{ type: "command", command: c("user-prompt-submit-2 --parts=2"), timeout: START_TIMEOUT_S }] }
-        ],
+        UserPromptSubmit: [{ hooks: [{ type: "command", command: c("user-prompt-submit"), timeout: START_TIMEOUT_S }] }],
         PostToolUse: [{ matcher: CLAUDE_TOOLS, hooks: [{ type: "command", command: c("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }],
         PostToolUseFailure: [{ matcher: CLAUDE_TOOLS, hooks: [{ type: "command", command: c("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }],
         SessionEnd: [{ hooks: [{ type: "command", command: c("session-end"), timeout: END_TIMEOUT_S }] }]
@@ -308,8 +320,8 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
           matcher: "run_shell_command|replace|write_file",
           hooks: [{
             type: "command",
-            name: "singularity-warnings",
-            description: "Warns when a mistake made before is about to happen again",
+            name: "singularity-commits",
+            description: "Tells memory when a command made a commit",
             command: o("post-tool-use"),
             timeout: TOOL_TIMEOUT_S * 1000
           }]
@@ -329,11 +341,9 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
 
 /**
  * Whether a hook command runs memory's hook script, from wherever it was
- * installed (v1's `src/workflows/hook.ts`, or v0's `src/hook.ts`).
+ * installed (v1's `src/workflows/hook.ts`, or v0's `src/hook.ts`), for any
+ * event, the retired `user-prompt-submit-2` included: setup and update
+ * replace all of them with what hookEvents gives now.
  */
 export const isMemoryHookCommand = (command: string): boolean =>
   /\/src\/(?:workflows\/)?hook\.ts["']?\s+(?:user-prompt-submit|post-tool-use|session-end)\b/.test(slashes(command))
-
-/** Whether a hook command runs v0's hook script, which setup replaces with v1's. */
-export const isV0HookCommand = (command: string): boolean =>
-  /\/src\/hook\.ts["']?\s+(?:user-prompt-submit|post-tool-use|session-end)\b/.test(slashes(command))

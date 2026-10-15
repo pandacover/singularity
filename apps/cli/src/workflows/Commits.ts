@@ -23,6 +23,13 @@
  * commits by another author than the repo's own (`user.email`): a teammate's.
  * Copies of a commit (a branch whose history was written again with the same
  * times, a cherry-pick) are one change, stored once.
+ *
+ * A follow-up commit of a session right on top of its previous stored one,
+ * touching only that one's files with no new prompt in between (a lint fix
+ * after the commit), is folded into it: its record covers both commits and
+ * both parts of the log, and the earlier record is retired as
+ * `folded into <id>` (src/scripts/Retired.ts; the store never replaces a
+ * record).
  */
 import { DateTime, Effect, FileSystem, Option, Path, Predicate, Schema } from "effect"
 import { git, identifyRepo } from "../local/Git.ts"
@@ -30,8 +37,10 @@ import { buildRecord, commitRecordId, recordId } from "../records/Build.ts"
 import { extractMechanical, relativizer } from "../records/Extract.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { classifyKey } from "../records/Shell.ts"
+import { readRetired, retire } from "../scripts/Retired.ts"
 import {
   EDIT_TOOLS,
+  isPersonPrompt,
   parseSession,
   SHELL_TOOLS,
   SHELL_WRITE,
@@ -419,6 +428,8 @@ export const storeCommits = Effect.fn("storeCommits")(function*(cwd: string, hom
     }
   }
   for (const group of byCommand.values()) for (const chain of chainsOf(group.map((g) => g.commit))) changes.push({ commits: chain, found: group[0].found })
+  // Oldest first, so a follow-up finds the change it may fold into already stored.
+  changes.sort((a, b) => a.commits[a.commits.length - 1].time - b.commits[b.commits.length - 1].time)
 
   const ctx: RecordContext = { subject: subject.id, tenant: store.tenant, repo: checkouts[0], root: repo.root, tenantDir, createdAt: now, lastCommitBefore }
   for (const change of changes) {
@@ -433,6 +444,9 @@ export const storeCommits = Effect.fn("storeCommits")(function*(cwd: string, hom
     )
     if (put) stored.push(outcome.record.id)
     else existing.push(outcome.record.id)
+    if (put && outcome.folds !== undefined) {
+      yield* retire(tenantDir, [{ id: outcome.folds, commit: change.commits[0].parent ?? null, reason: `folded into ${outcome.record.id}`, at: now }])
+    }
     for (const c of change.commits.slice(0, -1)) yield* leaveOut(c, MADE_TOGETHER, change.found.facts.trace.sessionId)
   }
   return { subject: subject.id, sessions: sessions.length, examined: todo.length, stored, existing, skipped } satisfies StoreResult
@@ -478,12 +492,20 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
     if (!last.ok) return skip("the last check before it failed")
   }
 
-  const diff = yield* git(ctx.root, ["diff", "--binary", first.parent, head.hash]).pipe(Effect.map((s) => s.replace(/\r\n?/g, "\n")))
+  // A follow-up of the session's previous stored change, on top of it, with no
+  // new prompt and only its files (a lint fix after the commit): one script,
+  // from that change's base and the start of its part of the log.
+  const into = yield* foldTarget(change, window, ctx)
+  const from = into === undefined ? window.from : into.from
+  const whole = into === undefined ? part : sliceTrace(f.trace, { from, to })
+  const base = into === undefined ? first.parent : into.base
+
+  const diff = yield* git(ctx.root, ["diff", "--binary", base, head.hash]).pipe(Effect.map((s) => s.replace(/\r\n?/g, "\n")))
   const record = buildRecord({
     id: commitRecordId(ctx.subject, head.hash),
     tenant: ctx.tenant,
     subject: ctx.subject,
-    trace: part,
+    trace: whole,
     diff,
     outcome: "success",
     checks: last === undefined || !last.ok ? [] : [{ command: last.command, ok: true, exit_code: 0 }],
@@ -496,16 +518,42 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
       setup: null,
       task_id: null,
       repo: ctx.repo,
-      base_commit: first.parent,
+      base_commit: base,
       head_commit: head.hash,
-      segment: { from: window.from === undefined ? null : isoOf(window.from), to: isoOf(window.to) },
-      started_at: part.startedAt === undefined ? null : DateTime.formatIso(part.startedAt),
+      segment: { from: from === undefined ? null : isoOf(from), to: isoOf(window.to) },
+      started_at: whole.startedAt === undefined ? null : DateTime.formatIso(whole.startedAt),
       cost_usd: null,
-      tokens: usageTotal(traceUsage(part))
+      tokens: usageTotal(traceUsage(whole))
     },
     createdAt: ctx.createdAt
   })
-  return { record }
+  return { record, folds: into?.id }
+})
+
+/**
+ * The stored change a follow-up commit folds into: the same session's record
+ * whose head is the change's parent, not retired, that changed every file the
+ * follow-up touches, with no prompt of the person's between them. A new
+ * prompt is a new task, worth a script of its own, even on the same files.
+ */
+const foldTarget = Effect.fnUntraced(function*(change: Change, window: TraceWindow, ctx: RecordContext) {
+  const store = yield* RecordStore
+  const f = change.found.facts
+  const first = change.commits[0]
+  const typed = f.trace.prompts.some((p) => {
+    const t = p.timestamp === undefined ? undefined : DateTime.toEpochMillis(p.timestamp)
+    return isPersonPrompt(p) && t !== undefined && (window.from === undefined || t > window.from) && t <= window.to
+  })
+  if (typed) return undefined
+  const retired = yield* readRetired(ctx.tenantDir)
+  const prev = (yield* store.find({ subject: ctx.subject }))
+    .filter((r) => r.run.session_id === f.trace.sessionId && r.run.head_commit === first.parent && !retired.has(r.id))
+    .at(-1)
+  if (prev === undefined) return undefined
+  const theirs = new Set(prev.files.map((x) => x.path.toLowerCase()))
+  if (!change.commits.every((c) => c.files.every((x) => theirs.has(x.toLowerCase())))) return undefined
+  const from = prev.run.segment?.from
+  return { id: prev.id, base: prev.run.base_commit ?? first.parent!, from: from === undefined || from === null ? undefined : Date.parse(from) }
 })
 
 /** Every commit a repo's sessions still on disk made or wrote: memory set up in a repo with a past, or reading it again (`learn --past`). */

@@ -47,8 +47,8 @@ Under `apps/cli/src`:
 
 | Directory | What it holds |
 |---|---|
-| `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the `singularity` command, Codex hook trust (`CodexHooks.ts`), updating to the latest code with what setup put in place kept current (`Update.ts`) |
-| `scripts/` | memory: at task start, the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`) |
+| `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the recall note in agents' instruction files (`Instructions.ts`), the `singularity` command, Codex hook trust (`CodexHooks.ts`), updating to the latest code with what setup put in place kept current (`Update.ts`) |
+| `scripts/` | memory: at task start, the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`) |
 | `workflows/` | the hook script (`hook.ts`) and storing commits (`Commits.ts`, `StoreTrigger.ts`, `Transcripts.ts`); the hand-over log (`Session.ts`) |
 | `records/` | records: what a committed change shows, read from its session and its diff |
 | `traces/` | reading session logs: Claude Code's, and Codex's and Hermes Agent's as Claude Code's |
@@ -64,7 +64,68 @@ hand-over (the rest of `workflows/`), the learning step (`setup/AutoLearn.ts`,
 `src/hook.ts`), the graph setup, `layer/` and `web/` were removed; tags
 `memory-v0` and `memory-local-first` keep them.
 
+Memory reaches an agent three ways: the task-start hook hands over the
+stored commit most like the task; the recall note (`setup/Instructions.ts`,
+a marked block in Claude Code's `CLAUDE.md`, Codex's and OpenCode's
+`AGENTS.md`) tells the agent it can run `singularity recall` mid-task; and
+the skill (`setup/Skill.ts`) says the same to agents that read skills.
+`RECALL_NOTE` and `NOTE_BLOCK` there are the note's text, for eval drivers
+that hand it over themselves. Setup used to write a second task-start hook
+(`user-prompt-submit-2`, for a hand-over in two parts); setup and update
+now replace it with the one hook, and `workflows/hook.ts` still accepts it
+as a silent no-op for settings not yet updated.
+
 Tests mirror it under `apps/cli/test`.
+
+## Saved scripts at task start
+
+`scripts/Start.ts` ranks the repo's stored changes against the new prompt
+(`Search.ts`) and examines the best five above the bar, best first. Each
+costs a few git calls (30 to 100 ms on markdownlint and excalidraw, under
+0.5 s for a sixty-file change) and no model call:
+
+- **Commit missing** (a rebase, another clone): passed over this time only.
+- **Reverted**: a commit since says `This reverts commit <sha>`.
+- **Superseded**: a newer stored change (the commit history's order, else the
+  time it was made) of mostly the same files (Jaccard 0.8) whose task scores
+  0.8 against this one both ways (`Search.score`).
+- **Stale files** (`Fresh.ts`): for each file it changed, the share of its
+  meaningful added lines (8 characters or more besides spaces, a letter or
+  digit, not an import of one name or other boilerplate) still in today's
+  file, whitespace collapsed. Below 0.5, the five longest missing lines are
+  looked for with `git grep -F`; one other file holding two or more and 60%
+  of them, with the change surviving at 0.5 in both files together, means
+  the code moved there (the file line names it). Otherwise the file is stale:
+  its diff chunk is left out and its file line names the commit that took
+  its lines out (`git log -S`) and says to read the file as it is now. A file
+  deleted since, its code nowhere else, is gone and its chunk left out too.
+  Searches are spent on source files first, six per script.
+- **Gone**: every file stale or gone. Passed over; retired only when the
+  commit is on HEAD's history (on another branch it may come back).
+
+Reverted, superseded and gone scripts are retired: a line in
+`<tenant>/scripts/retired.jsonl` (`{id, commit, reason, at}`), which the
+search skips from then on; records are never deleted. Only a call that may
+write retires (the hook; `recall` passes `persist: false`).
+`Retired.countRetired` counts them by reason. Storing commits retires too: a
+follow-up commit of the same session right on top of its previous stored
+one, touching only that one's files with no new prompt in between (a lint
+fix), is stored as one script from the earlier base, and the earlier record
+is retired as `folded into <id>`.
+
+Commands: `npm|yarn|pnpm|bun <x>` is dropped when `x` was a script in a
+`package.json` (the repo's, or one in a folder of a changed file) at the
+commit and is in none of them today; builtins and tools are kept.
+
+`Render.ts` gives hand-written source the room first (whole when it fits,
+else each source file an equal share), then tests, then docs, examples,
+fixtures, snapshots and config (`fileKind`); a file left under 200
+characters is only named, with `git show <sha> -- <file>`.
+
+`node apps/cli/examples/scripts/check-staleness.ts [repo ...]` replays the
+staleness rules over a repo's history (read-only: files are read at each
+revision with git) and writes a sample of verdicts to check by hand to
+`apps/cli/examples/scripts/results/staleness-sample.tsv`.
 
 ## Records, by hand
 

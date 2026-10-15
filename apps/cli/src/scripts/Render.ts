@@ -2,8 +2,9 @@
  * A saved script as the agent reads it at task start: the past task, what it
  * changed (each file as it is called today), the commands that worked, the
  * mistakes it made with what worked instead, and its change, file by file,
- * until the hand-over's room runs out; the rest is named with the command
- * that shows it. Pure: Start.ts reads the record and git.
+ * hand-written source first, until the hand-over's room runs out; the rest
+ * is named with the command that shows it. A file rewritten since says so
+ * instead of showing its change. Pure: Start.ts reads the record and git.
  */
 import type { CommandRun, Detour, FileChange } from "../records/Models.ts"
 
@@ -35,10 +36,17 @@ export const diffChunks = (diff: string): Array<{ path: string; text: string }> 
 
 export { isSnapshot } from "../records/Extract.ts"
 
+/** What became of a file's change since, when it isn't simply there (Fresh.ts). */
+export type FileFate =
+  | { readonly kind: "moved"; readonly to: string }
+  | { readonly kind: "stale"; readonly last: { readonly hash: string; readonly title: string } | null }
+
 /** A file the script changed, and where it is today. */
 export interface FileNow extends FileChange {
   /** Today's path when it was renamed since; null when it no longer exists. Same as `path` otherwise. */
   readonly now: string | null
+  /** Its code moved to another file, or was rewritten since (its chunk is then left out). */
+  readonly fate?: FileFate | undefined
 }
 
 export interface ScriptView {
@@ -123,10 +131,46 @@ export const mistakesToShow = (detours: ReadonlyArray<Detour>): Array<string> =>
 
 const fileLine = (f: FileNow): string => {
   const counts = `+${f.added} -${f.removed}`
+  if (f.fate?.kind === "moved") return `- ${f.path} (${counts}; its code is in ${f.fate.to} now)`
+  if (f.fate?.kind === "stale") {
+    const since = f.fate.last === null ? "it has changed since" : `it has changed since, last in ${f.fate.last.hash} "${f.fate.last.title}"`
+    return `- ${f.now ?? f.path} (${counts}; ${since}: its change isn't shown, read the file as it is now)`
+  }
   if (f.now === null) return `- ${f.path} (${counts}; no longer exists)`
   if (f.now !== f.path) return `- ${f.now} (${counts}; was ${f.path} then)`
   return `- ${f.path} (${counts})`
 }
+
+/**
+ * What a changed file is, for who gets the room first: hand-written source,
+ * then tests, then the rest (docs, examples, fixtures, snapshots, config).
+ * By path alone:
+ * - rest: under a doc(s)/, example(s)/, fixture(s)/, snapshot(s)/ or
+ *   __snapshots__/ folder; prose (.md, .mdx, .txt, .rst, .adoc); config and
+ *   data (.json, .yml, .yaml, .toml, .ini, .lock, .cfg, .xml, .csv, .snap);
+ *   a dotfile or a file in a dot-folder (.github/, .eslintrc);
+ * - test: under a test(s)/, __tests__/ or spec(s)/ folder, or named
+ *   *.test.*, *.spec.*, test_*.py, *_test.go or *_test.py;
+ * - source: everything else.
+ * Rest wins over test, so test fixtures are rest.
+ */
+export const fileKind = (path: string): "source" | "test" | "rest" => {
+  const p = path.replace(/\\/g, "/").toLowerCase()
+  if (
+    /(^|\/)(docs?|examples?|fixtures?|snapshots?|__snapshots__)\//.test(p) ||
+    /\.(md|mdx|markdown|txt|rst|adoc|json|jsonc|ya?ml|toml|ini|lock|cfg|xml|csv|snap)$/.test(p) ||
+    /(^|\/)\./.test(p)
+  ) return "rest"
+  if (/(^|\/)(tests?|__tests__|specs?)\//.test(p) || /\.(test|spec)\.[^/]+$/.test(p) || /(^|\/)test_[^/]+\.py$/.test(p) || /_test\.(go|py)$/.test(p)) {
+    return "test"
+  }
+  return "source"
+}
+
+const KINDS = ["source", "test", "rest"] as const
+
+/** Below this, a file's share of the room shows too little of it to help: its file line says it all. */
+const MIN_SHOWN = 200
 
 /** The largest length each of `sizes` may keep so that together they fit in `room`. */
 export const shareOf = (sizes: ReadonlyArray<number>, room: number): number => {
@@ -167,24 +211,51 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   if (s.nearby.length > 0) head.push("", "## Mistakes other changes to these files made", "", ...s.nearby)
   const intro = head.join("\n")
 
-  // Every file gets a share of the room: files that fit their share whole, the
-  // rest their first lines, cut at the same length. A large generated file then
-  // can't crowd out the hand-written ones, and every place the change touched
-  // is shown; the full change is a git command away.
+  // Hand-written source gets the room first: whole when it fits, else each
+  // source file an equal share (`shareOf`), cut at the same length, so one
+  // large file can't crowd out the others. Tests share what's left, then docs,
+  // examples and config (`fileKind`). A file left too little shows only its
+  // file line; the change is a git command away. Files rewritten or deleted
+  // since (Fresh.ts), their code nowhere else, aren't shown at all: their
+  // change would mislead.
   const open = "\n\n## Its change\n\n```diff\n"
   const close = "```\n"
-  const room = budget - intro.length - open.length - close.length - 300
-  const texts = s.diff.map((c) => c.text.replace(/^index .*\n/m, "").replace(/\n*$/, "\n"))
-  const cap = shareOf(texts.map((t) => t.length), room)
+  let room = budget - intro.length - open.length - close.length - 300
+  const stale = new Set(s.files.filter((f) => f.fate?.kind === "stale" || (f.now === null && f.fate === undefined)).map((f) => f.path))
+  const chunks = s.diff.filter((c) => !stale.has(c.path)).map((c) => ({
+    path: c.path,
+    kind: fileKind(c.path),
+    text: c.text.replace(/^index .*\n/m, "").replace(/\n*$/, "\n")
+  }))
   const cut: Array<string> = []
-  const shown = texts.map((t, i) => {
-    if (t.length <= cap) return t
-    cut.push(s.diff[i].path)
-    const lines = t.slice(0, cap).split("\n").slice(0, -1)
-    return lines.join("\n") + `\n… (${t.slice(lines.join("\n").length).split("\n").length - 2} more lines)\n`
-  }).filter((t) => cap >= 200 || t.length <= cap)
+  const left: Array<string> = []
+  const shown: Array<string> = []
+  for (const kind of KINDS) {
+    const these = chunks.filter((c) => c.kind === kind)
+    const cap = shareOf(these.map((c) => c.text.length), Math.max(0, room))
+    for (const c of these) {
+      if (c.text.length <= cap) {
+        shown.push(c.text)
+        room -= c.text.length
+      } else if (cap < MIN_SHOWN) {
+        left.push(c.path)
+      } else {
+        cut.push(c.path)
+        const lines = c.text.slice(0, cap).split("\n").slice(0, -1).join("\n")
+        const part = lines + `\n… (${c.text.slice(lines.length).split("\n").length - 2} more lines)\n`
+        shown.push(part)
+        room -= part.length
+      }
+    }
+  }
   let out = intro
   if (shown.length > 0) out += open + shown.join("") + close
-  if (cut.length > 0 && sha !== undefined) out += `\nThe whole change: \`git show ${sha}\` (add \`-- <file>\` for one file).\n`
+  if (sha !== undefined) {
+    if (left.length > 0) {
+      const named = left.length > 8 ? `${left.slice(0, 8).join(", ")} and ${left.length - 8} more` : left.join(", ")
+      out += `\nNot shown for room: ${named} (\`git show ${sha} -- <file>\`).\n`
+    }
+    if (cut.length > 0) out += `\nThe whole change: \`git show ${sha}\` (add \`-- <file>\` for one file).\n`
+  }
   return out.length <= budget ? out : out.slice(0, budget - 40) + "\n… (cut for room)\n"
 }

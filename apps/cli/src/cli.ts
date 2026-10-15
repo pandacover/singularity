@@ -3,15 +3,16 @@
  * installs is src/singularity.ts, with only the commands for daily use:
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
- *     singularity status | recall TASK... | learn --past | update | uninstall [--purge]
+ *     singularity status | recall TASK... | store | update | uninstall [--purge]
  *
  * This one has those too, and, for measuring memory (and for memory's own
  * background work, src/setup/Background.ts):
  *
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
- *     node src/cli.ts eval run SUITE.toml --setup scripts|saved-scripts|saved-scripts-top2 --memory DIR [--frozen]
- *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts --memory DIR [--task ID ...]
+ *     node src/cli.ts eval run SUITE.toml --setup scripts --memory DIR [--frozen]
+ *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup scripts --memory DIR [--task ID ...]
  *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
+ *     node src/cli.ts eval recall --memory DIR TASK...     (the `singularity recall` of a scripts run)
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
  *     node src/cli.ts traces SESSION [--json]
  *     node src/cli.ts record import RUN_DIRS... | commits | list | show ID
@@ -25,6 +26,7 @@ import { setupCommands } from "./commands/Setup.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
 import { learnFrom } from "./eval/Learn.ts"
 import { makeSetup } from "./eval/Memory.ts"
+import { recallText } from "./eval/Recall.ts"
 import { lowerPriority } from "./eval/Proc.ts"
 import { pyFixed } from "./eval/PyFormat.ts"
 import { VERSION } from "./setup/Status.ts"
@@ -67,7 +69,7 @@ const run = Command.make(
     setup: Flag.Literals("setup", SETUPS).pipe(Flag.withDefault("no-memory")),
     memory: Flag.String("memory").pipe(
       Flag.optional,
-      Flag.withDescription("memory store for setups that keep memory (e.g. saved-scripts)")
+      Flag.withDescription("memory directory for setups that keep memory (scripts)")
     ),
     frozen: Flag.Boolean("frozen").pipe(
       Flag.withDefault(false),
@@ -145,7 +147,7 @@ const learn = Command.make(
       Console.error(`[${i}/${total}] learned from ${outcome.task.id} (${outcome.trace?.sessionId ?? "no transcript"})`))
     yield* Console.log(`fed ${n} runs into ${args.setup} memory at ${args.memory}`)
   })
-).pipe(Command.withDescription("feed finished runs into a memory setup"))
+).pipe(Command.withDescription("save finished runs into a memory setup's directory"))
 
 const inject = Command.make(
   "inject",
@@ -171,6 +173,17 @@ const inject = Command.make(
     }
   })
 ).pipe(Command.withDescription("show what a setup would hand the agent for each task, without running it"))
+
+const recall = Command.make(
+  "recall",
+  {
+    task: Argument.String("task").pipe(Argument.atLeast(1), Argument.withDescription("what the agent is about to do")),
+    memory: Flag.String("memory").pipe(Flag.withDescription("the run's scripts memory directory"))
+  },
+  Effect.fn(function*(args) {
+    yield* Console.log(yield* recallText(args.memory, args.task.join(" ")))
+  })
+).pipe(Command.withDescription("what `singularity recall` prints in a scripts run (Recall.ts)"))
 
 const report = Command.make(
   "report",
@@ -202,7 +215,7 @@ const report = Command.make(
 
 const evalCommand = Command.make("eval").pipe(
   Command.withDescription("evaluate memory setups on a task suite"),
-  Command.withSubcommands([run, learn, inject, report])
+  Command.withSubcommands([run, learn, inject, recall, report])
 )
 
 const traces = Command.make(

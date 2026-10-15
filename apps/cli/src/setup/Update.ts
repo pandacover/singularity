@@ -8,8 +8,11 @@
  *   2. Setup, refreshed by the new code (`update --no-fetch`, run as a child
  *      process: this one still runs the old code): memory's hooks in the
  *      agents that have them, Hermes Agent's plugin, the skill where it is,
- *      the `singularity` command. Hook commands, the skill's text and the
- *      launchers change with the code; agents left out stay out, and the
+ *      the recall note in the instruction file of each agent with memory
+ *      (added there too when an older version didn't write it), the
+ *      `singularity` command. Hook commands (the retired second task-start
+ *      hook taken out), the skill's text, the note's text and the launchers
+ *      change with the code; agents left out stay out, and the
  *      choices in config.json stay as they are. The installer, run again
  *      where memory is set up, does this step too instead of setup.
  *
@@ -24,7 +27,7 @@ import { loadHome } from "../local/Home.ts"
 import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
 import { binDir, COMMAND, writeLaunchers } from "./Launcher.ts"
-import { codexTrust, REACH } from "./Setup.ts"
+import { codexTrust, noteLines, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
 import { listWords, makeStyle, makeTree, marks, tilde, title, TITLED_ENV, withSpinner } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, nodeForHooks, skillDirsFor, wireHooks, wireSkills } from "./Wiring.ts"
@@ -176,8 +179,8 @@ export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
 
 /**
  * What setup put in place, made current with the code that runs this: hooks
- * and plugins where they are, the skill where it is, the command if it was
- * written. Asks nothing but Codex's trust in hooks whose command changed.
+ * and plugins where they are, the skill where it is, the recall note for the
+ * agents with memory, the command if it was written. Asks nothing but Codex's trust in hooks whose command changed.
  */
 export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
   const s = makeStyle(o.color)
@@ -224,6 +227,7 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
     if (state === "current" || state === "outdated") placed.push(dir)
   }
   for (const d of yield* wireSkills(placed)) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
+  yield* noteLines(s, T, withMemory.map((st) => st.agent), o.home)
   yield* writeLaunchers(memory.root, process.execPath, COMMAND, process.platform)
   const leftOut: ReadonlyArray<Agent> = states
     .filter((st) => st.found && st.hookEvents.length === 0 && !st.skill)

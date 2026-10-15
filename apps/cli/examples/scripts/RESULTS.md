@@ -55,3 +55,35 @@ no memory; the arms there differed by up to 7% between batches). On
 long-mixed-changes it used 53% fewer tokens than no memory and 39% fewer than
 main, and its highest run is below main's median. Cost: $3.11 for the 8
 long-four runs, $0.93 for the 4 long-mixed runs.
+
+## Rerun with staleness checks, smarter cutting and the recall note (2026-10-15)
+
+Same machine and Claude Code versions. Saved scripts now check each file
+against today's code, retire stale scripts, give hand-written source the room
+first, and the agent has the recall note (CLAUDE.md in markdownlint, the
+system prompt in excalidraw) with a `singularity recall` command on PATH
+(`results/rerun/`).
+
+| markdownlint | passed | cost | tokens |
+|---|---|---|---|
+| no memory (second pass) | 12 of 12 | $3.19 | 6.11M |
+| saved scripts | 9 of 12 | $2.64 | 4.61M |
+
+Saved scripts used 17% less money and 25% fewer tokens. On the 7 tasks with a
+hand-over cost fell 19% ($2.18 to $1.76) and tokens 27%; the 5 without one
+cost $1.01 and $0.88. Its failures: t10 ran `npm run build-declaration`,
+whose type check failed and left the temporary `dts/` folder, and committed
+it; t11 and t12 then failed the same check on those files. The hand-over did
+not mention that command. Over both passes: saved scripts 21 of 24, no memory
+19 of 24, each arm losing a run of tasks to one carried-over mistake.
+
+| excalidraw | runs | passed | median tokens | range |
+|---|---|---|---|---|
+| long-four-changes | 8 | 8 | 1,247k | 823k-2,016k |
+| long-mixed-changes | 4 | 4 | 604k | 490k-810k |
+
+Within the noise of the first saved-scripts runs (1,079k and 489k) and still
+below no memory on long-mixed-changes (1,051k).
+
+No agent ran `singularity recall` mid-task: 0 calls in 12 markdownlint tasks
+and 12 excalidraw runs.

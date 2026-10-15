@@ -5,9 +5,10 @@
  * OpenCode, Droid and Hermes Agent all read.
  *
  * Only the skill's description stays in an agent's context; the rest loads
- * when the agent uses it. It is for when the user asks about memory: at task
- * start memory arrives through hooks, and an agent that looked it up for
- * every task would pay a turn each time.
+ * when the agent uses it. At task start memory arrives through hooks; the
+ * skill is for when the user asks about memory, and for recalling mid-task
+ * (which the recall note, Instructions.ts, tells the agents that read it).
+ * An agent that looked memory up for every task would pay a turn each time.
  */
 import { Effect, FileSystem, Path } from "effect"
 
@@ -18,7 +19,7 @@ const MARKER = "<!-- Installed by `singularity setup`; `singularity uninstall` r
 
 export const SKILL_TEXT = `---
 name: ${SKILL_NAME}
-description: Procedural memory for this machine's git repositories, kept from earlier coding sessions. Use when the user asks to use, check or teach singularity memory, or asks what memory knows about a repository. Memory usually arrives on its own when a task starts; don't look it up for every task.
+description: Procedural memory for this machine's git repositories, kept from earlier coding sessions. Use when the user asks to use or check singularity memory or what it knows about a repository, or mid-task when you are about to do something likely done before in this repository. Memory usually arrives on its own when a task starts; don't look it up at every step.
 ---
 
 ${MARKER}
@@ -33,13 +34,17 @@ in this repository like your task".
 
 Run these in the repository:
 
-- \`singularity recall "<the task, as the user wrote it>"\` prints what memory
-  has for that task, or says it has nothing. Use it when the user asks you to
-  use memory and nothing was handed over.
+- \`singularity recall "<what you are about to do>"\` prints the past change
+  most like it, read from git as it is now, or says there is none. It calls no
+  model. Use it when the user asks you to use memory and nothing was handed
+  over, or mid-task when you are about to do something likely done before
+  here (a kind of change, a fix, a command that keeps failing). Not at every
+  step, and not for the task you were just handed a change for.
 - \`singularity status\` shows the agents memory is set up in and how many
   changes it has stored for each repository.
-- \`singularity learn --past\` stores the changes earlier sessions in this
-  repository committed. It calls no model.
+- \`singularity store\` stores the changes earlier sessions in this
+  repository committed. It calls no model; new ones are stored as they are
+  committed.
 `
 
 export type SkillState = "missing" | "current" | "outdated" | "foreign"

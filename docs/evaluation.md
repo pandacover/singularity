@@ -53,13 +53,13 @@ Claude Code, such as a pinned copy of an earlier version
 | Setup | What the agent gets |
 |---|---|
 | `no-memory` | nothing: the baseline |
-| `saved-scripts` | the closest past successful run (its prompt, files, source diff and working commands), matched by prompt similarity |
-| `saved-scripts-top2` | up to the two closest past runs, each similar enough |
-| `scripts` | the same saved runs, picked and shown as the daily hook shows a stored commit (`src/scripts/`) |
+| `scripts` | the closest past successful run (its prompt, files, source diff, working commands and mistakes), picked and shown as the daily hook shows a stored commit (`src/scripts/`) |
 
 The `graph`, `saved-scripts-warnings`, `hooks` and `workflows*` setups were
-removed with the memory designs they measured; old runs of them stay
-readable by `eval report`.
+removed with the memory designs they measured, and so were the first
+saved-scripts setups, `saved-scripts` and `saved-scripts-top2` (matched by
+the cosine of word counts); `scripts` reads the same saved runs. Old runs of
+all of them stay readable by `eval report`.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
 measurement runs, so memory doesn't change while it is measured.
@@ -72,16 +72,16 @@ sets `SINGULARITY_HOOKS=off`, which silences memory's installed hooks.
 Preview what a setup would hand each task:
 
 ```
-node apps/cli/src/cli.ts eval inject apps/cli/examples/excalidraw/suite.toml --setup saved-scripts --memory runs/excalidraw/memory/saved-scripts
+node apps/cli/src/cli.ts eval inject apps/cli/examples/excalidraw/suite.toml --setup scripts --memory runs/excalidraw/memory/saved-scripts
 ```
 
 Build memory from runs already recorded, without running the agent again:
 
 ```
 node apps/cli/src/cli.ts eval learn apps/cli/examples/excalidraw/suite.toml runs/excalidraw/baseline-1 \
-  --setup saved-scripts --memory runs/excalidraw/memory/saved-scripts --task altkey-zen-m
+  --setup scripts --memory runs/excalidraw/memory/saved-scripts --task altkey-zen-m
 ```
 
-`eval report --compare --baseline saved-scripts` compares setups against
-saved-scripts instead of no memory. New setups implement `MemorySetup` in
+`eval report --compare --baseline scripts` compares setups against
+`scripts` instead of no memory (`--baseline saved-scripts` for old runs). New setups implement `MemorySetup` in
 `apps/cli/src/eval/Setups.ts`.

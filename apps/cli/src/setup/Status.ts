@@ -1,5 +1,6 @@
 /**
- * `singularity status`: which agents have memory and how, what memory knows
+ * `singularity status`: which agents have memory and how (hooks or plugin,
+ * skill, the recall note in their instruction file), what memory knows
  * in each repo (the changes it stored) and which of its sessions' commits it
  * left out and why, and whether hooks have been failing.
  * One screen, or with --json the same as data for agents and scripts.
@@ -9,6 +10,7 @@ import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
 import { commitRecordId } from "../records/Build.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
+import { readRetired } from "../scripts/Retired.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { matchSubject } from "../records/Subjects.ts"
 import { isMiss, readSkips, type Skip } from "../workflows/Commits.ts"
@@ -20,7 +22,7 @@ import { agentStates, detectAgents, findCommand, findExecutable } from "./Wiring
 export const VERSION = "0.2.0"
 
 const REACH: Record<Reach, string> = {
-  "learns": "hands over memory, stores its changes",
+  "stores": "hands over memory, stores its changes",
   "hands-over": "hands over memory",
   "on-request": "memory when you ask for it"
 }
@@ -68,7 +70,7 @@ export interface StatusReport {
     readonly name: string
     readonly set_up: boolean
     readonly reach: Reach
-    /** What memory put in the agent: "hooks" or "plugin", and "skill". */
+    /** What memory put in the agent: "hooks" or "plugin", "skill", and "recall note" (in its instruction file). */
     readonly parts: ReadonlyArray<string>
     /** Memory's hooks Codex skips until the user trusts them; 0 for other agents. */
     readonly untrusted_hooks: number
@@ -80,6 +82,8 @@ export interface StatusReport {
     readonly name: string
     readonly here: boolean
     readonly changes_stored: number
+    /** Stored changes the search passes over for good: reverted, superseded, gone, folded (scripts/Retired.ts). */
+    readonly retired: number
     /** When the latest change was stored. */
     readonly last_stored: string | null
     readonly left_out: ReadonlyArray<{ readonly reason: string; readonly count: number }>
@@ -108,7 +112,11 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
       name: a.agent.name,
       set_up: a.hookEvents.length > 0 || (a.agent.hooks === undefined && a.agent.plugin === undefined && a.skill),
       reach: a.agent.reach,
-      parts: [...(a.hookEvents.length > 0 ? [a.agent.plugin === undefined ? "hooks" : "plugin"] : []), ...(a.skill ? ["skill"] : [])],
+      parts: [
+        ...(a.hookEvents.length > 0 ? [a.agent.plugin === undefined ? "hooks" : "plugin"] : []),
+        ...(a.skill ? ["skill"] : []),
+        ...(a.note !== undefined && a.note.state !== "missing" ? ["recall note"] : [])
+      ],
       untrusted_hooks: untrusted
     })
   }
@@ -121,6 +129,7 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
     const subjects = yield* store.subjects()
     const here = repo === undefined ? undefined : matchSubject(subjects, repo)
     const repos: Array<StatusReport["repos"][number]> = []
+    const retired = yield* readRetired(home.tenantDir)
     for (const subject of subjects) {
       const records = yield* store.find({ subject: subject.id, outcome: "success" })
       repos.push({
@@ -128,6 +137,7 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
         name: subject.name,
         here: here?.id === subject.id,
         changes_stored: records.length,
+        retired: records.filter((r) => retired.has(r.id)).length,
         last_stored: records.map((r) => r.created_at).sort().at(-1) ?? null,
         left_out: leftOut(skips, subject.id, new Set(records.map((r) => r.id))).map(([reason, count]) => ({ reason, count }))
       })
@@ -174,7 +184,8 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
   const w = Math.max(0, ...r.repos.map((x) => x.name.length)) + 3
   for (const x of r.repos) {
     const last = x.last_stored === null ? "" : ` · last ${shortDate(x.last_stored)}`
-    say(`    ${x.name.padEnd(w)}${plural(x.changes_stored, "change")} stored${last}${x.here ? s.cyan(" ← here") : ""}`)
+    const out = x.retired === 0 ? "" : s.dim(` (${x.retired} retired)`)
+    say(`    ${x.name.padEnd(w)}${plural(x.changes_stored, "change")} stored${out}${last}${x.here ? s.cyan(" ← here") : ""}`)
     if (x.left_out.length > 0) say(`    ${" ".repeat(w)}${s.dim(`left out: ${x.left_out.map((m) => `${m.count} ${m.reason}`).join("; ")}`)}`)
   }
   if (r.here !== null && !r.here.stored) say(`    ${s.dim(`${r.here.name} (here): no changes stored yet`)}`)

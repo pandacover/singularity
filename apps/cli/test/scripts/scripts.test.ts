@@ -8,7 +8,7 @@ import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import type { CommandRun, Detour } from "../../src/records/Models.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
 import { commandsToShow, mistakesToShow, renderScript } from "../../src/scripts/Render.ts"
-import { MIN_SCORE, pick, rank, score } from "../../src/scripts/Search.ts"
+import { MIN_SCORE, pick, rank, rankRecall, score } from "../../src/scripts/Search.ts"
 import { startScripts } from "../../src/scripts/Start.ts"
 import { bash, session } from "../records/fixtures.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
@@ -30,6 +30,21 @@ describe("search", () => {
     expect(pick(RULE, [])).toBeUndefined()
     const ranked = rank(OTHER_RULE, [{ id: "rename", prompt: RENAME }, { id: "rule", prompt: RULE }])
     expect(ranked.map((r) => r.doc.id)).toEqual(["rule", "rename"])
+  })
+})
+
+describe("recall mid-task", () => {
+  it("finds a script from a short line of what the agent is about to do", () => {
+    const docs = [
+      { id: "rule", prompt: RULE, files: ["lib/md061.mjs", "doc-build/md061.md"] },
+      { id: "rename", prompt: RENAME, files: ["package.json"] }
+    ]
+    expect(score("add a new rule with a parameter", RULE)).toBeLessThan(MIN_SCORE)
+    const [top] = rankRecall("add a new rule with a parameter", docs)
+    expect(top.doc.id).toBe("rule")
+    expect(top.matches).toBe(true)
+    expect(rankRecall("translate the readme to french", docs).some((r) => r.matches)).toBe(false)
+    expect(rankRecall(OTHER_RULE, docs)[0].matches).toBe(true)
   })
 })
 

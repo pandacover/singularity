@@ -2,8 +2,10 @@
  * Memory setups: what the agent is given before a run, and what it learns after.
  *
  * The evaluation compares setups on the same tasks: no memory and saved
- * scripts. Each one plugs in here. (The graph, hooks and workflows setups
- * were removed with the memory designs they measured.)
+ * scripts (`scripts`). Each one plugs in here. (The graph, hooks and
+ * workflows setups were removed with the memory designs they measured, and
+ * the first saved-scripts setups, `saved-scripts` and `saved-scripts-top2`,
+ * with their search; `eval report` still reads their results.)
  */
 import type { FileSystem, Path } from "effect"
 import { Effect, Schema } from "effect"
@@ -61,7 +63,7 @@ export interface Outcome {
   readonly diff: string
 }
 
-/** Setups that learn with an LLM run `claude`, hence the process spawner. */
+/** What setups may use: files, and processes (git, the agent). */
 export type SetupServices = FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 
 export interface MemorySetup {
@@ -81,5 +83,5 @@ export const NoMemory: MemorySetup = {
   afterRun: () => Effect.void
 }
 
-export const SETUPS = ["no-memory", "scripts", "saved-scripts", "saved-scripts-top2"] as const
+export const SETUPS = ["no-memory", "scripts"] as const
 export type SetupName = (typeof SETUPS)[number]

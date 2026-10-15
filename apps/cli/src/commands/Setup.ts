@@ -3,13 +3,15 @@
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]   set memory up in this machine's coding agents
  *     singularity status [--json]                              what memory knows, and where it is set up
- *     singularity recall TASK... [--json]                      what a task here would be handed
- *     singularity learn --past                                 store what this repo's past sessions committed
+ *     singularity recall TASK... [--json]                      the past change most like a task here (mid-task too)
+ *     singularity store [--repo DIR]                           store what this repo's past sessions committed
  *     singularity update [--no-fetch]                          the latest code, and setup brought up to date with it
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
  * Memory is saved scripts (src/scripts/): the changes sessions committed,
- * one picked at task start. There is no learning step and no model call.
+ * one picked at task start, and any time an agent runs `recall` (the recall
+ * note setup writes tells it so, src/setup/Instructions.ts). There is no
+ * learning step and no model call.
  */
 import { Console, Effect, FileSystem, Option, Path, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
@@ -59,7 +61,7 @@ const setup = Command.make(
     })
     if (!ok) process.exitCode = 1
   })
-).pipe(Command.withDescription("set memory up in this machine's coding agents: hooks, skill, the singularity command"))
+).pipe(Command.withDescription("set memory up in this machine's coding agents: hooks, skill, recall note, the singularity command"))
 
 const status = Command.make(
   "status",
@@ -72,7 +74,7 @@ const status = Command.make(
 const recall = Command.make(
   "recall",
   {
-    task: Argument.String("task").pipe(Argument.atLeast(1), Argument.withDescription("the task, as it was asked")),
+    task: Argument.String("task").pipe(Argument.atLeast(1), Argument.withDescription("the task, or what you are about to do mid-task")),
     cwd: Flag.String("cwd").pipe(Flag.optional, Flag.withDescription("the repo (default: here)")),
     home: homeFlag,
     json: jsonFlag
@@ -88,7 +90,7 @@ const recall = Command.make(
     }
     const result = yield* startScripts(
       { sessionId: "recall", prompt: args.task.join(" "), cwd },
-      { tenantDir: home.tenantDir, persist: false }
+      { tenantDir: home.tenantDir, persist: false, query: true }
     ).pipe(Effect.provide(JsonRecordStore.layer(home.tenantDir, home.tenant)))
     const repo = yield* identifyRepo(cwd)
     if (args.json) {
@@ -111,12 +113,11 @@ const recall = Command.make(
         : `singularity: memory has nothing for this task in ${path.basename(repo.root)} yet.`
     )
   })
-).pipe(Command.withDescription("print what memory would hand a task in this repo (no model call)"))
+).pipe(Command.withDescription("print the past change in this repo most like a task, or say there is none (no model call)"))
 
-const learn = Command.make(
-  "learn",
+const store = Command.make(
+  "store",
   {
-    past: Flag.Boolean("past").pipe(Flag.withDefault(false), Flag.withDescription("store the changes this repo's past Claude Code, Codex and Hermes Agent sessions committed (no model call)")),
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo (default: here)")),
     home: homeFlag
   },
@@ -125,8 +126,6 @@ const learn = Command.make(
     const home = yield* loadHome(Option.getOrUndefined(args.home))
     const s = makeStyle(wantsColor())
     const say = (line: string) => Console.log(`  ${line}`)
-    // Memory has no learning step: the changes stored are what it hands over. Storing past ones is all there is to do here.
-    if (!args.past) return yield* say(`Memory stores changes as your agents commit them, with nothing to learn; ${s.cyan("singularity learn --past")} stores what earlier sessions here committed.`)
     const cwd = path.resolve(Option.getOrElse(args.repo, () => process.cwd()))
     const repo = yield* identifyRepo(cwd)
     if (repo === undefined) return yield* say(`${cwd} isn't in a git repository.`)
@@ -137,7 +136,7 @@ const learn = Command.make(
     const kept = result.stored.length + result.existing.length
     yield* say(`${plural(result.sessions, "past session")}, ${plural(result.examined + result.existing.length, "commit")}: ${plural(kept, "change")} kept${skipped === "" ? "" : s.dim(` (left out: ${skipped})`)}`)
   })
-).pipe(Command.withDescription("store the changes this repo's past sessions committed (--past)"))
+).pipe(Command.withDescription("store the changes this repo's past Claude Code, Codex and Hermes Agent sessions committed (no model call)"))
 
 const update = Command.make(
   "update",
@@ -149,7 +148,7 @@ const update = Command.make(
     const ok = yield* (args.noFetch ? runRefresh(options) : runUpdate(options))
     if (!ok) process.exitCode = 1
   })
-).pipe(Command.withDescription("update singularity to the latest code and bring its hooks, skill and command up to date, asking nothing setup asked"))
+).pipe(Command.withDescription("update singularity to the latest code and bring its hooks, skill, recall note and command up to date, asking nothing setup asked"))
 
 const uninstall = Command.make(
   "uninstall",
@@ -167,6 +166,7 @@ const uninstall = Command.make(
     for (const f of removed.hookFiles) yield* say(`${s.green("✓")} hooks taken out of ${tilde(f, user)}`)
     for (const d of removed.plugins) yield* say(`${s.green("✓")} plugin ${tilde(d, user)} removed`)
     for (const d of removed.skillDirs) yield* say(`${s.green("✓")} skill taken out of ${tilde(d, user)}`)
+    for (const f of removed.noteFiles) yield* say(`${s.green("✓")} recall note taken out of ${tilde(f, user)}`)
     const bin = binDir(home.root)
     if (yield* removeFromPath(bin, { home: user, platform: process.platform })) yield* say(`${s.green("✓")} ${tilde(bin, user)} taken off your PATH`)
     yield* removeLaunchers(home.root)
@@ -181,4 +181,4 @@ const uninstall = Command.make(
   })
 ).pipe(Command.withDescription("take memory out of every agent and remove the singularity command (memory stays unless --purge)"))
 
-export const setupCommands = [setup, status, recall, learn, update, uninstall] as const
+export const setupCommands = [setup, status, recall, store, update, uninstall] as const

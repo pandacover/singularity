@@ -8,7 +8,8 @@ to the next agent session that does it.
 Coding agents start every session from zero. They search the repo for the
 places a change touches, rerun commands that failed last time, and relearn
 the same lessons. singularity gives the agent a past change like its task
-with its first prompt, read from git as the code is today.
+with its first prompt, read from git as the code is today, and lets it look
+up another one mid-task when the work turns to something done before.
 
 ## Install
 
@@ -37,7 +38,8 @@ The installer puts singularity in `~/.singularity` and runs
 
 Run `singularity setup` again any time to change your answers, and
 `singularity update` to get the latest version: it keeps your answers and
-brings memory's hooks, skill and command up to date, asking nothing again.
+brings memory's hooks, skill, recall note and command up to date, asking
+nothing again.
 Running the installer again does the same. On WSL, run
 the PowerShell command on Windows too if you also use agents there. From a
 clone of this repo instead: `npm install`, then
@@ -53,6 +55,13 @@ clone of this repo instead: `npm install`, then
 | Gemini CLI | ✓ | |
 | Droid | ✓ | |
 | Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | |
+
+Claude Code, Codex and OpenCode also get the recall note (below) in the
+instructions they read in every session: `~/.claude/CLAUDE.md` (or
+`$CLAUDE_CONFIG_DIR/CLAUDE.md`), `~/.codex/AGENTS.md` (or its
+`AGENTS.override.md` when you keep one), and OpenCode's
+`~/.config/opencode/AGENTS.md` (or `~/.claude/CLAUDE.md`, which OpenCode
+reads when it has no file of its own). Other agents get only the skill.
 
 Codex runs new hooks only once you trust them. Setup offers to trust
 memory's hooks for you (as `/hooks` in Codex would), and `singularity
@@ -73,18 +82,28 @@ status` says when Codex is still skipping them.
    mistakes made, and the diff. When no stored change is alike enough,
    nothing is handed over.
 
+3. **Recall mid-task.** The hand-over comes once, at task start. Setup adds
+   a short note to your agents' instructions, between
+   `<!-- singularity:start ... -->` and `<!-- singularity:end -->`, telling
+   them that when they are about to do something likely done before in the
+   repo (a kind of change, a fix, a command that keeps failing), they can run
+   `singularity recall "<what they are about to do>"`, which prints the most
+   similar past change, read from git as it is now, or says there is none.
+   Update rewrites the note in place; uninstall takes it out and leaves the
+   rest of the file as it was.
+
 There is no learning step: memory calls no model.
 
-`singularity recall "<task>"` shows what any task would get in the repo
-you're in.
+You can run `singularity recall "<task>"` yourself to see what any task
+would get in the repo you're in.
 
 ## Commands
 
 ```
 singularity status              # which agents have memory, how many changes it stored per repo
-singularity recall "<task>"     # what a task here would be handed (no model call)
+singularity recall "<task>"     # the past change here most like a task (no model call)
 singularity status --json       # the same as JSON, for agents and scripts (recall too)
-singularity learn --past        # store what this repo's earlier sessions committed
+singularity store               # store what this repo's earlier sessions committed
 singularity setup               # set up again, or change your answers
 singularity update              # get the latest version (keeps your answers)
 singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
@@ -100,7 +119,9 @@ measure memory by hand run from a clone of this repo
   (`$SINGULARITY_HOME` to move it): records and logs.
   singularity has no server and sends nothing anywhere itself.
 - Setup changes only memory's own entries in each agent's settings, and
-  keeps a copy of every file it changes (`<file>.before-singularity`).
+  keeps a copy of every settings file it changes
+  (`<file>.before-singularity`). In instruction files it adds only the
+  marked recall note.
 - Hooks never break a session: their errors go to
   `~/.singularity/hook-errors.log`, and `SINGULARITY_HOOKS=off` turns them
   off.
@@ -108,7 +129,8 @@ measure memory by hand run from a clone of this repo
 ## Good to know
 
 - Memory arrives with a session's first prompt. For a new task in a long
-  session, start a new session to get what memory has for it.
+  session, the agent can recall it (the note tells it how), or start a new
+  session.
 - It helps with tasks like changes earlier sessions committed in the same
   repository. Every clone of a repo shares its memory.
 - Commits memory leaves out (no passing check before them, say) are listed,

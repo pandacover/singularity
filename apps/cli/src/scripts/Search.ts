@@ -60,3 +60,34 @@ export const pick = <D extends SearchDoc>(prompt: string, docs: ReadonlyArray<D>
   const top = rank(prompt, docs)[0]
   return top !== undefined && top.score >= minScore ? top : undefined
 }
+
+/**
+ * Recall mid-task (`singularity recall`) asks with a short line, such as "add a
+ * keyboard shortcut to the context menu", which holds little of any old prompt,
+ * so `score` misses it. A query is scored by how much of it a script covers:
+ * the query's words found in the script's prompt or file paths, each weighted
+ * by how rare it is among the scripts, so words every script has count little.
+ * Below `QUERY_MIN` (and below `MIN_SCORE` by `score`) nothing is shown.
+ */
+export const QUERY_MIN = 0.6
+
+export interface RecallDoc extends SearchDoc {
+  /** The paths of the files it changed. */
+  readonly files: ReadonlyArray<string>
+}
+
+/** Every script with how well it answers a recall query, best first; `score` is the better of the two measures. */
+export const rankRecall = <D extends RecallDoc>(query: string, docs: ReadonlyArray<D>): Array<Ranked<D> & { readonly matches: boolean }> => {
+  const q = [...words(query).keys()]
+  const texts = docs.map((d) => words(`${d.prompt} ${d.files.join(" ")}`))
+  const idf = new Map(q.map((w) => [w, Math.log((docs.length + 1) / (texts.filter((t) => t.has(w)).length + 1)) + 1] as const))
+  const all = q.reduce((s, w) => s + idf.get(w)!, 0)
+  return docs.map((doc, i) => {
+    const held = q.filter((w) => texts[i].has(w))
+    const covered = all === 0 ? 0 : held.reduce((s, w) => s + idf.get(w)!, 0) / all
+    const asTask = score(query, doc.prompt)
+    // One matching word is too little to go on, unless the query is one word.
+    const matches = asTask >= MIN_SCORE || (covered >= QUERY_MIN && (held.length >= 2 || q.length === 1))
+    return { doc, score: Math.max(asTask, covered), matches }
+  }).sort((x, y) => Number(y.matches) - Number(x.matches) || y.score - x.score)
+}

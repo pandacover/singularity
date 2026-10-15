@@ -30,7 +30,7 @@ import { randomUUID } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseArgs } from "node:util"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -91,8 +91,7 @@ if (app) {
   const TOOLS = "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit"
   const setupHooks = {
     UserPromptSubmit: [
-      { hooks: [{ type: "command", command: installedHook("user-prompt-submit --parts=2"), timeout: 90 }] },
-      { hooks: [{ type: "command", command: installedHook("user-prompt-submit-2 --parts=2"), timeout: 90 }] }
+      { hooks: [{ type: "command", command: installedHook("user-prompt-submit"), timeout: 90 }] },
     ],
     PostToolUse: [{ matcher: TOOLS, hooks: [{ type: "command", command: installedHook("post-tool-use"), timeout: 15 }] }],
     PostToolUseFailure: [{ matcher: TOOLS, hooks: [{ type: "command", command: installedHook("post-tool-use"), timeout: 15 }] }],
@@ -135,6 +134,26 @@ const SESSION_VARS = new Set([
 
 const emptyHome = path.join(path.dirname(out), "empty-singularity-home")
 
+// With --app, what setup gives an agent besides hooks: the recall note in the
+// agent's CLAUDE.md (the run's own config folder, --claude-config) and the
+// `singularity` command on PATH, running <app>'s code with the arm's memory.
+const launcherDir = path.join(out, "bin")
+if (app) {
+  fs.mkdirSync(launcherDir, { recursive: true })
+  const cli = path.join(app, "apps", "cli", "src", "singularity.ts")
+  fs.writeFileSync(path.join(launcherDir, "singularity"), `#!/bin/sh\nexec "${process.execPath}" "${cli}" "$@"\n`, { mode: 0o755 })
+  fs.writeFileSync(path.join(launcherDir, "singularity.cmd"), `@"${process.execPath}" "${cli}" %*\r\n`)
+  if (opts["claude-config"]) {
+    const instructions = path.join(app, "apps", "cli", "src", "setup", "Instructions.ts")
+    if (fs.existsSync(instructions)) {
+      const { NOTE_BLOCK } = await import(pathToFileURL(instructions).href)
+      const claudeMd = path.join(path.resolve(opts["claude-config"]), "CLAUDE.md")
+      fs.mkdirSync(path.dirname(claudeMd), { recursive: true })
+      fs.writeFileSync(claudeMd, NOTE_BLOCK + "\n")
+    }
+  }
+}
+
 const agentEnv = () => {
   const env = {}
   for (const [k, v] of Object.entries(process.env)) {
@@ -151,7 +170,10 @@ const agentEnv = () => {
     env.SINGULARITY_HOME = home
     env.SINGULARITY_CLAUDE = opts.claude
     // The installed hooks stay silent; the run's own clear this again (run-hook.mjs).
-    if (app) env.SINGULARITY_HOOKS = "off"
+    if (app) {
+      env.SINGULARITY_HOOKS = "off"
+      env.PATH = `${launcherDir}${path.delimiter}${env.PATH ?? ""}`
+    }
   }
   return env
 }
@@ -211,12 +233,11 @@ const transcriptOf = (sessionId) => {
 
 const backgroundBusy = () => {
   if (!home) return false
-  const lock = path.join(home, "learn.lock")
-  if (fs.existsSync(lock)) {
+  for (const lock of [path.join(home, "learn.lock"), path.join(home, "store.lock")]) if (fs.existsSync(lock)) {
     try {
       const { pid } = JSON.parse(fs.readFileSync(lock, "utf8"))
       process.kill(pid, 0)
-      return "learning"
+      return "storing"
     } catch {}
   }
   const queue = path.join(home, "learn-queue")

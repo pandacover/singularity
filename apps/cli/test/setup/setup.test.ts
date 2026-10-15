@@ -10,7 +10,9 @@ import { agents, hookEvents, isMemoryHookCommand, type Launch, slashes } from ".
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
 import { cmdLauncher, COMMAND, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine } from "../../src/setup/Launcher.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
+import { NOTE_BLOCK } from "../../src/setup/Instructions.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
+import { gatherStatus } from "../../src/setup/Status.ts"
 import { runRefresh, runUpdate, updateCode } from "../../src/setup/Update.ts"
 import { agentStates, detectAgents, HOOK_SCRIPT, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
@@ -37,12 +39,11 @@ const claudeLaunch: Launch = { node: "C:\\Program Files\\nodejs\\node.exe", scri
 const bareLaunch: Launch = { node: "node", script: "C:\\app\\src\\workflows\\hook.ts" }
 
 describe("hook entries", () => {
-  it("gives Claude Code the measured form, the hand-over in two parts and the session's end", () => {
+  it("gives Claude Code the measured form, one task-start hook and the session's end", () => {
     const events = hookEvents("claude", claudeLaunch, bareLaunch)
     expect(Object.keys(events)).toEqual(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionEnd"])
     expect(events.UserPromptSubmit.map((e) => e.hooks[0].command)).toEqual([
-      "\"C:/Program Files/nodejs/node.exe\" \"C:/app/src/workflows/hook.ts\" user-prompt-submit --parts=2",
-      "\"C:/Program Files/nodejs/node.exe\" \"C:/app/src/workflows/hook.ts\" user-prompt-submit-2 --parts=2"
+      "\"C:/Program Files/nodejs/node.exe\" \"C:/app/src/workflows/hook.ts\" user-prompt-submit"
     ])
     expect(events.SessionEnd[0].hooks[0].timeout).toBe(30)
   })
@@ -99,6 +100,12 @@ describe("hook files", () => {
 
   it("takes out only memory's hooks, and events left empty", () => {
     expect(withoutMemoryHooks(withMemoryHooks({ PostToolUse: [theirs] }, ours))).toEqual({ PostToolUse: [theirs] })
+  })
+
+  it("replaces the retired second task-start hook of an older setup", () => {
+    const old = (args: string) => ({ hooks: [{ type: "command", command: `"C:/node.exe" "/old/src/workflows/hook.ts" ${args}`, timeout: 90 }] })
+    const before = { UserPromptSubmit: [theirs, old("user-prompt-submit --parts=2"), old("user-prompt-submit-2 --parts=2")] }
+    expect(withMemoryHooks(before, ours).UserPromptSubmit as Array<unknown>).toEqual([theirs, ...ours.UserPromptSubmit])
   })
 
   it.live("keeps the rest of a settings file, and the file as it was before the first change", () =>
@@ -169,8 +176,8 @@ describe("the singularity command", () => {
     const help = (cli: string) => spawnSync(process.execPath, [cli, "--help"], { encoding: "utf-8" }).stdout
     const subcommands = (text: string) => [...text.split("SUBCOMMANDS")[1].matchAll(/^ {2}(\S+)/gm)].map((m) => m[1])
     expect(slashes(COMMAND)).toMatch(/\/src\/singularity\.ts$/)
-    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "recall", "learn", "update", "uninstall"])
-    expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["learn", "record"]))
+    expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "recall", "store", "update", "uninstall"])
+    expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["store", "record", "eval"]))
   })
 
   it("fails a recall in a folder that isn't there, and says nothing is handed over as JSON in one with no memory", () => {
@@ -268,6 +275,10 @@ describe("setup", () => {
     for (const d of [".claude/skills", ".agents/skills", ".factory/skills"]) {
       expect(readFileSync(join(home, d, "singularity", "SKILL.md"), "utf-8")).toBe(SKILL_TEXT)
     }
+    // The recall note, in the instruction files of the agents whose file is known.
+    expect(readFileSync(join(home, ".claude", "CLAUDE.md"), "utf-8")).toBe(`${NOTE_BLOCK}\n`)
+    expect(readFileSync(join(home, ".codex", "AGENTS.md"), "utf-8")).toBe(`${NOTE_BLOCK}\n`)
+    expect(existsSync(join(home, ".gemini", "GEMINI.md"))).toBe(false)
     // The command on PATH is the one for daily use, not the whole command line.
     expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
 
@@ -283,8 +294,13 @@ describe("setup", () => {
     }))
     expect(states.filter((s) => s.hookEvents.length > 0).map((s) => s.agent.id)).toEqual(["claude", "codex", "gemini", "droid"])
     expect(states.find((s) => s.agent.id === "cursor")?.skill).toBe(true)
+    expect(states.find((s) => s.agent.id === "claude")?.note?.state).toBe("current")
     const removed = await run(unwireAll(dirs))
     expect(removed.hookFiles).toHaveLength(4)
+    expect(removed.noteFiles.map(slashes)).toEqual([slashes(join(home, ".claude", "CLAUDE.md")), slashes(join(home, ".codex", "AGENTS.md"))])
+    // Files that held only the note go.
+    expect(existsSync(join(home, ".claude", "CLAUDE.md"))).toBe(false)
+    expect(existsSync(join(home, ".codex", "AGENTS.md"))).toBe(false)
     expect(json(join(home, ".claude", "settings.json"))).toEqual({ model: "opus", hooks: { Stop: [{ hooks: [{ type: "command", command: "say done" }] }] } })
     // Files setup made itself go.
     expect(existsSync(join(home, ".codex", "hooks.json"))).toBe(false)
@@ -352,6 +368,34 @@ describe("setup", () => {
     expect(readFileSync(join(other.home, ".hermes", "config.yaml"), "utf-8")).toBe("plugins:\n  enabled: some-plugin\n")
   })
 
+  it("puts the recall note in the file each agent reads, keeps the user's text, and takes only the note out", async () => {
+    const { home, memory, options } = sandbox([".claude", ".codex", ".config/opencode"])
+    const env = { ...options.env, XDG_CONFIG_HOME: join(home, ".config") }
+    const mine = "# My rules\r\n\r\nUse tabs.\r\n"
+    writeFileSync(join(home, ".claude", "CLAUDE.md"), mine)
+    // Codex reads AGENTS.override.md instead of AGENTS.md when it has text.
+    writeFileSync(join(home, ".codex", "AGENTS.override.md"), "Be brief.")
+    writeFileSync(join(home, ".codex", "AGENTS.md"), "Never read.\n")
+    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, env })))
+    const claudeMd = readFileSync(join(home, ".claude", "CLAUDE.md"), "utf-8")
+    expect(claudeMd).toBe(`${mine}\r\n${NOTE_BLOCK.replace(/\n/g, "\r\n")}\r\n`)
+    expect(readFileSync(join(home, ".codex", "AGENTS.override.md"), "utf-8")).toBe(`Be brief.\n\n${NOTE_BLOCK}\n`)
+    expect(readFileSync(join(home, ".codex", "AGENTS.md"), "utf-8")).toBe("Never read.\n")
+    // OpenCode reads Claude Code's ~/.claude/CLAUDE.md while it has no AGENTS.md of its own: no new file hides it.
+    expect(existsSync(join(home, ".config", "opencode", "AGENTS.md"))).toBe(false)
+    // Again: nothing doubles.
+    await withEnv({ SINGULARITY_HOME: memory }, () => run(runSetup({ ...options, env })))
+    expect(readFileSync(join(home, ".claude", "CLAUDE.md"), "utf-8")).toBe(claudeMd)
+    // Status says so.
+    const report = await withEnv({ SINGULARITY_HOME: memory }, () => run(gatherStatus({ home, env, cwd: home })))
+    expect(report.agents.find((a) => a.id === "opencode")?.parts).toEqual(["skill", "recall note"])
+    expect(report.agents.find((a) => a.id === "claude")?.parts).toEqual(["hooks", "skill", "recall note"])
+
+    await run(unwireAll({ home, env }))
+    expect(readFileSync(join(home, ".claude", "CLAUDE.md"), "utf-8")).toBe(mine)
+    expect(readFileSync(join(home, ".codex", "AGENTS.override.md"), "utf-8")).toBe("Be brief.\n")
+  }, 60_000)
+
   it("never removes a skill of the user's own that has the same name", async () => {
     const { home, memory, options } = sandbox([".claude"])
     mkdirSync(join(home, ".claude", "skills", "singularity"), { recursive: true })
@@ -378,7 +422,13 @@ describe("update", () => {
     const settings = join(home, ".claude", "settings.json")
     writeFileSync(settings, readFileSync(settings, "utf-8").replaceAll(slashes(HOOK_SCRIPT), "/old/app/src/workflows/hook.ts"))
     const skill = join(home, ".claude", "skills", "singularity", "SKILL.md")
-    writeFileSync(skill, SKILL_TEXT.replace("singularity learn", "singularity learn (old)"))
+    writeFileSync(skill, SKILL_TEXT.replace("singularity store", "singularity learn --past"))
+    // An older version wrote no recall note, and a second task-start hook.
+    const claudeMd = join(home, ".claude", "CLAUDE.md")
+    writeFileSync(claudeMd, "# Mine\n")
+    const withSecond = json(settings)
+    withSecond.hooks.UserPromptSubmit.push({ hooks: [{ type: "command", command: `"${slashes(process.execPath)}" "/old/app/src/workflows/hook.ts" user-prompt-submit-2 --parts=2`, timeout: 90 }] })
+    writeFileSync(settings, JSON.stringify(withSecond))
     writeFileSync(join(memory, "bin", "singularity"), shLauncher(process.execPath, "/old/app/src/singularity.ts"))
 
     const said = await refresh()
@@ -386,7 +436,10 @@ describe("update", () => {
     expect(hooks).toContain(slashes(HOOK_SCRIPT))
     expect(hooks).not.toContain("/old/app")
     expect(Object.keys(json(settings).hooks)).toEqual(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionEnd"])
+    expect(json(settings).hooks.UserPromptSubmit).toHaveLength(1)
+    expect(hooks).not.toContain("user-prompt-submit-2")
     expect(readFileSync(skill, "utf-8")).toBe(SKILL_TEXT)
+    expect(readFileSync(claudeMd, "utf-8")).toBe(`# Mine\n\n${NOTE_BLOCK}\n`)
     expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
     // Droid was left out at setup, and stays out; the choices stay as they were.
     expect(existsSync(join(home, ".factory", "hooks.json"))).toBe(false)

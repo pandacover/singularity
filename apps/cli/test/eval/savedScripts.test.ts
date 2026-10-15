@@ -5,20 +5,14 @@ import { join } from "node:path"
 import { learnFrom } from "../../src/eval/Learn.ts"
 import { makeSetup } from "../../src/eval/Memory.ts"
 import { runSuite } from "../../src/eval/Runner.ts"
-import {
-  bestMatch,
-  makeEntry,
-  makeSavedScripts,
-  MIN_SIMILARITY,
-  render,
-  reportsFailure,
-  splitDiff
-} from "../../src/eval/SavedScripts.ts"
+import { makeEntry, makeScripts, renderEntry, splitDiff } from "../../src/eval/SavedScripts.ts"
+import { MIN_SCORE } from "../../src/scripts/Search.ts"
 import type { Outcome } from "../../src/eval/Setups.ts"
 import { NoMemory } from "../../src/eval/Setups.ts"
 import type { Task } from "../../src/eval/Suite.ts"
 import { loadSuite } from "../../src/eval/Suite.ts"
 import type { ToolCall, Trace } from "../../src/traces/index.ts"
+import { reportsFailure } from "../../src/traces/index.ts"
 import { FAKE_CLAUDE, run, makeRepo, tempDir, withEnv, writeSuite } from "./helpers.ts"
 
 
@@ -73,7 +67,7 @@ const fakeTrace = (calls: number): Trace => ({
 
 const outcome = (success: boolean | null, trace?: Trace, t = task()): Outcome => ({ task: t, success, trace, diff: DIFF })
 
-describe("saved-scripts", () => {
+describe("scripts", () => {
   it("splits snapshots out of the diff", () => {
     const [files, snaps, source] = splitDiff(DIFF)
     assert.deepStrictEqual(files, ["src/keys.ts"])
@@ -84,10 +78,10 @@ describe("saved-scripts", () => {
 
   it("learns only from successes, and not when frozen", async () => {
     const mem = join(tempDir(), "mem")
-    const s = makeSavedScripts(mem)
+    const s = makeScripts(mem)
     await run(s.afterRun(outcome(false)))
     assert.deepStrictEqual(await run(s.entries), [])
-    await run(makeSavedScripts(mem, true).afterRun(outcome(true)))
+    await run(makeScripts(mem, true).afterRun(outcome(true)))
     assert.deepStrictEqual(await run(s.entries), [])
     await run(s.afterRun(outcome(true)))
     const [e] = await run(s.entries)
@@ -96,7 +90,7 @@ describe("saved-scripts", () => {
   })
 
   it("keeps the cheapest run per prompt", async () => {
-    const s = makeSavedScripts(join(tempDir(), "mem"))
+    const s = makeScripts(join(tempDir(), "mem"))
     for (const calls of [10, 5, 8]) await run(s.afterRun(outcome(true, fakeTrace(calls))))
     const entries = await run(s.entries)
     assert.strictEqual(entries.length, 1)
@@ -106,16 +100,15 @@ describe("saved-scripts", () => {
 
   it("retrieves by prompt similarity", async () => {
     const root = tempDir()
-    const s = makeSavedScripts(join(root, "mem"))
+    const s = makeScripts(join(root, "mem"))
     await run(s.afterRun(outcome(true)))
     const similar = await run(s.beforeRun(task("Change the view mode shortcut from Alt+R to Alt+J", "view"), root))
     assert.include(similar.systemPrompt ?? "", "Alt+Z to Alt+M")
     assert.deepStrictEqual((similar.info.retrieved as { task_id: string }).task_id, "zen")
-    assert.isAtLeast(similar.info.similarity as number, MIN_SIMILARITY)
+    assert.isAtLeast(similar.info.similarity as number, MIN_SCORE)
     const unrelated = await run(s.beforeRun(task("Add a minimap toggle stored in appState", "minimap"), root))
     assert.isUndefined(unrelated.systemPrompt)
     assert.isNull(unrelated.info.retrieved)
-    assert.deepStrictEqual(bestMatch("anything", []), [undefined, 0])
   })
 
   it("doesn't save commands whose output reports a failure", () => {
@@ -143,15 +136,18 @@ describe("saved-scripts", () => {
   })
 
   it("lists snapshots in the notes without their content", () => {
-    const text = render(makeEntry(outcome(true)))
+    const text = renderEntry(makeEntry(outcome(true)), 1)
     assert.include(text, "x.test.tsx.snap")
     assert.notInclude(text, "+new")
-    assert.include(text, "```diff")
+    assert.include(text, "M: \"m\"")
   })
 
   it("builds setups by name", async () => {
     assert.strictEqual((await run(makeSetup("no-memory"))).name, "no-memory")
-    assert.include((await run(Effect.flip(makeSetup("saved-scripts")))).message, "memory")
+    assert.strictEqual((await run(makeSetup("scripts", tempDir()))).name, "scripts")
+    assert.include((await run(Effect.flip(makeSetup("scripts")))).message, "memory")
+    // The first saved-scripts setups are gone.
+    assert.include((await run(Effect.flip(makeSetup("saved-scripts", tempDir())))).message, "unknown")
     assert.include((await run(Effect.flip(makeSetup("nope")))).message, "unknown")
   })
 
@@ -162,10 +158,10 @@ describe("saved-scripts", () => {
       const suite = await run(loadSuite(writeSuite(root, repo)))
       const mem = join(root, "mem")
       const ws = join(root, "ws")
-      const [first] = await run(runSuite(suite, makeSavedScripts(mem), join(root, "learn"), FAKE_CLAUDE, { workspaces: ws, taskIds: ["t1"] }))
+      const [first] = await run(runSuite(suite, makeScripts(mem), join(root, "learn"), FAKE_CLAUDE, { workspaces: ws, taskIds: ["t1"] }))
       assert.isTrue(first.success as boolean)
       assert.isNull((first.injection as Record<string, unknown>).retrieved)
-      assert.strictEqual((await run(makeSavedScripts(mem).entries)).length, 1)
+      assert.strictEqual((await run(makeScripts(mem).entries)).length, 1)
 
       // A relative output dir, as the CLI passes it: the injected file's path
       // must still resolve from the agent's working directory (the workspace).
@@ -173,7 +169,7 @@ describe("saved-scripts", () => {
       process.chdir(root)
       try {
         const [second] = (await run(
-          runSuite(suite, makeSavedScripts(mem, true), "measure", FAKE_CLAUDE, { workspaces: ws, taskIds: ["t1"] })
+          runSuite(suite, makeScripts(mem, true), "measure", FAKE_CLAUDE, { workspaces: ws, taskIds: ["t1"] })
         )) as Array<Record<string, any>>
         assert.strictEqual(second.status, "completed")
         assert.strictEqual(second.injection.retrieved.task_id, "t1")
@@ -197,9 +193,9 @@ describe("saved-scripts", () => {
       const base = join(root, "base")
       await run(runSuite(suite, NoMemory, base, FAKE_CLAUDE, { workspaces: join(root, "ws"), reps: 2 }))
       const mem = join(root, "mem")
-      const n = await run(learnFrom(makeSavedScripts(mem), suite, [base], ["t1"]))
+      const n = await run(learnFrom(makeScripts(mem), suite, [base], ["t1"]))
       assert.strictEqual(n, 2)
-      const [e] = await run(makeSavedScripts(mem).entries) // two successful t1 runs, deduped by prompt
+      const [e] = await run(makeScripts(mem).entries) // two successful t1 runs, deduped by prompt
       assert.strictEqual(e.task_id, "t1")
       assert.deepStrictEqual(e.files_changed, ["answer.txt"])
       assert.strictEqual(e.tool_calls, 1)
