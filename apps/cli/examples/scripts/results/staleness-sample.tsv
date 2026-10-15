@@ -1,0 +1,40 @@
+repo	commit	title	path	horizon	rev	survival	verdict	moved_to	later_commit
+excalidraw	b3263c2a69	fix encoding of embed data & compress (#2240)	src/data/blob.ts	200	23f21434ff	0.71	fresh		
+markdownlint	00fef38119	Update test repo snapshots.	test/snapshots/markdownlint-test-repos-mdn-content.mjs.md	200	5319d42547	0.00	stale		43a49d7d Update test repo snapshots.
+markdownlint	616c3f2c22	Deprecate LintResults.toString() (at edit time; continue to support at run time), provide helper function formatLintResults, remove outdated grunt/gulp samples, improve typing.	test/snapshots/markdownlint-test-repos-small.mjs.md	50	29bd10d5bb	0.00	stale		48095835 Update string format output by formatLintResults to match markdownlint-cli2 (and markdownlint-cli).
+markdownlint	e6e4e0f4fd	Bump yaml from 2.2.1 to 2.2.2	package.json	50	d0dd908110	0.00	stale		02a2761a Bump yaml from 2.2.2 to 2.3.0
+markdownlint	61d6311a3e	Add front_matter_title parameter to MD025/single-title/single-h1 (refs #169).	lib/shared.js	200	ebc74e3d5f	0.00	moved	helpers/helpers.js	
+markdownlint	b77dd5ccd3	Simplify handling of internal lineMetadata array (slightly faster now).	lib/shared.js	200	c7ec796cfc	0.00	moved	helpers/helpers.js	
+excalidraw	e442a44ba8	chore(deps-dev): bump @babel/preset-react from 7.16.7 to 7.18.6 in /src/packages/excalidraw (#5394)	src/packages/excalidraw/package.json	200	08afb857c3	1.00	fresh		
+markdownlint	dc4acff067	Update MD044/proper-names to ignore the content of HTML comments when its html_elements parameter is false (fixes #832).	lib/md044.js	50	980863ab38	0.00	stale		b1eff750 Update MD044/proper-names to parse into micromark htmlFlow tokens for better behavior when html_elements is false (fixes #832).
+excalidraw	8542c95a7a	fix: move utility types out of `.d.ts` file to fix exported declaration files (#6315)	src/types.ts	10	7d21747644	1.00	fresh		
+markdownlint	a6cc4cc860	Bump typescript from 5.7.2 to 5.7.3	package.json	200	23ca02804b	0.00	stale		dbf828c4 Bump typescript from 5.7.3 to 5.8.2
+excalidraw	4d6ef81c83	chore(deps-dev): bump css-loader from 5.1.0 to 5.1.1 in /src/packages/utils (#3189)	src/packages/utils/package.json	50	9a13dd8836	0.00	stale		eae25329 chore(deps-dev): bump css-loader from 5.1.1 to 5.1.2 in /src/packages/utils (#3249)
+markdownlint	09ae51fdaa	Improve reporting of MD027 for lists in blockquotes.	lib/rules.js	200	0f72bf054b	0.00	moved	lib/md027.js	
+excalidraw	6967d8c985	chore: Update translations from Crowdin (#3000)	src/locales/pt-PT.json	200	9905deb4b4	0.33	stale		bd63dcbc chore: Update translations from Crowdin (#3017)
+markdownlint	b8abf5ee29	Bump eslint from 8.33.0 to 8.34.0	package.json	50	ce9713038b	0.00	stale		3cedb5a5 Bump eslint from 8.34.0 to 8.35.0
+excalidraw	d2cc76e52e	feat: support adding multiple library items on canvas (#5116)	src/components/LayerUI.tsx	200	75458c3192	0.00	moved	src/components/LibraryMenu.tsx	
+markdownlint	9b5e6db137	Bump eslint from 8.24.0 to 8.25.0	package.json	50	37fe758c34	0.00	stale		8c14d0dc Bump eslint from 8.25.0 to 8.26.0 (#617)
+excalidraw	cded1cd63d	fix: restore original opacities when alt pressed while erasing (#4954)	src/constants.ts	10	f2d2f97546	1.00	fresh		
+markdownlint	3abcc57b25	Update Azure DevOps Pipeline to run for all branches and Linux/Windows/macOS.	azure-pipelines.yml	200	a9d25b04ac		gone		
+excalidraw	79d9dc2f8f	fix: make bounds independent of scene (#7679)	packages/excalidraw/tests/clipboard.test.tsx	10	f207bd0a1c	1.00	fresh		
+markdownlint	0211abf1ba	Update dependencies: browserify to 14.4.0, eslint to 4.2.0, nodeunit to 0.11.1, uglify-js to 3.0.25.	demo/default.js	50	4619a8c824	0.00	stale		c0ea22e5 Update to version 0.7.0.
+excalidraw	416da62138	fix: multiple line editor bugs (#9760)	packages/element/src/linearElementEditor.ts	200	647a264a48	0.25	stale		d6a934ed chore: Remove editingLinearElement (#9771)
+excalidraw	37e082fcdc	feat: Add Cascadia font (#465)	src/styles.scss	200	fbab93baff	0.20	moved	public/fonts.css	
+markdownlint	762d8425ca	Add MD035 with tests.	test/hr_style_dashes.json	200	4619a8c824	1.00	fresh		
+markdownlint	616c3f2c22	Deprecate LintResults.toString() (at edit time; continue to support at run time), provide helper function formatLintResults, remove outdated grunt/gulp samples, improve typing.	helpers/helpers.cjs	200	1fe45be22a	0.55	fresh		
+excalidraw	cded1cd63d	fix: restore original opacities when alt pressed while erasing (#4954)	src/types.ts	200	58845e450a	1.00	fresh		
+markdownlint	1b6839bff0	Update MD001/heading-increment to support front matter title as the first heading of the page.	schema/build-config-schema.mjs	200	768515e2d3	0.67	fresh		
+excalidraw	2a922dd477	chore(deps-dev): bump @babel/preset-typescript from 7.12.13 to 7.12.16 in /src/packages/excalidraw (#3025)	src/packages/excalidraw/package-lock.json	200	4ac1841d92		gone		
+excalidraw	416da62138	fix: multiple line editor bugs (#9760)	packages/excalidraw/components/App.tsx	200	647a264a48	0.42	stale		c141960a feat: Non-elbow arrow snapping and behavior changes (#9670)
+markdownlint	c413ac9a88	Bump eslint-plugin-jsdoc from 50.6.10 to 50.6.11	package.json	200	333bb41a1f	0.00	stale		f65332a8 Bump eslint-plugin-jsdoc from 50.6.11 to 50.6.14
+excalidraw	c009e03c8e	fix: Right-click object menu displays partially off-screen (#4572) (#4631)	src/components/ContextMenu.tsx	200	68f23d652f	1.00	fresh		
+markdownlint	c53df8b720	Fix range calculation in MD033/no-inline-html during re-parse of tabbed content.	test/html-tags.json	50	5f00104588		gone		
+markdownlint	0a7b4d478a	Bump yaml from 2.3.1 to 2.3.2	package.json	10	a736588958	1.00	fresh		
+markdownlint	53ff5c43f1	Stop using module.createRequire (problematic under webpack), incorporate and export resolveModule helper from markdownlint-cli2.	.gitignore	10	37f96413dd	1.00	fresh		
+markdownlint	7bb80d19b1	Update MD039/no-space-in-links to not remove code/emphasis markers when fixing issues (fixes #482).	test/detailed-results-spaces-inside-link-text.md.fixed	10	b6ea481c23		gone		
+markdownlint	0cea489e18	Replace `glob` with `globby` (allows multiple patterns and exclusions).	test/markdownlint-test-extra.js	200	604ff5df39		gone		
+excalidraw	96a5d6548b	fix: allow adding text via enter only for text containers (#5891)	src/element/textElement.ts	200	026949204d	0.00	moved	src/element/typeChecks.ts	
+excalidraw	a2db55ae2b	Bump react-scripts from 3.3.0 to 3.3.1 (#684)	package.json	200	5b6723b514	0.00	stale		d39c7d44 Bump react-scripts from 3.3.1 to 3.4.0 (#773)
+markdownlint	7bb80d19b1	Update MD039/no-space-in-links to not remove code/emphasis markers when fixing issues (fixes #482).	test/detailed-results-spaces-inside-link-text.results.json	50	cba2ca0dbd		gone		
+excalidraw	7183234895	Write integration tests (#719)	src/index.tsx	200	24fa657093	0.00	moved	src/components/App.tsx	

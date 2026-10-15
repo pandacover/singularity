@@ -1,34 +1,33 @@
 /**
- * The simple baseline: remember each successful run as a worked example.
+ * The `scripts` setup: remember each successful run as a worked example.
  *
  * After a successful run, save its prompt, the files it changed, its source diff
- * (snapshot files are listed but not included) and the shell commands that
- * worked: no error, and no failure in their output (a pipe into `tail` hides a
- * failed exit status). Before a run, find the saved run whose prompt is most
- * similar to the new one and hand it to the agent in the system prompt. An
- * exact repeat gets the whole recipe; a similar task gets a worked example to
- * adapt.
+ * (snapshot files are listed but not included), the shell commands that
+ * worked (no error, and no failure in their output: a pipe into `tail` hides a
+ * failed exit status) and the mistakes it made. Before a run, pick the saved
+ * run most like the new task with the daily search (src/scripts/Search.ts:
+ * none below its score) and hand it over in the system prompt, shown as the
+ * daily hook shows a stored commit (src/scripts/Render.ts, within one hook's
+ * room).
  *
  * Retrieval uses the prompt text only, never the task id or family, so the
  * setup has no information the agent wouldn't have in real use.
  *
- * The top-k variant (`saved-scripts-top2`) hands over up to k saved runs, each
- * above the similarity threshold, for tasks that combine parts of several.
+ * The first saved-scripts setups (`saved-scripts`, `saved-scripts-top2`),
+ * which picked by the cosine of word counts and showed a longer note, were
+ * removed; their saved runs are this setup's (same files), and `eval report`
+ * still reads their results.
  */
 import { Effect, FileSystem, Path, Schema } from "effect"
-import { cosine, textSimilarity, words } from "../graph/Similarity.ts"
 import { reportsFailure, SHELL_TOOLS } from "../traces/index.ts"
 import type { Injection, MemorySetup, Outcome, SetupServices } from "./Setups.ts"
 import { MemoryError } from "./Setups.ts"
 import { isoNow } from "./Time.ts"
+import { extractMechanical } from "../records/Extract.ts"
+import { commandsToShow, countLines, diffChunks, mistakesNearby, mistakesToShow, renderScript } from "../scripts/Render.ts"
+import { MIN_SCORE, rank, tellingFiles } from "../scripts/Search.ts"
 
-/** Below this prompt similarity, nothing is injected. */
-export const MIN_SIMILARITY = 0.35
-export const MAX_DIFF_CHARS = 16_000
 export const MAX_COMMANDS = 8
-
-/** Moved to the traces module; still exported here for older callers. */
-export { reportsFailure }
 
 /** One saved run, stored as `<memory dir>/<id>.json` (snake_case keys, as the Python version wrote them). */
 export const Entry = Schema.Struct({
@@ -40,7 +39,9 @@ export const Entry = Schema.Struct({
   source_diff: Schema.String,
   commands: Schema.Array(Schema.String),
   tool_calls: Schema.NullOr(Schema.Number),
-  created_at: Schema.String
+  created_at: Schema.String,
+  /** Failed commands with what worked instead (src/scripts/Render.ts); entries saved before it lack it. */
+  mistakes: Schema.optionalKey(Schema.Array(Schema.String))
 })
 export type Entry = typeof Entry.Type
 
@@ -51,8 +52,7 @@ export interface SavedScripts extends MemorySetup {
   readonly entries: Effect.Effect<Array<Entry>, MemoryError, SetupServices>
 }
 
-/** `topK` > 1 is the variant that hands over up to that many saved runs. */
-export const makeSavedScripts = (memoryDir: string, frozen = false, topK = 1): SavedScripts => {
+export const makeScripts = (memoryDir: string, frozen = false): SavedScripts => {
   const entries: SavedScripts["entries"] = Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -65,28 +65,21 @@ export const makeSavedScripts = (memoryDir: string, frozen = false, topK = 1): S
       ))
   }).pipe(Effect.mapError((e) => (e instanceof MemoryError ? e : new MemoryError({ message: e.message }))))
 
-  const beforeRun = Effect.fn("SavedScripts.beforeRun")(function*(task: { readonly prompt: string }) {
+  const beforeRun = Effect.fn("Scripts.beforeRun")(function*(task: { readonly prompt: string }) {
     const all = yield* entries
-    const ranked = rankEntries(task.prompt, all)
-    const [best, score] = ranked[0] ?? [undefined, 0]
-    const info = { entries: all.length, frozen, similarity: round3(score) }
-    if (best === undefined || score < MIN_SIMILARITY) {
+    const top = rank(task.prompt, all)[0]
+    const info = { entries: all.length, frozen, similarity: round3(top?.score ?? 0) }
+    if (top === undefined || top.score < MIN_SCORE) {
       return { systemPrompt: undefined, info: { ...info, retrieved: null } } satisfies Injection
     }
-    const retrieved = { id: best.id, task_id: best.task_id }
-    const others = ranked.slice(1, topK).filter(([, s]) => s >= MIN_SIMILARITY)
-    if (others.length === 0) return { systemPrompt: render(best), info: { ...info, retrieved } } satisfies Injection
+    const text = renderEntry(top.doc, top.score, all.filter((e) => e.id !== top.doc.id).reverse())
     return {
-      systemPrompt: renderMany([best, ...others.map(([e]) => e)]),
-      info: {
-        ...info,
-        retrieved,
-        also_retrieved: others.map(([e, s]) => ({ id: e.id, task_id: e.task_id, similarity: round3(s) }))
-      }
+      systemPrompt: text,
+      info: { ...info, retrieved: { id: top.doc.id, task_id: top.doc.task_id }, chars: text.length }
     } satisfies Injection
   })
 
-  const afterRun = Effect.fn("SavedScripts.afterRun")(function*(outcome: Outcome) {
+  const afterRun = Effect.fn("Scripts.afterRun")(function*(outcome: Outcome) {
     if (frozen || !outcome.success) return
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -101,7 +94,27 @@ export const makeSavedScripts = (memoryDir: string, frozen = false, topK = 1): S
     yield* fs.writeFileString(path.join(memoryDir, `${entry.id}.json`), JSON.stringify(entry, null, 2) + "\n")
   }, Effect.mapError((e) => (e instanceof MemoryError ? e : new MemoryError({ message: e.message }))))
 
-  return { name: topK === 1 ? "saved-scripts" : `saved-scripts-top${topK}`, beforeRun, afterRun, entries }
+  return { name: "scripts", beforeRun, afterRun, entries }
+}
+
+/** A saved run as the daily hook shows a stored commit. */
+export const renderEntry = (entry: Entry, score: number, others: ReadonlyArray<Entry> = []): string => {
+  const chunks = diffChunks(entry.source_diff)
+  const links = tellingFiles([entry, ...others].map((e) => ({ files: e.files_changed })), 2)
+  const counts = new Map(chunks.map((c) => [c.path, countLines(c.text)] as const))
+  return renderScript({
+    prompt: entry.prompt,
+    commit: null,
+    score,
+    files: [
+      ...entry.files_changed.map((path) => ({ path, status: "modified" as const, ...(counts.get(path) ?? { added: 0, removed: 0 }), snapshot: false, now: path })),
+      ...entry.snapshots_changed.map((path) => ({ path, status: "modified" as const, added: 0, removed: 0, snapshot: true, now: path }))
+    ],
+    commands: commandsToShow(entry.commands.map((command) => ({ command, ok: true }))),
+    mistakes: entry.mistakes ?? [],
+    nearby: mistakesNearby(entry.files_changed.filter(links), others.map((o) => ({ files: o.files_changed, mistakes: o.mistakes ?? [] })), entry.mistakes ?? []),
+    diff: chunks
+  })
 }
 
 export const makeEntry = (outcome: Outcome): Entry => {
@@ -121,80 +134,9 @@ export const makeEntry = (outcome: Outcome): Entry => {
     source_diff: source,
     commands: commands.slice(-MAX_COMMANDS),
     tool_calls: outcome.trace === undefined ? null : outcome.trace.toolCalls.length,
-    created_at: isoNow()
+    created_at: isoNow(),
+    mistakes: outcome.trace === undefined ? [] : mistakesToShow(extractMechanical(outcome.trace, outcome.diff, { succeeded: true }).detours)
   }
-}
-
-export const render = (entry: Entry): string => {
-  const files = entry.files_changed.map((f) => `- ${f}`).join("\n") || "- (none)"
-  const snaps = entry.snapshots_changed.map((f) => `- ${f}`).join("\n")
-  const commands = entry.commands.map((c) => `- \`${c}\``).join("\n") || "- (none recorded)"
-  let diff = entry.source_diff
-  if (diff.length > MAX_DIFF_CHARS) diff = diff.slice(0, MAX_DIFF_CHARS) + "\n... (diff truncated)\n"
-  const parts = [
-    "# Notes from a previous task in this repository",
-    "",
-    "A task like the one you're about to do was solved successfully here before. " +
-    "Below is what that run changed. Use it as a guide where it applies, and adapt " +
-    "it to the current task: names, keys and details may differ.",
-    "",
-    "## The previous task",
-    "",
-    entry.prompt,
-    "",
-    "## Files it changed",
-    "",
-    files
-  ]
-  if (snaps) parts.push("", "Snapshot files it regenerated (not shown below):", "", snaps)
-  parts.push(
-    "",
-    "## Shell commands it ran successfully",
-    "",
-    commands,
-    "",
-    "## Its change to source files",
-    "",
-    "```diff",
-    diff.replace(/\n+$/, ""),
-    "```",
-    ""
-  )
-  return parts.join("\n")
-}
-
-/** Notes for several saved runs, best match first. */
-export const renderMany = (entries: ReadonlyArray<Entry>): string => {
-  const parts = [
-    "# Notes from previous tasks in this repository",
-    "",
-    "Tasks like the one you're about to do were solved successfully here before. " +
-    "Below is what each of those runs changed, most similar first. Use them as a guide " +
-    "where they apply, and adapt them to the current task: names, keys and details may " +
-    "differ, and each example may cover only part of what this task needs."
-  ]
-  for (const [i, entry] of entries.entries()) {
-    const files = entry.files_changed.map((f) => `- ${f}`).join("\n") || "- (none)"
-    const snaps = entry.snapshots_changed.map((f) => `- ${f}`).join("\n")
-    const commands = entry.commands.map((c) => `- \`${c}\``).join("\n") || "- (none recorded)"
-    let diff = entry.source_diff
-    if (diff.length > MAX_DIFF_CHARS) diff = diff.slice(0, MAX_DIFF_CHARS) + "\n... (diff truncated)\n"
-    parts.push("", `## Example ${i + 1}`, "", "### The previous task", "", entry.prompt, "", "### Files it changed", "", files)
-    if (snaps) parts.push("", "Snapshot files it regenerated (not shown below):", "", snaps)
-    parts.push(
-      "",
-      "### Shell commands it ran successfully",
-      "",
-      commands,
-      "",
-      "### Its change to source files",
-      "",
-      "```diff",
-      diff.replace(/\n+$/, ""),
-      "```"
-    )
-  }
-  return parts.join("\n") + "\n"
 }
 
 /** Changed files, changed snapshot files, and the diff without snapshots. */
@@ -216,18 +158,6 @@ export const splitDiff = (diff: string): [Array<string>, Array<string>, string] 
   }
   return [files, snapshots, kept.join("")]
 }
-
-export const promptSimilarity = textSimilarity
-
-/** Entries with their prompt similarity, most similar first (file order on ties). */
-export const rankEntries = (prompt: string, entries: ReadonlyArray<Entry>): Array<[Entry, number]> => {
-  const query = words(prompt)
-  return entries.map((e): [Entry, number] => [e, cosine(query, words(e.prompt))]).sort((a, b) => b[1] - a[1])
-}
-
-/** The entry with the most similar prompt (the first one on ties), and its score. */
-export const bestMatch = (prompt: string, entries: ReadonlyArray<Entry>): [Entry | undefined, number] =>
-  rankEntries(prompt, entries)[0] ?? [undefined, 0]
 
 const round3 = (x: number): number => Math.round(x * 1000) / 1000
 

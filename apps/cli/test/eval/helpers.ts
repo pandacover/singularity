@@ -21,7 +21,6 @@ export const run = <A, E>(effect: Effect.Effect<A, E, NodeServices.NodeServices>
 
 export const FAKE_CLAUDE = [process.execPath, fileURLToPath(new URL("./fixtures/fake-claude.ts", import.meta.url))]
 export const FAKE_CODEX = [process.execPath, fileURLToPath(new URL("./fixtures/fake-codex.ts", import.meta.url))]
-export const FAKE_HERMES = [process.execPath, fileURLToPath(new URL("./fixtures/fake-hermes.ts", import.meta.url))]
 
 /**
  * An agent's command in `bin` as npm installs one on Windows (`<name>.cmd`,

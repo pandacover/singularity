@@ -8,10 +8,10 @@
  *
  * - `pre_llm_call`, Hermes's UserPromptSubmit: the hand-over, added to the
  *   user's message.
- * - `transform_tool_result`: after a shell command or an edit, a known
- *   mistake's warning, appended to the tool's result (as Hermes's own
- *   security-guidance plugin appends its warnings). It starts the script only
- *   in sessions memory handed something over to, checked as hook.ts checks.
+ * - `transform_tool_result`: after a shell command or an edit, the hook
+ *   script, which starts storing when the call committed. It adds nothing to
+ *   the result. It runs only in sessions whose first prompt memory saw (the
+ *   marker src/scripts/Hook.ts writes).
  * - `on_session_finalize`, Hermes's SessionEnd (when the CLI, the TUI or the
  *   gateway closes a session): memory stores the changes the session
  *   committed with its checks passing that it hasn't stored yet. Its
@@ -39,7 +39,7 @@ const MARKER = "# Installed by `singularity setup`; `singularity uninstall` remo
 
 const MANIFEST = `${MARKER}
 name: ${PLUGIN_NAME}
-description: "Memory from singularity: hands over what earlier sessions learned in a repository when a task starts there, warns when a mistake made before is about to happen again, and learns from the changes its sessions commit with their checks passing."
+description: "Memory from singularity: hands over a past change in a repository like the task when a task starts there, and stores the changes its sessions commit with their checks passing."
 author: singularity
 provides_hooks:
   - pre_llm_call
@@ -52,11 +52,10 @@ export const pluginCode = (launch: Launch): string =>
   String.raw`${MARKER}
 """singularity's memory in Hermes Agent.
 
-When a task starts, hands over what earlier sessions learned in its repository
-(pre_llm_call); after a shell command or an edit, warns when a mistake made
-there before is about to happen again (transform_tool_result); when a session
-closes, stores the changes it committed with their checks passing, for
-memory to learn from (on_session_finalize). All run singularity's hook script in
+When a task starts, hands over the past change in its repository most like it
+(pre_llm_call); after a shell command that commits, stores the change
+(transform_tool_result); when a session closes, stores the changes it
+committed with their checks passing (on_session_finalize). All run singularity's hook script in
 Claude Code's hook format. A hook must never break the session it serves:
 errors go to hook-errors.log in singularity's home, and the agent carries on.
 """
@@ -100,7 +99,7 @@ def _log(event: str, error: BaseException) -> None:
 
 
 def _has_session(session_id: str) -> bool:
-    """Whether memory keeps a file for this session, having handed something over (as hook.ts checks)."""
+    """Whether memory has seen this session's first prompt (the marker src/scripts/Hook.ts writes)."""
     try:
         with open(os.path.join(_home(), "config.json"), encoding="utf-8") as f:
             tenant = json.load(f).get("tenant")
@@ -108,8 +107,10 @@ def _has_session(session_id: str) -> bool:
         return False
     if not isinstance(tenant, str):
         return False
-    name = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id) + ".json"
-    return any(os.path.exists(os.path.join(_home(), "tenants", tenant, kind, "sessions", name)) for kind in ("workflows", "web"))
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
+    # Saved scripts mark a session at its first prompt (src/scripts/Hook.ts); older memory kept a JSON file.
+    return os.path.exists(os.path.join(_home(), "tenants", tenant, "scripts", "sessions", name)) or any(
+        os.path.exists(os.path.join(_home(), "tenants", tenant, kind, "sessions", name + ".json")) for kind in ("workflows", "web"))
 
 
 def _cwd() -> str:
@@ -190,7 +191,7 @@ def on_pre_llm_call(session_id: str = "", user_message: Any = None, **_: Any) ->
 
 
 def on_transform_tool_result(tool_name: str = "", args: Any = None, result: Any = None, session_id: str = "", **_: Any) -> Optional[str]:
-    """A known mistake's warning, after the tool's result."""
+    """Starts storing when the call committed; returns nothing."""
     try:
         if _off() or tool_name not in TOOLS or not isinstance(result, str) or not session_id or not _has_session(session_id):
             return None

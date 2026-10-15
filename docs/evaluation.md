@@ -53,47 +53,35 @@ Claude Code, such as a pinned copy of an earlier version
 | Setup | What the agent gets |
 |---|---|
 | `no-memory` | nothing: the baseline |
-| `saved-scripts` | the closest past successful run (its prompt, files, source diff and working commands), matched by prompt similarity |
-| `saved-scripts-top2` | up to the two closest past runs, each similar enough |
-| `graph` | the procedural graph: a checklist of the steps that apply, picked by Sonnet from the steps near the task (about $0.01, counted in the run) |
-| `saved-scripts-warnings` | the closest past run, plus the graph's warnings without the checklist |
-| `hooks` | memory v0, handed over by its own hooks as in daily use |
-| `workflows` | memory v1 as first measured: a model call picks the workflows at task start |
-| `workflows-cues` | memory v1, local first: cues pick the workflows with no model call and fill in the blanks the task states |
-| `workflows-split` | `workflows-cues`, with a hand-over too long for one hook sent in two parts |
-| `workflows-draft` | tested and dropped: the change itself, drafted at task start |
+| `scripts` | the closest past successful run (its prompt, files, source diff, working commands and mistakes), picked and shown as the daily hook shows a stored commit (`src/scripts/`) |
+
+The `graph`, `saved-scripts-warnings`, `hooks` and `workflows*` setups were
+removed with the memory designs they measured, and so were the first
+saved-scripts setups, `saved-scripts` and `saved-scripts-top2` (matched by
+the cosine of word counts); `scripts` reads the same saved runs. Old runs of
+all of them stay readable by `eval report`.
 
 Setups other than `no-memory` need `--memory DIR`; add `--frozen` for
-measurement runs, so memory doesn't change while it is measured. The
-memory setups copy the memory home into each run's directory, and their
-hooks reach Claude Code through `--settings`. Model calls the hooks make
-run the same Claude Code as the agent and count toward the run. Each run of
-a `workflows` setup keeps its hand-over log (what was shown, at which
-lines), which `workflows evolve` learns from.
+measurement runs, so memory doesn't change while it is measured.
 
 Eval memory lives in its own home, `runs/eval-home` (`--home
 runs/eval-home`, or `npm run cli:eval -- ...`), never in `~/.singularity`;
 runs measure frozen copies of it under `runs/<suite>/memory/`. The harness
-sets `SINGULARITY_HOOKS=off`, which silences memory's installed hooks, and
-marks a run's own hooks so that they fire anyway.
+sets `SINGULARITY_HOOKS=off`, which silences memory's installed hooks.
 
-Preview what a setup would hand each task, or what one task would get from
-v1 memory (give `workflows handover` a copy of a frozen memory: reading a
-repo from a new path adds that path to the memory's subjects):
+Preview what a setup would hand each task:
 
 ```
-node apps/cli/src/cli.ts eval inject apps/cli/examples/excalidraw/suite.toml --setup graph --memory runs/excalidraw/memory/graph
-node apps/cli/src/cli.ts workflows handover "the prompt" --cwd REPO --at COMMIT --home COPY_OF_MEMORY --pick cues
-node apps/cli/src/cli.ts graph show runs/excalidraw/memory/graph
+node apps/cli/src/cli.ts eval inject apps/cli/examples/excalidraw/suite.toml --setup scripts --memory runs/excalidraw/memory/saved-scripts
 ```
 
 Build memory from runs already recorded, without running the agent again:
 
 ```
 node apps/cli/src/cli.ts eval learn apps/cli/examples/excalidraw/suite.toml runs/excalidraw/baseline-1 \
-  --setup saved-scripts --memory runs/excalidraw/memory/saved-scripts --task altkey-zen-m
+  --setup scripts --memory runs/excalidraw/memory/saved-scripts --task altkey-zen-m
 ```
 
-`eval report --compare --baseline saved-scripts` compares setups against
-saved-scripts instead of no memory. New setups implement `MemorySetup` in
+`eval report --compare --baseline scripts` compares setups against
+`scripts` instead of no memory (`--baseline saved-scripts` for old runs). New setups implement `MemorySetup` in
 `apps/cli/src/eval/Setups.ts`.

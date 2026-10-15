@@ -130,10 +130,9 @@ export const agentEnv = (base: Readonly<Record<string, string | undefined>> = pr
   // A version change in the middle of a batch would change what is measured
   // (each turn rereads Claude Code's own prompt), so runs never update it.
   env.DISABLE_AUTOUPDATER = "1"
-  // Our own hooks, if installed for daily work, stay out of measurement runs
-  // and out of the model calls memory makes itself (a task-start hook inside
-  // the task-start model call would call itself). A run's own hooks fire
-  // anyway: the memory setups mark them with RUN_HOOK_FLAG (Install.ts).
+  // Our own hooks, if installed for daily work, stay out of measurement runs.
+  // A run's own hooks would fire anyway, marked with `--eval-run`
+  // (src/workflows/hook.ts); no setup installs any now.
   env.SINGULARITY_HOOKS = "off"
   return env
 }

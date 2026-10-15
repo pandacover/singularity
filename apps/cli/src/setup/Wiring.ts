@@ -1,7 +1,7 @@
 /**
  * Putting memory into an agent and taking it out again: its hooks
- * (HookFiles.ts, or Hermes Agent's plugin, HermesPlugin.ts) and the skill
- * (Skill.ts), with nothing on screen. Setup, status and uninstall use these.
+ * (HookFiles.ts, or Hermes Agent's plugin, HermesPlugin.ts), the skill
+ * (Skill.ts) and the recall note (Instructions.ts), with nothing on screen. Setup, status and uninstall use these.
  */
 import { Effect, FileSystem, Path } from "effect"
 import { delimiter } from "node:path"
@@ -20,9 +20,10 @@ import {
 } from "./Agents.ts"
 import { installPlugin, PLUGIN_EVENTS, pluginState, removePlugin } from "./HermesPlugin.ts"
 import { hasOtherHooks, hooksIn, installHooks, removeHooks } from "./HookFiles.ts"
+import { installNote, noteIn, type NoteState, removeNote } from "./Instructions.ts"
 import { installSkill, removeSkill, type SkillState, skillState } from "./Skill.ts"
 
-/** Memory v1's hook entry point. */
+/** Memory's hook entry point. */
 export const HOOK_SCRIPT = fileURLToPath(new URL("../workflows/hook.ts", import.meta.url))
 
 /** The oldest node the code runs on: it strips TypeScript's types itself. */
@@ -166,6 +167,16 @@ export const wireSkills = Effect.fn("wireSkills")(function*(skillDirs: ReadonlyA
   return blocked
 })
 
+/** Put the recall note in the instruction file an agent reads; the file, or the problem. Nothing for agents without one. */
+export const wireNote = Effect.fn("wireNote")(function*(agent: Agent) {
+  if (agent.instructions === undefined) return { file: undefined, problem: undefined }
+  const files = agent.instructions
+  return yield* installNote(files).pipe(
+    Effect.map((r) => ({ file: r.file, problem: undefined })),
+    Effect.catch((e) => Effect.succeed({ file: undefined, problem: `${files.create} ${e.message}` }))
+  )
+})
+
 export interface AgentState {
   readonly agent: Agent
   readonly found: boolean
@@ -174,6 +185,8 @@ export interface AgentState {
   readonly hookFile: string | undefined
   /** Whether the skill is where this agent reads it. */
   readonly skill: boolean
+  /** The recall note in the instruction file it reads; undefined for agents without one. */
+  readonly note: { readonly file: string; readonly state: NoteState } | undefined
 }
 
 /** What memory has in each agent. */
@@ -202,7 +215,10 @@ export const agentStates = Effect.fn("agentStates")(function*(found: ReadonlyArr
       const state = yield* skillState(dir).pipe(Effect.orElseSucceed((): SkillState => "missing"))
       if (state === "current" || state === "outdated") skill = true
     }
-    out.push({ agent, found: present, hookEvents: events, hookFile: file, skill })
+    const note = agent.instructions === undefined
+      ? undefined
+      : yield* noteIn(agent.instructions).pipe(Effect.orElseSucceed(() => ({ file: agent.instructions!.create, state: "missing" as NoteState })))
+    out.push({ agent, found: present, hookEvents: events, hookFile: file, skill, note })
   }
   return out
 })
@@ -215,17 +231,26 @@ export const unwireHooks = Effect.fn("unwireHooks")(function*(agent: Agent) {
   return { files, plugin: plugin ? agent.plugin?.dir : undefined }
 })
 
-/** Take memory out of every agent: hooks from every file they may be in, plugins, the skill from every directory. */
+/** Take the recall note out of every instruction file an agent may read; the files it was in. */
+export const unwireNote = Effect.fn("unwireNote")(function*(agent: Agent) {
+  const files: Array<string> = []
+  for (const f of agent.instructions?.reads ?? []) if (yield* removeNote(f).pipe(Effect.orElseSucceed(() => false))) files.push(f)
+  return files
+})
+
+/** Take memory out of every agent: hooks from every file they may be in, plugins, the skill from every directory, the recall note from every instruction file. */
 export const unwireAll = Effect.fn("unwireAll")(function*(dirs: AgentDirs) {
   const hookFilesChanged: Array<string> = []
   const plugins: Array<string> = []
   const skillDirs: Array<string> = []
+  const noteFiles: Array<string> = []
   const all = agents(dirs)
   for (const agent of all) {
     const removed = yield* unwireHooks(agent)
     hookFilesChanged.push(...removed.files)
     if (removed.plugin !== undefined) plugins.push(removed.plugin)
+    for (const f of yield* unwireNote(agent)) if (!noteFiles.includes(f)) noteFiles.push(f)
   }
   for (const dir of skillDirsFor(all, dirs)) if (yield* removeSkill(dir).pipe(Effect.orElseSucceed(() => false))) skillDirs.push(dir)
-  return { hookFiles: hookFilesChanged, plugins, skillDirs }
+  return { hookFiles: hookFilesChanged, plugins, skillDirs, noteFiles }
 })

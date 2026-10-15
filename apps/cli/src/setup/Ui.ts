@@ -10,8 +10,8 @@
  *       singularity  installing
  *
  *       Your agents
- *       ├─ ✓ Claude Code  memory at task start, learns from its sessions
- *       ├─ ✓ Codex        memory at task start, learns from its sessions
+ *       ├─ ✓ Claude Code  memory at task start, stores its changes
+ *       ├─ ✓ Codex        memory at task start, stores its changes
  *       │  └─ ! a note under it
  *       └─ ✓ Cursor       memory when you ask for it
  *

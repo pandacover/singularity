@@ -30,7 +30,7 @@ import { randomUUID } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseArgs } from "node:util"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -46,6 +46,9 @@ const { values: opts } = parseArgs({
     to: { type: "string", default: "99" },
     fake: { type: "string" },
     budget: { type: "string", default: "5.0" },
+    // A Claude Code config folder of the run's own, so the machine's skills,
+    // plugins and settings stay out (as in the cloud measurements).
+    "claude-config": { type: "string" },
     "timeout-min": { type: "string", default: "60" }
   }
 })
@@ -81,10 +84,23 @@ const INSTALLED_HOOK = /^("[^"]+") "[^"]*[\\/]\.singularity[\\/]app[\\/]apps[\\/
 const settingsFile = path.join(out, "hooks-settings.json")
 if (app) {
   const userSettings = path.join(os.homedir(), ".claude", "settings.json")
-  const installed = JSON.parse(fs.readFileSync(userSettings, "utf8")).hooks ?? {}
   const slashed = (p) => p.replace(/\\/g, "/")
+  // Where singularity isn't installed (a cloud container): the hooks setup writes
+  // for Claude Code (src/setup/Agents.ts hookEvents), as the installed ones.
+  const installedHook = (args) => `"${slashed(process.execPath)}" "/.singularity/app/apps/cli/src/workflows/hook.ts" ${args}`
+  const TOOLS = "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit"
+  const setupHooks = {
+    UserPromptSubmit: [
+      { hooks: [{ type: "command", command: installedHook("user-prompt-submit"), timeout: 90 }] },
+    ],
+    PostToolUse: [{ matcher: TOOLS, hooks: [{ type: "command", command: installedHook("post-tool-use"), timeout: 15 }] }],
+    PostToolUseFailure: [{ matcher: TOOLS, hooks: [{ type: "command", command: installedHook("post-tool-use"), timeout: 15 }] }],
+    SessionEnd: [{ hooks: [{ type: "command", command: installedHook("session-end"), timeout: 30 }] }]
+  }
+  const installed = fs.existsSync(userSettings) ? JSON.parse(fs.readFileSync(userSettings, "utf8")).hooks ?? {} : {}
+  const hasOurs = Object.values(installed).some((gs) => gs.some((g) => (g.hooks ?? []).some((h) => INSTALLED_HOOK.test(h.command ?? ""))))
   const hooks = {}
-  for (const [event, groups] of Object.entries(installed)) {
+  for (const [event, groups] of Object.entries(hasOurs ? installed : setupHooks)) {
     const mine = groups.flatMap((g) => {
       const rewritten = (g.hooks ?? []).flatMap((h) => {
         const m = INSTALLED_HOOK.exec(h.command ?? "")
@@ -118,12 +134,33 @@ const SESSION_VARS = new Set([
 
 const emptyHome = path.join(path.dirname(out), "empty-singularity-home")
 
+// With --app, what setup gives an agent besides hooks: the recall note in the
+// agent's CLAUDE.md (the run's own config folder, --claude-config) and the
+// `singularity` command on PATH, running <app>'s code with the arm's memory.
+const launcherDir = path.join(out, "bin")
+if (app) {
+  fs.mkdirSync(launcherDir, { recursive: true })
+  const cli = path.join(app, "apps", "cli", "src", "singularity.ts")
+  fs.writeFileSync(path.join(launcherDir, "singularity"), `#!/bin/sh\nexec "${process.execPath}" "${cli}" "$@"\n`, { mode: 0o755 })
+  fs.writeFileSync(path.join(launcherDir, "singularity.cmd"), `@"${process.execPath}" "${cli}" %*\r\n`)
+  if (opts["claude-config"]) {
+    const instructions = path.join(app, "apps", "cli", "src", "setup", "Instructions.ts")
+    if (fs.existsSync(instructions)) {
+      const { NOTE_BLOCK } = await import(pathToFileURL(instructions).href)
+      const claudeMd = path.join(path.resolve(opts["claude-config"]), "CLAUDE.md")
+      fs.mkdirSync(path.dirname(claudeMd), { recursive: true })
+      fs.writeFileSync(claudeMd, NOTE_BLOCK + "\n")
+    }
+  }
+}
+
 const agentEnv = () => {
   const env = {}
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined && !SESSION_VARS.has(k) && !k.startsWith("SINGULARITY_")) env[k] = v
   }
   env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"
+  if (opts["claude-config"]) env.CLAUDE_CONFIG_DIR = path.resolve(opts["claude-config"])
   env.DISABLE_AUTOUPDATER = "1"
   if (opts.arm === "without") {
     fs.mkdirSync(emptyHome, { recursive: true })
@@ -133,7 +170,10 @@ const agentEnv = () => {
     env.SINGULARITY_HOME = home
     env.SINGULARITY_CLAUDE = opts.claude
     // The installed hooks stay silent; the run's own clear this again (run-hook.mjs).
-    if (app) env.SINGULARITY_HOOKS = "off"
+    if (app) {
+      env.SINGULARITY_HOOKS = "off"
+      env.PATH = `${launcherDir}${path.delimiter}${env.PATH ?? ""}`
+    }
   }
   return env
 }
@@ -141,7 +181,7 @@ const agentEnv = () => {
 const run = (cmd, args, { cwd, env, input, timeoutMs, stdoutFile, stderrFile }) =>
   new Promise((resolve) => {
     const started = Date.now()
-    const child = spawn(cmd, args, { cwd, env, windowsHide: true, shell: false })
+    const child = spawn(cmd, args, { cwd, env, windowsHide: true, shell: false, detached: process.platform !== "win32" })
     const outChunks = []
     const errChunks = []
     child.stdout.on("data", (d) => outChunks.push(d))
@@ -150,7 +190,8 @@ const run = (cmd, args, { cwd, env, input, timeoutMs, stdoutFile, stderrFile }) 
     const timer = setTimeout(() => {
       timedOut = true
       try {
-        execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" })
+        if (process.platform === "win32") execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" })
+        else process.kill(-child.pid, "SIGKILL")
       } catch {}
     }, timeoutMs)
     child.on("close", (code) => {
@@ -165,9 +206,11 @@ const run = (cmd, args, { cwd, env, input, timeoutMs, stdoutFile, stderrFile }) 
     else child.stdin.end()
   })
 
-// npm on Windows is a .cmd shim: run it through cmd.exe.
+// npm on Windows is a .cmd shim: run it through cmd.exe; elsewhere through sh.
 const npm = (args, cwd, timeoutMs, env = process.env) =>
-  run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npm ${args}`], { cwd, env, timeoutMs })
+  process.platform === "win32"
+    ? run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npm ${args}`], { cwd, env, timeoutMs })
+    : run("sh", ["-c", `npm ${args}`], { cwd, env, timeoutMs })
 
 const parseResult = (stdout) => {
   for (const text of [stdout.trim(), ...stdout.split(/\r?\n/).reverse().map((l) => l.trim())]) {
@@ -182,27 +225,29 @@ const parseResult = (stdout) => {
 
 const transcriptOf = (sessionId) => {
   const slug = repo.replace(/[^A-Za-z0-9]/g, "-")
-  return path.join(os.homedir(), ".claude", "projects", slug, `${sessionId}.jsonl`)
+  const config = opts["claude-config"] ? path.resolve(opts["claude-config"]) : path.join(os.homedir(), ".claude")
+  return path.join(config, "projects", slug, `${sessionId}.jsonl`)
 }
 
 // --- singularity's background work (with arm) ---
 
 const backgroundBusy = () => {
   if (!home) return false
-  const lock = path.join(home, "learn.lock")
-  if (fs.existsSync(lock)) {
+  for (const lock of [path.join(home, "learn.lock"), path.join(home, "store.lock")]) if (fs.existsSync(lock)) {
     try {
       const { pid } = JSON.parse(fs.readFileSync(lock, "utf8"))
       process.kill(pid, 0)
-      return "learning"
+      return "storing"
     } catch {}
   }
   const queue = path.join(home, "learn-queue")
   if (fs.existsSync(queue) && fs.readdirSync(queue).length > 0) return "learning queued"
   // A storing run for this clone: `cli.ts record commits --background ... --cwd <repo>`.
   try {
-    const procs = execFileSync("powershell.exe", ["-NoProfile", "-Command",
-      "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object -ExpandProperty CommandLine"], { encoding: "utf8" })
+    const procs = process.platform === "win32"
+      ? execFileSync("powershell.exe", ["-NoProfile", "-Command",
+        "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object -ExpandProperty CommandLine"], { encoding: "utf8" })
+      : execFileSync("ps", ["-eo", "args"], { encoding: "utf8" })
     const mine = procs.split(/\r?\n/).filter((l) => /record commits/.test(l) && l.toLowerCase().includes(repo.toLowerCase().replace(/\//g, "\\")))
     if (mine.length > 0) return "storing"
     const mine2 = procs.split(/\r?\n/).filter((l) => /record commits/.test(l) && l.toLowerCase().includes(repo.toLowerCase().replace(/\\/g, "/")))
@@ -263,7 +308,8 @@ const check = async (task, sha, dir) => {
   const status = git(tmp, "status", "--porcelain")
   save("regenerate", { ...regen, code: regen.code === 0 && status === "" ? 0 : 1, stdout: `${regen.stdout}\n--- git status after regenerating ---\n${status}` })
   // Remove the junction itself first, never what it points to.
-  fs.rmdirSync(path.join(tmp, "node_modules"))
+  if (process.platform === "win32") fs.rmdirSync(path.join(tmp, "node_modules"))
+  else fs.unlinkSync(path.join(tmp, "node_modules"))
   fs.rmSync(tmp, { recursive: true, force: true })
   return { counted: results, types: types.code === 0 && !types.timedOut }
 }

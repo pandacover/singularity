@@ -3,47 +3,30 @@
  * installs is src/singularity.ts, with only the commands for daily use:
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]    set memory up in this machine's coding agents
- *     singularity status | recall TASK... | learn [--past] [--all] | uninstall [--purge]
+ *     singularity status | recall TASK... | store | update | uninstall [--purge]
  *
- * This one has those too, and, for building and measuring memory (and for
- * memory's own background work, src/setup/Background.ts):
+ * This one has those too, and, for measuring memory (and for memory's own
+ * background work, src/setup/Background.ts):
  *
  *     node src/cli.ts eval run SUITE.toml [--setup no-memory] [--reps N] [--task ID ...]
- *     node src/cli.ts eval run SUITE.toml --setup saved-scripts|saved-scripts-top2|graph --memory DIR [--frozen]
- *     node src/cli.ts eval run SUITE.toml --setup saved-scripts-warnings --memory DIR --warnings GRAPH_DIR [--frozen]
- *     node src/cli.ts eval run SUITE.toml --setup hooks|workflows --memory MEMORY_HOME
- *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup saved-scripts|graph --memory DIR [--task ID ...]
+ *     node src/cli.ts eval run SUITE.toml --setup scripts --memory DIR [--frozen]
+ *     node src/cli.ts eval learn SUITE.toml RESULTS... --setup scripts --memory DIR [--task ID ...]
  *     node src/cli.ts eval inject SUITE.toml --setup SETUP --memory DIR [--task ID ...]
+ *     node src/cli.ts eval recall --memory DIR TASK...     (the `singularity recall` of a scripts run)
  *     node src/cli.ts eval report RESULTS... [--compare [--baseline SETUP]]
- *     node src/cli.ts graph show DIR [--graph ID] [--version N]
  *     node src/cli.ts traces SESSION [--json]
- *     node src/cli.ts record import RUN_DIRS... | session ID | list | show ID | annotate [IDS...|--all]
- *     node src/cli.ts search QUERY... [--exact]
- *     node src/cli.ts memory build [--conditions] [--dry-run] | show [AT] | candidates | replay [AT]
- *     node src/cli.ts handover TASK... [--cwd REPO] [--no-model]
- *     node src/cli.ts hooks install|uninstall [--scope user|project|local] | print | status
- *     node src/cli.ts workflows build [--task ID ...] [--fresh] | show [AT] | candidates
+ *     node src/cli.ts record import RUN_DIRS... | commits | list | show ID
  */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { handoverCommand, hooksCommand } from "./commands/Hooks.ts"
-import { layerCommand } from "./commands/Layer.ts"
-import { webBenchCommand } from "./commands/WebBench.ts"
-import { memoryCommand } from "./commands/Memory.ts"
 import { recordCommand } from "./commands/Records.ts"
-import { searchCommand } from "./commands/Search.ts"
 import { setupCommands } from "./commands/Setup.ts"
-import { workflowsCommand } from "./commands/Workflows.ts"
-import { GraphStore, JsonGraphStore } from "./graph/index.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
-import { DEFAULT_LEARNER_EFFORT, DEFAULT_LEARNER_MODEL } from "./eval/GraphLearner.ts"
-import { describeGraph, learnCost } from "./eval/GraphMemory.ts"
-import { DEFAULT_SELECTOR_MODEL } from "./eval/StepSelector.ts"
 import { learnFrom } from "./eval/Learn.ts"
-import type { SetupContext } from "./eval/Memory.ts"
 import { makeSetup } from "./eval/Memory.ts"
+import { recallText } from "./eval/Recall.ts"
 import { lowerPriority } from "./eval/Proc.ts"
 import { pyFixed } from "./eval/PyFormat.ts"
 import { VERSION } from "./setup/Status.ts"
@@ -76,44 +59,8 @@ const workspacesFlag = Flag.String("workspaces").pipe(
 
 const claudeFlag = Flag.String("claude").pipe(Flag.optional, Flag.withDescription("path to the claude executable"))
 
-/**
- * Setups that prepare memory before a run, and learn after it, through the
- * harness. The hooks setup does neither: its hooks hand memory over during the
- * run (preview with `handover --home`), and memory is built with `memory build`.
- */
-const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory" && s !== "hooks" && s !== "workflows" && s !== "workflows-draft" && s !== "workflows-cues" && s !== "workflows-split")
-
-const graphVersionFlag = Flag.Int("graph-version").pipe(
-  Flag.optional,
-  Flag.withDescription("graph setups: use this committed version, not the latest (read-only)")
-)
-
-const warningsFlag = Flag.String("warnings").pipe(
-  Flag.optional,
-  Flag.withDescription("saved-scripts-warnings: the graph store its warnings come from")
-)
-
-/**
- * What the graph setup needs besides its memory directory. Its model calls run
- * outside the home folder, like the agent, so no CLAUDE.md gets loaded.
- */
-const setupContext = (
-  suiteName: string,
-  claude: ReadonlyArray<string>,
-  workspaces: string,
-  path: Path.Path,
-  graphVersion: Option.Option<number> = Option.none(),
-  warnings: Option.Option<string> = Option.none()
-): SetupContext => {
-  const cwd = path.join(workspaces, "_learner")
-  return {
-    graphId: suiteName,
-    graphVersion: Option.getOrUndefined(graphVersion),
-    warningsDir: Option.getOrUndefined(warnings),
-    selector: { claude, cwd, model: DEFAULT_SELECTOR_MODEL },
-    learner: { claude, cwd, model: DEFAULT_LEARNER_MODEL, effort: DEFAULT_LEARNER_EFFORT }
-  }
-}
+/** Setups that keep memory, fed by the harness after each run. */
+const PREPARED_SETUPS = SETUPS.filter((s) => s !== "no-memory")
 
 const run = Command.make(
   "run",
@@ -122,14 +69,12 @@ const run = Command.make(
     setup: Flag.Literals("setup", SETUPS).pipe(Flag.withDefault("no-memory")),
     memory: Flag.String("memory").pipe(
       Flag.optional,
-      Flag.withDescription("memory store for setups that learn (e.g. saved-scripts); for hooks, a memory home")
+      Flag.withDescription("memory directory for setups that keep memory (scripts)")
     ),
     frozen: Flag.Boolean("frozen").pipe(
       Flag.withDefault(false),
       Flag.withDescription("read memory but don't add to it (for measurement runs)")
     ),
-    graphVersion: graphVersionFlag,
-    warnings: warningsFlag,
     reps: Flag.Int("reps").pipe(Flag.withDefault(1), Flag.withDescription("runs per task")),
     firstRep: Flag.Int("first-rep").pipe(
       Flag.withDefault(0),
@@ -154,12 +99,7 @@ const run = Command.make(
     const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
     const claude = Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-    const setup = yield* makeSetup(
-      args.setup,
-      Option.getOrUndefined(args.memory),
-      args.frozen,
-      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion, args.warnings)
-    )
+    const setup = yield* makeSetup(args.setup, Option.getOrUndefined(args.memory), args.frozen)
 
     if (args.dryRun) {
       const ws = makeWorkspace(suite.repo, path.join(args.workspaces, suite.name), suite.keep)
@@ -169,9 +109,7 @@ const run = Command.make(
         const sha = yield* resolveRef(ws, t.base)
         yield* Console.log(`task       ${t.id} @ ${sha.slice(0, 12)}  checks: ${t.checks.length}`)
       }
-      // The hooks and workflows setups write their settings into each run's directory.
-      const settings = /^(hooks|workflows)/.test(args.setup) ? ["--settings", "<run dir>/hooks.json"] : []
-      yield* Console.log("command    " + [...buildCommand(claude, suite.agent, "<session-id>"), ...settings].join(" "))
+      yield* Console.log("command    " + buildCommand(claude, suite.agent, "<session-id>").join(" "))
       return
     }
 
@@ -199,37 +137,17 @@ const learn = Command.make(
     ),
     setup: Flag.Literals("setup", PREPARED_SETUPS),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to add to")),
-    warnings: warningsFlag,
-    tasks: tasksFlag,
-    workspaces: workspacesFlag,
-    claude: claudeFlag
+    tasks: tasksFlag
   },
   Effect.fn(function*(args) {
     yield* lowerPriority
-    const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
-    // Setups with a graph learn into it with Claude.
-    const graphStore = args.setup === "graph"
-      ? Option.some(args.memory)
-      : args.setup === "saved-scripts-warnings" ? args.warnings : Option.none()
-    const claude = Option.isSome(graphStore)
-      ? Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-      : []
-    const setup = yield* makeSetup(
-      args.setup,
-      args.memory,
-      false,
-      setupContext(suite.name, claude, args.workspaces, path, Option.none(), args.warnings)
-    )
+    const setup = yield* makeSetup(args.setup, args.memory, false)
     const n = yield* learnFrom(setup, suite, args.results, args.tasks, (outcome, i, total) =>
       Console.error(`[${i}/${total}] learned from ${outcome.task.id} (${outcome.trace?.sessionId ?? "no transcript"})`))
     yield* Console.log(`fed ${n} runs into ${args.setup} memory at ${args.memory}`)
-    if (Option.isSome(graphStore)) {
-      const { calls, costUsd } = yield* learnCost(graphStore.value)
-      yield* Console.log(`learning so far: ${calls} LLM calls, $${pyFixed(costUsd, 2)}`)
-    }
   })
-).pipe(Command.withDescription("feed finished runs into a memory setup"))
+).pipe(Command.withDescription("save finished runs into a memory setup's directory"))
 
 const inject = Command.make(
   "inject",
@@ -237,25 +155,13 @@ const inject = Command.make(
     suite: Argument.String("suite").pipe(Argument.withDescription("suite TOML file")),
     setup: Flag.Literals("setup", PREPARED_SETUPS),
     memory: Flag.String("memory").pipe(Flag.withDescription("memory store to read")),
-    graphVersion: graphVersionFlag,
-    warnings: warningsFlag,
     tasks: tasksFlag,
-    workspaces: workspacesFlag,
-    claude: claudeFlag
+    workspaces: workspacesFlag
   },
   Effect.fn(function*(args) {
     const path = yield* Path.Path
     const suite = yield* loadSuite(args.suite)
-    // The graph setup calls a small model to pick steps, about $0.005 per task.
-    const claude = args.setup === "graph"
-      ? Option.isSome(args.claude) ? [args.claude.value] : yield* defaultClaude()
-      : []
-    const setup = yield* makeSetup(
-      args.setup,
-      args.memory,
-      true,
-      setupContext(suite.name, claude, args.workspaces, path, args.graphVersion, args.warnings)
-    )
+    const setup = yield* makeSetup(args.setup, args.memory, true)
     const tasks = args.tasks.length ? yield* Effect.forEach(args.tasks, (id) => suiteTask(suite, id)) : suite.tasks
     for (const task of tasks) {
       const injection = yield* setup.beforeRun(task, path.join(args.workspaces, suite.name))
@@ -267,6 +173,17 @@ const inject = Command.make(
     }
   })
 ).pipe(Command.withDescription("show what a setup would hand the agent for each task, without running it"))
+
+const recall = Command.make(
+  "recall",
+  {
+    task: Argument.String("task").pipe(Argument.atLeast(1), Argument.withDescription("what the agent is about to do")),
+    memory: Flag.String("memory").pipe(Flag.withDescription("the run's scripts memory directory"))
+  },
+  Effect.fn(function*(args) {
+    yield* Console.log(yield* recallText(args.memory, args.task.join(" ")))
+  })
+).pipe(Command.withDescription("what `singularity recall` prints in a scripts run (Recall.ts)"))
 
 const report = Command.make(
   "report",
@@ -298,31 +215,7 @@ const report = Command.make(
 
 const evalCommand = Command.make("eval").pipe(
   Command.withDescription("evaluate memory setups on a task suite"),
-  Command.withSubcommands([run, learn, inject, report])
-)
-
-const show = Command.make(
-  "show",
-  {
-    root: Argument.String("dir").pipe(Argument.withDescription("graph store directory (a graph setup's --memory)")),
-    graph: Flag.String("graph").pipe(Flag.optional, Flag.withDescription("graph id (default: the only graph)")),
-    version: Flag.Int("version").pipe(Flag.optional, Flag.withDescription("a committed version (default: head)"))
-  },
-  Effect.fn(function*(args) {
-    const store = yield* GraphStore
-    const graphs = yield* store.listGraphs()
-    const id = Option.getOrUndefined(args.graph) ?? (graphs.length === 1 ? graphs[0].graph_id : undefined)
-    if (id === undefined) {
-      return yield* new ReportError({ message: `pick a graph with --graph: ${graphs.map((g) => g.graph_id).join(", ") || "none"}` })
-    }
-    const version = Option.getOrUndefined(args.version) ?? (yield* store.head(id))
-    yield* Console.log(describeGraph(yield* store.snapshot(id, { at: version }), id, version))
-  }, (effect, args) => Effect.provide(effect, JsonGraphStore.layer(args.root)))
-).pipe(Command.withDescription("print a graph's steps and transitions"))
-
-const graphCommand = Command.make("graph").pipe(
-  Command.withDescription("inspect procedural graphs"),
-  Command.withSubcommands([show])
+  Command.withSubcommands([run, learn, inject, recall, report])
 )
 
 const traces = Command.make(
@@ -412,7 +305,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([...setupCommands, evalCommand, graphCommand, traces, recordCommand, searchCommand, memoryCommand, handoverCommand, hooksCommand, workflowsCommand, layerCommand, webBenchCommand]),
+  Command.withSubcommands([...setupCommands, evalCommand, traces, recordCommand]),
   Command.run({ version: VERSION }),
   Effect.catchTags({
     SuiteError: reportError,
@@ -422,10 +315,6 @@ Command.make("singularity").pipe(
     AgentError: reportError,
     PlatformError: reportError,
     StoreError: reportError,
-    GraphNotFound: reportError,
-    CandidateNotFound: reportError,
-    InvalidEdit: reportError,
-    Conflict: reportError,
     HomeError: reportError,
     RecallError: reportError,
     UpdateError: reportError,

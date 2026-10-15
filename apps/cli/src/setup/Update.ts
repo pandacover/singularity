@@ -8,8 +8,11 @@
  *   2. Setup, refreshed by the new code (`update --no-fetch`, run as a child
  *      process: this one still runs the old code): memory's hooks in the
  *      agents that have them, Hermes Agent's plugin, the skill where it is,
- *      the `singularity` command. Hook commands, the skill's text and the
- *      launchers change with the code; agents left out stay out, and the
+ *      the recall note in the instruction file of each agent with memory
+ *      (added there too when an older version didn't write it), the
+ *      `singularity` command. Hook commands (the retired second task-start
+ *      hook taken out), the skill's text, the note's text and the launchers
+ *      change with the code; agents left out stay out, and the
  *      choices in config.json stay as they are. The installer, run again
  *      where memory is set up, does this step too instead of setup.
  *
@@ -24,11 +27,9 @@ import { loadHome } from "../local/Home.ts"
 import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
 import { binDir, COMMAND, writeLaunchers } from "./Launcher.ts"
-import { learnIsSet, readLearn } from "./Preferences.ts"
-import { codexTrust, REACH } from "./Setup.ts"
+import { codexTrust, noteLines, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
-import { LEARNER_NAMES } from "./Learner.ts"
-import { listWords, makeStyle, makeTree, marks, type Style, tilde, title, TITLED_ENV, usd, withSpinner } from "./Ui.ts"
+import { listWords, makeStyle, makeTree, marks, tilde, title, TITLED_ENV, withSpinner } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, nodeForHooks, skillDirsFor, wireHooks, wireSkills } from "./Wiring.ts"
 
 export class UpdateError extends Schema.TaggedError<UpdateError>()("UpdateError", {
@@ -156,13 +157,11 @@ export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
     yield* T.note("Run the installer (see the README), or in a clone of the repo, git pull and npm install.")
     return yield* stop
   }
-  // A round running now reads code and dependencies the update would replace under it.
-  for (const lock of ["learn.lock", "store.lock"]) {
-    if (lockHeld(memory.root, lock)) {
-      yield* T.item(M.warn(`memory is ${lock === "learn.lock" ? "learning" : "storing a change"} in the background now; nothing changed`))
-      yield* T.note(`run ${s.cyan("singularity update")} again when ${s.cyan("singularity status")} shows it done`)
-      return yield* stop
-    }
+  // A run storing a change now reads code and dependencies the update would replace under it.
+  if (lockHeld(memory.root, "store.lock")) {
+    yield* T.item(M.warn("memory is storing a change in the background now; nothing changed"))
+    yield* T.note(`run ${s.cyan("singularity update")} again in a minute`)
+    return yield* stop
   }
   const code = yield* updateCode(app, o.interactive)
   if (code.kind === "current") {
@@ -178,20 +177,10 @@ export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
   return (yield* runInstalled(app, ["update", "--no-fetch"])) === 0
 })
 
-const describeLearning = Effect.fnUntraced(function*(root: string, s: Style) {
-  const M = marks(s)
-  if (!(yield* learnIsSet(root))) return M.warn(`not set up: ${s.cyan("singularity setup")} sets it up`)
-  const prefs = yield* readLearn(root)
-  const through = prefs.with === undefined ? "" : ` with ${LEARNER_NAMES[prefs.with]}`
-  return prefs.auto
-    ? M.ok(`on its own${through}, up to ${usd(prefs.max_usd_per_day)} a day`)
-    : M.skip(`when you run singularity learn${through}`)
-})
-
 /**
  * What setup put in place, made current with the code that runs this: hooks
- * and plugins where they are, the skill where it is, the command if it was
- * written. Asks nothing but Codex's trust in hooks whose command changed.
+ * and plugins where they are, the skill where it is, the recall note for the
+ * agents with memory, the command if it was written. Asks nothing but Codex's trust in hooks whose command changed.
  */
 export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
   const s = makeStyle(o.color)
@@ -238,6 +227,7 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
     if (state === "current" || state === "outdated") placed.push(dir)
   }
   for (const d of yield* wireSkills(placed)) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
+  yield* noteLines(s, T, withMemory.map((st) => st.agent), o.home)
   yield* writeLaunchers(memory.root, process.execPath, COMMAND, process.platform)
   const leftOut: ReadonlyArray<Agent> = states
     .filter((st) => st.found && st.hookEvents.length === 0 && !st.skill)
@@ -245,9 +235,6 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
   if (leftOut.length > 0) {
     yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))}: no memory · singularity setup adds ${leftOut.length === 1 ? "it" : "them"}`))
   }
-
-  yield* T.section("Learning")
-  yield* T.item(yield* describeLearning(memory.root, s))
 
   yield* T.head(ok
     ? `${s.green("✓")} ${s.bold("Up to date")}${withMemory.length > 0 ? `  ${s.dim("agents running now get it at their next start")}` : ""}`
