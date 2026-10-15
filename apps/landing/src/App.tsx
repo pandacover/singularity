@@ -2,11 +2,9 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "re
 import AGENTS_MD from "./agents.md?raw"
 import { Collapse } from "./figures/Collapse.tsx"
 import { Flip } from "./Flip.tsx"
-import { Mistake } from "./figures/Mistake.tsx"
+import { Picks } from "./figures/Picks.tsx"
 import { Results } from "./figures/Results.tsx"
 import { Stack } from "./figures/Stack.tsx"
-import { TryIt } from "./figures/TryIt.tsx"
-import { Turns } from "./figures/Turns.tsx"
 import { defaultOs, Install, type Os } from "./Install.tsx"
 import { Logo } from "./Logo.tsx"
 import { Steps } from "./Steps.tsx"
@@ -17,14 +15,12 @@ import { TipProvider } from "./Tip.tsx"
 // sides, and the contents down the left, following the reader.
 const TOC: ReadonlyArray<{ readonly id: string; readonly title: string }> = [
   { id: "problem", title: "The same task, from zero" },
-  { id: "turns", title: "Where the turns go" },
-  { id: "method", title: "Workflows, not transcripts" },
+  { id: "method", title: "What memory keeps" },
   { id: "picking", title: "Picking without a model" },
   { id: "results", title: "Results" },
   { id: "limits", title: "Limitations" },
   { id: "rules", title: "Rules it keeps" },
-  { id: "use", title: "Use it" },
-  { id: "refs", title: "References" }
+  { id: "use", title: "Use it" }
 ]
 const IDS = TOC.map((s) => s.id)
 
@@ -127,13 +123,13 @@ const H2 = ({ id, children }: { readonly id: string; readonly children: ReactNod
 }
 
 const Dot = ({ yes }: { readonly yes: boolean }) => <span className={yes ? "dot-y" : "dot-n"} role="img" aria-label={yes ? "yes" : "no"} />
-const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, warns: boolean, learns: boolean, note?: string]> = [
-  ["Claude Code", true, true, true],
-  ["Codex", true, true, true],
-  ["Gemini CLI", true, true, false],
-  ["Droid", true, true, false],
-  ["Hermes Agent", true, true, true, "through a plugin"],
-  ["Cursor, OpenCode", false, false, false, "through a skill, when asked"]
+const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, stores: boolean, note?: string]> = [
+  ["Claude Code", true, true],
+  ["Codex", true, true],
+  ["Gemini CLI", true, false],
+  ["Droid", true, false],
+  ["Hermes Agent", true, true, "through a plugin"],
+  ["Cursor, OpenCode", false, false, "through a skill, when asked"]
 ]
 
 const Contents = ({ at, progress, view, go }: { readonly at: string; readonly progress: number; readonly view: View; readonly go: Go }) => {
@@ -193,8 +189,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
         {view === "agents" ? <ForAgents /> : <article className="ar-main">
           <header className="ar-head">
             <div className="kicker"><span>Research note</span><span>October 2026</span></div>
-            <h1>Procedural memory for coding agents</h1>
-            <p className="dek">Coding agents forget your codebase between sessions. singularity keeps the way around it: workflows learned from past runs, picked from the words of the next task, and handed to the agent before it starts looking.</p>
+            <h1>Memory for coding agents</h1>
+            <p className="dek">Coding agents forget a repository between sessions. singularity keeps the changes they commit, and hands the closest one to the next session that starts a similar task.</p>
             <div className="byline">
               <span><a href="https://github.com/pandacover/singularity">pandacover/singularity</a></span>
               <span>Code on GitHub · runs on your machine</span>
@@ -205,23 +201,24 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <h2 id="abs" className="label">Abstract</h2>
             <p>
               An agent asked for the same kind of change twice starts from zero both times, and most of its turns go to
-              finding places it has found before. We keep, from past sessions in Claude Code, Codex and Hermes Agent, the way through a kind of task
-              as a <em>workflow</em>: steps with blanks, and the phrases that call for it. At the next task, workflows are
-              picked by plain text matching, with no model call, filled in from the task, and pointed at today’s code. On a
-              four-change task in excalidraw whose kinds memory had learned, the median run took 9.5 turns instead of 28.5
-              and 423k tokens instead of 1.90M. On tasks it hadn’t learned, turns moved between 25% fewer and 17% more.
+              finding places it has found before. singularity stores each change a Claude Code, Codex or Hermes Agent
+              session commits once its checks pass. When a new task starts, it picks the stored change whose task is most
+              like it by plain text matching, with no model call. It reads that change from git as the code is now and
+              adds it to the agent's first prompt. On 12 tasks in the markdownlint repository, the 7 that got a hand-over
+              cost 16% less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a
+              build command that had failed before, agents ran it again in 8 of 10 tasks.
             </p>
             <dl className="glance">
-              <div><dt>−67%</dt><dd>turns, four learned changes</dd></div>
-              <div><dt>−78%</dt><dd>tokens, same task</dd></div>
-              <div><dt>40 / 40</dt><dd>runs passed hidden tests</dd></div>
+              <div><dt>−16%</dt><dd>cost, tasks with a hand-over</dd></div>
+              <div><dt>−24%</dt><dd>tokens, same tasks</dd></div>
+              <div><dt>8 / 10</dt><dd>reran a failed command a hand-over named</dd></div>
             </dl>
           </section>
 
           <div className="ar-install">
             <Install os={os} setOs={setOs} requirement={<>
               <a href="#use">Works with</a> Claude Code, Codex, Gemini CLI, Droid and Hermes Agent.<br />
-              Needs Node.js 24 and git. Setup asks before it changes anything.
+              Needs git. Setup asks before it changes anything.
             </>} />
             <ProductHunt />
           </div>
@@ -230,93 +227,84 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <H2 id="problem">The same task, from zero</H2>
             <p>
               Ask a coding agent to add a setting to <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> and
-              it will find its way: read the app state, search for how other settings are stored, find the menu, run the
-              tests, fail once on a flag, run them again. Ask it for a second setting the next day and it does all of that
-              again. Nothing it learned about the codebase survives the session.
+              it will find its way. It reads the app state, searches for how other settings are stored, finds the menu,
+              runs the tests, fails once on a flag and runs them again. Ask it for a second setting the next day and it
+              does all of that again. Nothing it learned about the codebase survives the session.
             </p>
             <p>
               Figure 1 shows four real runs of one such task without memory. They spent 110 turns between them, most of
-              them reading and searching. Yet all four end up making much the same change, in the same
-              places. That shared way through is what memory keeps.
+              them reading and searching, and all four made much the same change in the same places. A change like that,
+              once committed, is what memory keeps.
             </p>
             <div className="wide"><Collapse /></div>
           </section>
 
           <section>
-            <H2 id="turns">Where the turns go</H2>
+            <H2 id="method">What memory keeps</H2>
             <p>
-              The cost of forgetting is not in the edits. An agent with or without memory makes about the same edits;
-              what differs is how long it looks before making them. In eight runs of a task asking for four changes at
-              once, runs without memory spent a median of 16.5 turns just reading and searching. With memory, 4.5.
-            </p>
-            <div className="wide"><Turns /></div>
-            <p>
-              Fewer turns is not only faster. Every turn rereads the conversation so far, so a run that is a third as long
-              costs well under a third as much: 423k tokens instead of 1.90M. Rereads are billed at a fraction of new text,
-              so dollars fall a little less: $0.30 against $0.81.
-            </p>
-          </section>
-
-          <section>
-            <H2 id="method">Workflows, not transcripts</H2>
-            <p>
-              Memory could keep whole sessions and hand them back, but a transcript of one task is a poor guide to the next:
-              it is long, and most of it is the searching we want to skip. Instead memory keeps <em>procedures</em>, in the
-              spirit of Agent Workflow Memory [1] and procedural graphs [2]: the steps runs of one kind of task shared, with
-              blanks where they differed, and the phrases in a task that call for them.
+              When a session commits a change and the last test, typecheck, build or lint before the commit passed,
+              memory records it. The record holds the task as the person wrote it, the files changed, the commands that
+              ran, and what failed and what fixed it. It holds no code. At hand-over, memory reads the change from git,
+              so the diff the agent sees matches the code as it is that day. It leaves out files changed past recognition
+              since, and stops handing over a change that was reverted or replaced.
             </p>
             <div className="wide"><Steps /></div>
             <p>
-              Records stay on your machine. Learning a workflow uses a model, a few cents a call, and runs on its own only
-              if you said yes at setup, within a daily limit. Picking and handing over never call one. The agent gets steps,
-              places and warnings, and still writes every line itself: we also tried drafting the change at task start,
-              measured it, and dropped it.
+              The agent still writes every line itself. The hand-over calls the past change a worked example, and says
+              that the names, values and details of the new task differ.
             </p>
             <p>
-              The last step needs no task at all. Some mistakes recur across sessions, like a flag a script already passes.
-              Memory keeps them with their fixes, and when one happens again, the fix arrives with the error.
+              When no stored change is close enough at task start, memory waits. The first time the agent edits a file
+              that a similar change touched, and few other changes did, memory hands that change over, with its edit of
+              that file first. A task gets one hand-over at most. Setup also adds a note to the agent's instructions
+              saying it can run <code>singularity recall</code> before work it may have done before.
             </p>
-            <div className="wide"><Mistake /></div>
           </section>
 
           <section>
             <H2 id="picking">Picking without a model</H2>
             <p>
-              Picking happens before the agent’s first turn, so it has to be fast and it has to be cheap. Memory picks with
-              plain text: each workflow carries the phrases written for it when it was learned, and a task picks the
-              workflows whose phrases it contains. Words under a negation (“not in view mode”, “don’t add a shortcut”)
-              don’t count. It takes a fraction of a millisecond.
+              Picking happens before the agent's first turn, so it has to be fast and cost nothing. Memory scores each
+              stored task against the new one. The score combines how much of the stored task's words the new task holds
+              with how alike the two are overall. Below 0.38 memory hands over nothing, because a wrong example is worse
+              than none.
             </p>
             <p>
-              Try it below. The task is yours to edit; the list is every workflow in memory, and your words light up the
-              ones they attach. It is the memory the measured runs used.
+              Figure 3 shows the first pass of this memory over 12 tasks in the markdownlint repository. Each task ran
+              after the ones before it, with their committed changes stored.
             </p>
-            <figure className="wide fig-try" aria-labelledby="f4t">
-              <div className="fig-head"><h3 id="f4t"><span className="label">Figure 4</span>Type a task; memory attaches what it knows</h3></div>
-              <TryIt />
-            </figure>
+            <div className="wide"><Picks /></div>
           </section>
 
           <section>
             <H2 id="results">Results</H2>
             <p>
-              Each measurement was pre-registered, run on one pinned Claude Code version, and checked by hidden tests the
-              agent never saw. All 40 runs passed. Figure 5 shows the cost of each task with memory as a share of its cost
-              without.
+              We ran the 12 markdownlint tasks five times with memory and three times without, on one Claude Code
+              version. We also ran two long excalidraw tasks, with memory built from six earlier runs. Figure 4 shows the
+              cost of each with memory as a share of its cost without.
             </p>
             <div className="wide"><Results /></div>
             <p>
-              Where memory had learned every kind of change in the task, it cut turns by two thirds. Where it knew two of
-              the four, by about a third. On tasks it hadn’t learned, it mostly cost what no memory costs.
+              Tasks with a hand-over cost less. Tasks without one cost the same as with no memory. On excalidraw, the
+              task with a mix of changes used 43% to 53% fewer tokens. The task with four changes was within the noise.
+            </p>
+            <p>
+              Pass counts swing. A task that leaves a check failing fails every later task until an agent fixes it.
+              With memory, 4 of 60 tasks started such a run of failures; without it, 2 of 36 did. Two of memory's came
+              after a hand-over that listed a failing build command among past mistakes. Across all our markdownlint
+              runs, agents ran that command in 8 of the 10 tasks whose hand-over named it, and in none of the other 78.
+              Memory now shows other changes' mistakes only through files few changes touch. That fix is not yet
+              measured in runs.
             </p>
           </section>
 
           <section>
             <H2 id="limits">Limitations</H2>
             <ul className="limits">
-              <li><b>It helps with what it has seen.</b> The savings come from kinds of change memory has learned. On a new kind, a small task cost up to 17% more turns.</li>
-              <li><b>Small samples.</b> Three to four runs per side, on two repositories, excalidraw and validator.js. The medians are honest; their spread is wide.</li>
-              <li><b>Learning costs a little.</b> Building workflows calls a model. It is opt-in and capped per day; picking and handing over never call one.</li>
+              <li><b>It helps with what it has seen.</b> The savings come from tasks like ones already committed in the same repository. With no close past change, a task costs what it costs without memory.</li>
+              <li><b>A hand-over can carry a mistake.</b> Agents run the commands a past change lists, including ones that failed.</li>
+              <li><b>Agents rarely ask.</b> Agents ran <code>singularity recall</code> on their own once in 60 runs that had the note.</li>
+              <li><b>Small samples.</b> One to five passes per side, on two repositories, markdownlint and excalidraw.</li>
               <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. Runs are only compared within one version.</li>
             </ul>
           </section>
@@ -324,50 +312,42 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           <section>
             <H2 id="rules">Rules it keeps</H2>
             <p>Memory sits between your machine and your agent. Each layer keeps one rule.</p>
-            <figure className="wide" aria-labelledby="f6t">
-              <div className="fig-head"><h3 id="f6t"><span className="label">Figure 6</span>Layer by layer, from your machine up to your agent</h3></div>
+            <figure className="wide" aria-labelledby="f5t">
+              <div className="fig-head"><h3 id="f5t"><span className="label">Figure 5</span>Layer by layer, from your machine up to your agent</h3></div>
               <Stack />
             </figure>
           </section>
 
           <section>
             <H2 id="use">Use it</H2>
-            <p>One command installs it; a short setup asks before it changes anything.</p>
+            <p>One command installs it. A short setup asks before it changes anything.</p>
             <div className="use-install"><Install os={os} setOs={setOs} /></div>
             <div className="use-grid">
               <div>
                 <span className="label">Works with</span>
                 <table className="agents">
-                  <thead><tr><th>Agent</th><th>Hands over</th><th>Warns</th><th>Learns</th></tr></thead>
+                  <thead><tr><th>Agent</th><th>At task start</th><th>Stores changes</th></tr></thead>
                   <tbody>
-                    {AGENTS.map(([name, handsOver, warns, learns, note]) => (
+                    {AGENTS.map(([name, handsOver, stores, note]) => (
                       <tr key={name}>
                         <td>{name}{note && <small>{note}</small>}</td>
-                        <td><Dot yes={handsOver} /></td><td><Dot yes={warns} /></td><td><Dot yes={learns} /></td>
+                        <td><Dot yes={handsOver} /></td><td><Dot yes={stores} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div>
-                <span className="label">Then, if you’re curious</span>
+                <span className="label">Then, if you're curious</span>
                 <dl className="cmds">
-                  <dt>singularity status</dt><dd>What memory knows, per repo.</dd>
+                  <dt>singularity status</dt><dd>What memory stored, per repo.</dd>
                   <dt>singularity recall "…"</dt><dd>What a task would be handed.</dd>
-                  <dt>singularity learn</dt><dd>Learn now.</dd>
+                  <dt>singularity store</dt><dd>Store what earlier sessions here committed.</dd>
                   <dt>singularity update</dt><dd>Get the latest version.</dd>
                   <dt>singularity uninstall</dt><dd>Take it out again.</dd>
                 </dl>
               </div>
             </div>
-          </section>
-
-          <section>
-            <H2 id="refs">References</H2>
-            <ol className="refs">
-              <li><span>Agent Workflow Memory. <a href="https://arxiv.org/abs/2409.07429">arXiv:2409.07429</a>, 2024.</span></li>
-              <li><span>Procedural Graphs: Self-Evolving Execution Structures for LLM Agents. <a href="https://arxiv.org/abs/2609.09153">arXiv:2609.09153</a>, 2026.</span></li>
-            </ol>
           </section>
 
           <footer className="ar-foot">

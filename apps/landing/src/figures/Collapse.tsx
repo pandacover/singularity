@@ -1,24 +1,20 @@
 import { useLayoutEffect, useRef, useState } from "react"
 import { RUNS } from "../data/runs.ts"
-import { MEMORY } from "../data/memory.ts"
 import { reduced } from "../lib.ts"
 
-// The runs without memory from Figure 2, turn by turn, bending into one point: the way through that
-// memory keeps, as a workflow. Drawn in a fixed box, so it holds its space before it plays.
-const runs = RUNS.filter((r) => r.setup === "none")
+// The runs without memory, turn by turn, bending into one point: the hand-over the next run gets.
+// Drawn in a fixed box, so it holds its space before it plays.
+const runs = RUNS
 const turns = runs.reduce((n, r) => n + r.turns, 0)
-const workflow = MEMORY.workflows.find((w) => w.id === "add-app-state-field")!
 // the runs meet at the middle of the svg's right edge, which is the card's left edge: the point grows into the card
 const W = 772, H = 214, ROW = 48, X0 = 128, STEP = 12, FX = W, FY = H / 2
 const TOP = FY - 7 - (ROW * (runs.length - 1)) / 2
 const KIND = { r: "", w: " w", x: " x", o: " o" }
-const FILL = { field: "presenterModeEnabled", default: "false" }
 
-/** Figure 1: four runs without memory, and the workflow memory keeps from that kind of task. */
+/** Figure 1: four runs without memory, and what memory hands the next run of that kind of task. */
 export const Collapse = () => {
   const svg = useRef<SVGSVGElement>(null)
   const card = useRef<HTMLDivElement>(null)
-  const [filled, setFilled] = useState(reduced)
   const [round, setRound] = useState(0)
 
   // about 4 s, opacity and transforms only; started before the first paint, so nothing flashes
@@ -27,7 +23,6 @@ export const Collapse = () => {
     const s = svg.current!, c = card.current!, all: Array<Animation> = []
     const ease = "cubic-bezier(.2,.8,.2,1)", f = { fill: "both" as const }
     const go = (el: Element, frames: Array<Keyframe>, opts: KeyframeAnimationOptions) => all.push(el.animate(frames, { ...f, ...opts }))
-    setFilled(false)
     s.querySelectorAll<SVGElement>("[data-j]").forEach((b) =>
       go(b, [{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 100 + Number(b.dataset.i) * 90 + Number(b.dataset.j) * 22 }))
     s.querySelectorAll(".lead").forEach((l, i) => go(l, [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 650, delay: 1250 + i * 70, easing: ease }))
@@ -48,17 +43,8 @@ export const Collapse = () => {
       go(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 520, delay: 2350, easing: ease })
     }
     c.querySelectorAll(".wf-h, h4, li, .wf-f").forEach((el, i) => go(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 2750 + i * 90 }))
-    const fill = setTimeout(() => setFilled(true), 3500)
-    return () => { clearTimeout(fill); all.forEach((a) => a.cancel()) }
+    return () => all.forEach((a) => a.cancel())
   }, [round])
-
-  // the blank and its value share one box, as wide as the longer, so filling it moves nothing
-  const pill = (k: keyof typeof FILL) => (
-    <span className={filled ? "pill swap f" : "pill swap"}>
-      <span aria-hidden={filled}>{k}</span>
-      <span aria-hidden={!filled}>{FILL[k]}</span>
-    </span>
-  )
 
   return (
     <figure className="fig-collapse" aria-labelledby="f1t">
@@ -92,18 +78,19 @@ export const Collapse = () => {
         </svg>
         <div className="wf" ref={card}>
           <span className="wf-dot" aria-hidden="true" />
-          <div className="wf-h"><i />Workflow · in memory</div>
-          <h4>{workflow.name}</h4>
+          <div className="wf-h"><i />Hand-over · from memory</div>
+          <h4>A past change like your task</h4>
           <ol>
-            <li>Add {pill("field")} to AppState</li>
-            <li>Default it to {pill("default")}</li>
-            <li>Store it as the task says</li>
-            <li>Regenerate the test snapshots</li>
+            <li>Its task, as the person wrote it</li>
+            <li>The files it changed</li>
+            <li>The commands it ran, in order</li>
+            <li>The mistakes it made</li>
+            <li>Its diff, read from today's code</li>
           </ol>
-          <div className="wf-f">picked when a task says “new setting”</div>
+          <div className="wf-f">picked by the words of the two tasks</div>
         </div>
       </div>
-      <figcaption>Four real runs of one <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> task without memory: {turns} turns between them, most spent reading and searching. Memory keeps the way through as workflows like this one, and hands it to the next run filled in from its task.</figcaption>
+      <figcaption>Four real runs of one <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> task without memory. They took {turns} turns between them, most spent reading and searching. Memory keeps a change like theirs once it is committed, and hands it to the next run of a similar task.</figcaption>
     </figure>
   )
 }

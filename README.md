@@ -1,15 +1,10 @@
 # singularity
 
-**Memory for coding agents.** singularity keeps the changes your agents
-commit in your repositories (the task, the files changed, the commands that
-worked, the mistakes made on the way) and hands the one most like a new task
-to the next agent session that does it.
-
-Coding agents start every session from zero. They search the repo for the
-places a change touches, rerun commands that failed last time, and relearn
-the same lessons. singularity gives the agent a past change like its task
-with its first prompt, read from git as the code is today, and lets it look
-up another one mid-task when the work turns to something done before.
+**Memory for coding agents.** When an agent commits a change, singularity
+records the task, the files it changed, the commands it ran and the mistakes
+it made. When a later session starts a similar task in the same repository,
+singularity reads that change from git as the code is now and adds it to the
+agent's first prompt. The agent can also look up a past change mid-task.
 
 ## Install
 
@@ -25,24 +20,22 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/pandacover/singularity/main/install.ps1 | iex
 ```
 
-You need git, and at least one of the agents below. Node.js 24 or later is
-used if you have it; otherwise the installer fetches its own copy into
-`~/.singularity/node` (checked against nodejs.org's checksums) and changes
-nothing else.
+You need git and at least one of the agents below. The installer uses your
+Node.js if it is version 24 or later. Otherwise it downloads its own copy into
+`~/.singularity/node`, checks it against nodejs.org's checksums, and changes
+nothing else on your system.
 
 The installer puts singularity in `~/.singularity` and runs
-`singularity setup`, which walks you through:
+`singularity setup`. Setup asks which of your agents get memory. In a
+repository with earlier sessions, it also stores the changes they
+committed.
 
-1. which of your agents get memory;
-2. in a repo with earlier sessions, storing the changes they committed.
+Run `singularity setup` again to change your answers. Run
+`singularity update`, or the installer again, to get the latest version. It
+keeps your answers and asks nothing. On WSL, also run the PowerShell command
+on Windows if you use agents there.
 
-Run `singularity setup` again any time to change your answers, and
-`singularity update` to get the latest version: it keeps your answers and
-brings memory's hooks, skill, recall note and command up to date, asking
-nothing again.
-Running the installer again does the same. On WSL, run
-the PowerShell command on Windows too if you also use agents there. From a
-clone of this repo instead: `npm install`, then
+To set up from a clone of this repository instead, run `npm install`, then
 `node apps/cli/src/singularity.ts setup`.
 
 ## Works with
@@ -56,118 +49,101 @@ clone of this repo instead: `npm install`, then
 | Droid | ✓ | |
 | Cursor, OpenCode, other agents that read `~/.agents/skills` | when you ask for it | |
 
-Claude Code, Codex and OpenCode also get the recall note (below) in the
-instructions they read in every session: `~/.claude/CLAUDE.md` (or
-`$CLAUDE_CONFIG_DIR/CLAUDE.md`), `~/.codex/AGENTS.md` (or its
-`AGENTS.override.md` when you keep one), and OpenCode's
-`~/.config/opencode/AGENTS.md` (or `~/.claude/CLAUDE.md`, which OpenCode
-reads when it has no file of its own). Other agents get only the skill.
+Claude Code, Codex and OpenCode also get the recall note, described below,
+in their user-level instructions. Other agents get only the skill.
 
-Codex runs new hooks only once you trust them. Setup offers to trust
-memory's hooks for you (as `/hooks` in Codex would), and `singularity
-status` says when Codex is still skipping them.
+Codex runs a new hook only after you trust it. Setup offers to trust
+singularity's hooks for you, and `singularity status` tells you if Codex
+still skips them.
 
 ## How it works
 
-1. **Record.** When a session commits a change and the last check before
-   the commit passed (tests, a typecheck, a build or a lint; a docs-only
-   change needs none), memory keeps a record of it: what you asked for (not
-   the notices and reminders your tools add), the files changed and where,
-   the commands that ran, and what failed and what fixed it. This needs no
-   model call.
-2. **Hand over.** When a task starts, memory picks the stored change whose
-   task is most like it (plain text matching, no model call), reads that
-   change from git as the code is now, and adds it to the agent's first
-   prompt: its task, the files it changed, the commands that worked, the
-   mistakes made, and the diff. When no stored change is alike enough,
-   nothing is handed over then; instead, the first time the agent edits a
-   file that a stored change with a somewhat similar task touched (and few
-   other changes did), that change is handed over, with its edit of that
-   file first. One hand-over a task, at most.
+1. **Store.** When a session commits a change, singularity records it if the
+   last test, typecheck, build or lint before the commit passed. A change to
+   docs alone needs no check. The record holds what you asked for, the files
+   changed, the commands that ran, and what failed and what fixed it.
+2. **Hand over.** At the start of a task, singularity finds the stored change
+   whose task is most like the new one by matching the text of the two
+   tasks. It reads that change from git as the code is now,
+   leaves out files that changed since, and adds the change to the agent's
+   first prompt. If no stored change is close enough, singularity waits. The
+   first time the agent edits a file that a somewhat similar change touched,
+   and few other changes did, singularity hands over that change. A task gets
+   one hand-over at most.
+3. **Recall mid-task.** Setup adds a short note to your agents'
+   instructions, between `<!-- singularity:start ... -->` and
+   `<!-- singularity:end -->`. It tells the agent to run
+   `singularity recall "<what it is about to do>"` before a kind of change, a
+   fix or a command it may have done before in the repository. The command
+   prints the most similar past change, or says there is none.
 
-3. **Recall mid-task.** Setup adds
-   a short note to your agents' instructions, between
-   `<!-- singularity:start ... -->` and `<!-- singularity:end -->`, telling
-   them that when they are about to do something likely done before in the
-   repo (a kind of change, a fix, a command that keeps failing), they can run
-   `singularity recall "<what they are about to do>"`, which prints the most
-   similar past change, read from git as it is now, or says there is none.
-   Update rewrites the note in place; uninstall takes it out and leaves the
-   rest of the file as it was.
-
-There is no learning step: memory calls no model.
-
-You can run `singularity recall "<task>"` yourself to see what any task
-would get in the repo you're in.
+singularity never calls a model. Run `singularity recall "<task>"` yourself
+to see what a task would get in the current repository.
 
 ## Commands
 
 ```
 singularity status              # which agents have memory, how many changes it stored per repo
-singularity recall "<task>"     # the past change here most like a task (no model call)
+singularity recall "<task>"     # the past change here most like a task
 singularity status --json       # the same as JSON, for agents and scripts (recall too)
 singularity store               # store what this repo's earlier sessions committed
 singularity setup               # set up again, or change your answers
-singularity update              # get the latest version (keeps your answers)
-singularity uninstall [--purge] # take memory out of every agent (memory stays unless --purge)
+singularity update              # get the latest version, keeping your answers
+singularity uninstall [--purge] # take memory out of every agent; --purge deletes it too
 ```
-
-These six are all the installed command has. The commands that build and
-measure memory by hand run from a clone of this repo
-([`docs/development.md`](docs/development.md)).
 
 ## Privacy
 
-- Everything memory keeps stays on your machine, in `~/.singularity`
-  (`$SINGULARITY_HOME` to move it): records and logs.
-  singularity has no server and sends nothing anywhere itself.
-- Setup changes only memory's own entries in each agent's settings, and
-  keeps a copy of every settings file it changes
-  (`<file>.before-singularity`). In instruction files it adds only the
-  marked recall note.
-- Hooks never break a session: their errors go to
-  `~/.singularity/hook-errors.log`, and `SINGULARITY_HOOKS=off` turns them
+- singularity keeps its records and logs in `~/.singularity`. Set
+  `$SINGULARITY_HOME` to move them. It has no server and sends nothing
+  anywhere.
+- Setup changes only singularity's own entries in each agent's settings. It
+  saves a copy of each settings file it changes as
+  `<file>.before-singularity`. In instruction files it adds only the marked
+  recall note, and `uninstall` removes it.
+- A hook error never breaks a session. Hooks write errors to
+  `~/.singularity/hook-errors.log`. Set `SINGULARITY_HOOKS=off` to turn them
   off.
 
 ## Good to know
 
-- Memory arrives with a session's first prompt. For a new task in a long
-  session, the agent can recall it (the note tells it how), or start a new
+- A hand-over arrives with a session's first prompt. For a new task in a long
+  session, the agent can run `singularity recall`, or you can start a new
   session.
-- It helps with tasks like changes earlier sessions committed in the same
-  repository. Every clone of a repo shares its memory.
-- Commits memory leaves out (no passing check before them, say) are listed,
-  with the reason, by `singularity status`.
+- singularity helps with tasks like ones earlier sessions committed in the
+  same repository. Clones of a repository on one machine share its memory.
+- `singularity status` lists the commits singularity didn't store and why,
+  such as a failing check before the commit.
 
 ## Results
 
-These measured memory v1 (workflows learned from runs), which this version
-no longer has; saved scripts have not been measured the same way yet.
+We ran 12 markdownlint tasks in sequence, five times with singularity and
+three times without, on Claude Code 2.1.295.
 
-Medians of 3 to 4 pre-registered runs per side, one pinned Claude Code
-version, hidden tests; all 40 runs passed.
+- Pass counts swing. One task that leaves a check failing fails every later
+  task until an agent fixes it. With singularity, 4 of 60 tasks started such
+  a run of failures. Without it, 2 of 36 did.
+- A hand-over can cause a mistake. Across all our markdownlint runs, when a
+  hand-over listed a build command that had failed before, agents ran that
+  command in 8 of 10 tasks, and in none of the 78 other tasks. Two of those runs failed the task. A fix is in the code but
+  not yet measured in runs.
+- Agents almost never ran `singularity recall` on their own. One did, in 60
+  runs that had the recall note.
+- On the 7 tasks with a hand-over at the start, cost fell 16% and tokens 24%.
+  The other 5 tasks cost the same with and without singularity.
 
-- A task asking for four changes to excalidraw, every kind learned: 28.5
-  turns to 9.5, 1.90M tokens to 423k, $0.81 to $0.30.
-- The same task with two of its four kinds learned: 30% fewer turns, 39%
-  fewer tokens.
-- Tasks whose kind memory hadn't learned: turns moved between 25% fewer and
-  17% more.
+On two long excalidraw tasks, one used 43% to 53% fewer tokens than no
+memory over two batches of 4 runs. The other, over 8 runs, was within the
+noise.
 
-These are small samples on two repositories (excalidraw and validator.js).
-Each measurement's plan was written before its runs, and its results were
-added at the end: [four changes, every kind
-learned](apps/cli/examples/excalidraw/PREREGISTRATION-v1-long.md), [two of
-four learned](apps/cli/examples/excalidraw/PREREGISTRATION-v1-long-mixed.md),
-[kinds memory hadn't learned](apps/cli/examples/PREREGISTRATION-v1-new-kinds.md).
-Memory failed the bars of a computer-use benchmark built to be hard on it:
-[its results](apps/cli/examples/new-job/RESULTS.md).
+These are small samples on two repositories. The runs, tables and caveats
+are in [`apps/cli/examples/scripts/RESULTS.md`](apps/cli/examples/scripts/RESULTS.md).
 
 ## Develop
 
-singularity is a TypeScript monorepo: the command line, hooks and memory in
-`apps/cli` (Effect 4, run directly by Node 24, no build step) and the
-landing page in `apps/landing` (Vite and React).
+singularity is a TypeScript monorepo. `apps/cli` holds the command line,
+hooks and memory, written with Effect 4 and run directly by Node 24 with no
+build step. `apps/landing` is the landing page, built with Vite and React.
 
 ```
 npm install
@@ -176,17 +152,11 @@ npm run typecheck
 npm run cli -- <args>  # the whole command line, from this clone
 ```
 
-- [`docs/development.md`](docs/development.md): the code's layout and the
-  commands that build and inspect memory by hand.
-- [`docs/evaluation.md`](docs/evaluation.md): running the evaluation suites
-  and comparing memory setups.
-- [`CLAUDE.md`](CLAUDE.md): how the code is written.
+- [`docs/development.md`](docs/development.md) covers the code's layout and
+  the commands that build and inspect memory by hand.
+- [`docs/evaluation.md`](docs/evaluation.md) covers the evaluation suites.
+- [`CLAUDE.md`](CLAUDE.md) covers how the code is written.
 
 ## License
 
 [MIT](LICENSE)
-
-## References
-
-- Wang et al., *Agent Workflow Memory*, [arXiv:2409.07429](https://arxiv.org/abs/2409.07429)
-- *Procedural Graphs: Self-Evolving Execution Structures for LLM Agents*, [arXiv:2609.09153](https://arxiv.org/abs/2609.09153)

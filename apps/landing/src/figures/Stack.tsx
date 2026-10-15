@@ -3,11 +3,11 @@ import { reduced, useOnceVisible } from "../lib.ts"
 
 // top to bottom
 const LAYERS = [
-  { name: "Your agent", note: ["Gets steps, places and warnings.", "Still writes every line itself."], side: "r" },
-  { name: "Hooks", note: ["Never break a session.", "Errors go to a log; ~0.1–0.4 s a call."], side: "l" },
-  { name: "Memory", note: ["Keeps where to look,", "never the code itself."], side: "r" },
-  { name: "Your sessions", note: ["Learning is opt-in,", "at most $1 a day."], side: "l" },
-  { name: "Your machine", note: ["Picking runs here,", "with no model call."], side: "r", base: true }
+  { name: "Your agent", note: ["Gets one past change.", "Still writes every line itself."], side: "r" },
+  { name: "Hooks", note: ["Never break a session.", "Errors go to a log; about 0.1 s a call."], side: "l" },
+  { name: "Memory", note: ["Keeps records of commits,", "and reads the code from git."], side: "r" },
+  { name: "Your sessions", note: ["Stored only when the last", "check before a commit passed."], side: "l" },
+  { name: "Your machine", note: ["Search runs here,", "with no model call."], side: "r", base: true }
 ] as const
 
 const CX = 550, W = 200, H = 108, GAP = 64, TOP = 120, T = 26
