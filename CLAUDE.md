@@ -108,6 +108,10 @@ Conventions in this repo:
   `Predicate` module instead of writing `isString`-style helpers.
 - **Files and processes:** `FileSystem` and `Path` from `effect`, child processes
   from `effect/process`, with `NodeServices.layer` from `@effect/platform-node`.
+  Except git (`runQuick` in `src/eval/Proc.ts`): after any nonzero exit,
+  Effect's spawner waits for `taskkill /T` on Windows, about 200 ms a call,
+  and git answers no often (a grep that finds nothing); that tripled a
+  recall's time. Agents and checks keep `runProcess`, which kills their tree.
 - **Pure logic** (similarity, report formatting, graph traversal) stays plain
   TypeScript functions. Use Effect where there's I/O, failure or resources.
 - **Imports** use the `.ts` extension. Only erasable TypeScript syntax: no

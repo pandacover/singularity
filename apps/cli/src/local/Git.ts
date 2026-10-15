@@ -6,7 +6,7 @@
  * (the eval workspaces have no remote), and by its remotes.
  */
 import { Effect, Schema } from "effect"
-import { runProcess } from "../eval/Proc.ts"
+import { runQuick } from "../eval/Proc.ts"
 
 export class GitError extends Schema.TaggedError<GitError>()("GitError", {
   message: Schema.String
@@ -25,9 +25,7 @@ const GIT_TIMEOUT_S = 60
 
 /** Run git in `cwd`; fails on a nonzero exit. */
 export const git = Effect.fn("git")(function*(cwd: string, args: ReadonlyArray<string>) {
-  const r = yield* runProcess("git", args, { cwd, timeoutS: GIT_TIMEOUT_S, env: process.env }).pipe(
-    Effect.mapError((e) => new GitError({ message: `git ${args.join(" ")}: ${e.message}` }))
-  )
+  const r = yield* runQuick("git", args, { cwd, timeoutS: GIT_TIMEOUT_S, env: process.env })
   if (r.exitCode !== 0) {
     return yield* new GitError({ message: `git ${args.join(" ")}: ${r.timedOut ? "timed out" : r.stderr.trim()}` })
   }

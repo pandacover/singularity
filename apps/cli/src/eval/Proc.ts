@@ -7,6 +7,7 @@
  */
 import { Duration, Effect, Option, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { spawn } from "node:child_process"
 import { constants, setPriority } from "node:os"
 
 export interface ProcResult {
@@ -72,6 +73,52 @@ const run = Effect.fn("Proc.run")(function*(command: ChildProcess.Command, timeo
     stderr: decode(stderr)
   } satisfies ProcResult
 })
+
+/**
+ * Run a short command that starts no processes of its own (git), as
+ * `runProcess` does but straight through Node. On a nonzero exit, Effect's
+ * spawner kills the process's tree, and on Windows that is a `taskkill /T`
+ * it waits for: about 200 ms each time git answers no (a grep that finds
+ * nothing, a commit that isn't there), which tripled a recall's time. On
+ * timeout or interruption only the process itself is killed.
+ */
+export const runQuick = (command: string, args: ReadonlyArray<string>, options: RunOptions) =>
+  Effect.callback<ProcResult>((resume) => {
+    const stdout: Array<Uint8Array> = []
+    const stderr: Array<Uint8Array> = []
+    const started = performance.now()
+    let timedOut = false
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      windowsHide: true
+    })
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill()
+    }, options.timeoutS * 1000)
+    child.stdout?.on("data", (chunk: Uint8Array) => void stdout.push(chunk))
+    child.stderr?.on("data", (chunk: Uint8Array) => void stderr.push(chunk))
+    if (options.input !== undefined) child.stdin?.end(options.input)
+    const done = (exitCode: number | undefined, error?: string) => {
+      clearTimeout(timer)
+      resume(Effect.succeed({
+        exitCode: timedOut ? undefined : exitCode,
+        timedOut,
+        durationS: (performance.now() - started) / 1000,
+        stdout: decode(stdout),
+        stderr: error ?? decode(stderr)
+      }))
+    }
+    // A command that can't start (not on PATH) fails as a process that exits nonzero, with why.
+    child.on("error", (e) => done(-1, e.message))
+    child.on("close", (code) => done(code ?? -1))
+    return Effect.sync(() => {
+      clearTimeout(timer)
+      child.kill()
+    })
+  })
 
 const decode = (chunks: ReadonlyArray<Uint8Array>): string => {
   const decoder = new TextDecoder("utf-8")
