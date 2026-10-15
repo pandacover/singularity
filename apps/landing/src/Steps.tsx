@@ -1,55 +1,39 @@
-/** The four steps of memory: two after a session, two when the next one starts. */
+/** The three steps of memory: one when a session commits, two when the next one works. */
 export const Steps = () => (
   <div className="steps">
-    <div className="phase p1">After a session</div>
-    <div className="phase p2">When the next one starts</div>
+    <div className="phase p1">When a session commits</div>
+    <div className="phase p2">When the next one works</div>
     <div className="step s1">
       <div className="n">1</div>
-      <h3>It keeps a record</h3>
-      <p>What changed, where, and what went wrong.</p>
+      <h3>It stores the change</h3>
+      <p>Only if the last check before the commit passed.</p>
       <div className="vis">
-        <div className="vh">A “Minimap” setting</div>
-        <div className="vt">18 turns · 11 files edited</div>
-        <div className="vr" style={{ marginTop: 8 }}><span className="bad">✗</span><span><code>yarn test:update --watch=false</code></span></div>
-        <div className="vr"><span className="good">✓</span><span><code>yarn test:update</code></span></div>
+        <div className="vh">A record, no code</div>
+        <ol>
+          <li>The task, as the person wrote it</li>
+          <li>The files it changed</li>
+          <li>The commands that ran</li>
+          <li>What failed, and what fixed it</li>
+        </ol>
       </div>
     </div>
     <div className="step s2">
       <div className="n">2</div>
-      <h3>It learns workflows</h3>
-      <p>Steps with blanks, and the phrases that call for them.</p>
+      <h3>It hands one over</h3>
+      <p>The stored task most like the new one, read from git as the code is now.</p>
       <div className="vis">
-        <div className="vh">Add a field to the app state</div>
-        <ol>
-          <li>Add <span className="pill">field</span> to AppState</li>
-          <li>Default it to <span className="pill">default</span></li>
-          <li>Store it as the task says</li>
-        </ol>
-        <div className="vt">when a task says “new setting”</div>
+        <div className="vh">t09 · a new option for MD014</div>
+        <div className="vr"><span className="good">✓</span><span>t03's change, score 0.49</span></div>
+        <div className="vn">bar 0.38 · no model call</div>
       </div>
     </div>
     <div className="step s3">
       <div className="n">3</div>
-      <h3>It hands them over</h3>
-      <p>Picked by plain text, filled from your words, pointed at today’s code.</p>
+      <h3>Or later, by file or by asking</h3>
+      <p>A first edit of a file a similar change touched brings that change. The agent can also ask.</p>
       <div className="vis">
-        <div className="vh">Add a field to the app state</div>
-        <ol>
-          <li>Add <span className="pill f">presenterModeEnabled</span> to AppState</li>
-          <li>Default it to <span className="pill f">false</span></li>
-          <li>Store it as the task says</li>
-        </ol>
-        <div className="vt">→ appState.ts, line 28</div>
-      </div>
-    </div>
-    <div className="step s4">
-      <div className="n">4</div>
-      <h3>It catches repeats</h3>
-      <p>A known mistake’s fix arrives the moment it happens again.</p>
-      <div className="vis">
-        <div className="vr"><span className="bad">✗</span><span><code>yarn test:update --watch=false</code></span></div>
-        <div className="say">Run it plain; the script already passes --watch.</div>
-        <div className="vr"><span className="good">✓</span><span><code>yarn test:update</code></span></div>
+        <code>singularity recall "make the build check pass"</code>
+        <div className="vn">the closest past change, or none</div>
       </div>
     </div>
   </div>
