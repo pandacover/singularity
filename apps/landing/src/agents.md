@@ -60,11 +60,11 @@ The `singularity` command is on PATH only in terminals opened after setup. In th
 | Codex | hands over, stores its sessions' changes, once its hooks are trusted | hooks in `~/.codex/hooks.json`, skill, recall note in `~/.codex/AGENTS.md` |
 | Gemini CLI | hands over | hooks in `~/.gemini/settings.json`, skill |
 | Droid | hands over | hooks in `~/.factory/hooks.json`, skill |
-| Hermes Agent | hands over, stores its sessions' changes | plugin in `~/.hermes/plugins/singularity` (`%LOCALAPPDATA%\hermes` on Windows), enabled in its `config.yaml`; skill |
+| Hermes Agent | hands over, stores its sessions' changes | plugin in `~/.hermes/plugins/singularity`, enabled in its `config.yaml`; skill |
 | OpenCode | when asked | skill, recall note in `~/.config/opencode/AGENTS.md` |
 | Cursor, agents that read `~/.agents/skills` | when asked | skill |
 
-Setup never touches the rest of an agent's settings. It keeps a copy of each settings file it changes as `<file>.before-singularity`. In instruction files it adds only the recall note, between `<!-- singularity:start ... -->` and `<!-- singularity:end -->`. It also writes the `singularity` command into `~/.singularity/bin` and adds that folder to PATH: the user's Path on Windows, a marked line in the shell's startup file elsewhere. Hooks never break a session. Their errors go to `~/.singularity/hook-errors.log`.
+On Windows, Hermes Agent's folder is `%LOCALAPPDATA%\hermes`. Setup never touches the rest of an agent's settings. It keeps a copy of each settings file it changes as `<file>.before-singularity`. In instruction files it adds only the recall note, between `<!-- singularity:start ... -->` and `<!-- singularity:end -->`. It also writes the `singularity` command into `~/.singularity/bin` and adds that folder to PATH: the user's Path on Windows, a marked line in the shell's startup file elsewhere. Hooks never break a session. Their errors go to `~/.singularity/hook-errors.log`.
 
 ## Commands
 
@@ -109,6 +109,7 @@ To delete memory too, every record and the installed code, ask the user first, t
 | `tenants/local/subjects.json` | the repositories memory knows |
 | `tenants/local/records/` | one record per stored change |
 | `tenants/local/scripts/retired.jsonl` | stored changes memory no longer hands over: reverted, replaced, or their files gone |
+| `watch/` | for each running session that got nothing at task start, the files whose first edit brings a hand-over |
 | `tenants/local/skipped.jsonl` | commits memory left out, and why; `singularity status` sums them up |
 | `store.log` | what storing in the background did |
 | `hook-errors.log` | hook errors; they never break a session |

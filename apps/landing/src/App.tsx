@@ -206,12 +206,12 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               like it by plain text matching, with no model call. It reads that change from git as the code is now and
               adds it to the agent's first prompt. On 12 tasks in the markdownlint repository, the 7 that got a hand-over
               cost 16% less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a
-              build command that had failed before, agents ran it again in 8 of 10 tasks.
+              build command that had failed before, agents ran it in 8 of 10 tasks.
             </p>
             <dl className="glance">
               <div><dt>−16%</dt><dd>cost, tasks with a hand-over</dd></div>
               <div><dt>−24%</dt><dd>tokens, same tasks</dd></div>
-              <div><dt>8 / 10</dt><dd>reran a failed command a hand-over named</dd></div>
+              <div><dt>8 / 10</dt><dd>ran a failed command a hand-over named</dd></div>
             </dl>
           </section>
 
@@ -304,7 +304,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               <li><b>It helps with what it has seen.</b> The savings come from tasks like ones already committed in the same repository. With no close past change, a task costs what it costs without memory.</li>
               <li><b>A hand-over can carry a mistake.</b> Agents run the commands a past change lists, including ones that failed.</li>
               <li><b>Agents rarely ask.</b> Agents ran <code>singularity recall</code> on their own once in 60 runs that had the note.</li>
-              <li><b>Small samples.</b> One to five passes per side, on two repositories, markdownlint and excalidraw.</li>
+              <li><b>Small samples.</b> Three to five passes of 12 tasks on markdownlint, and four to eight runs per task on excalidraw.</li>
               <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. Runs are only compared within one version.</li>
             </ul>
           </section>
