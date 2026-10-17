@@ -308,7 +308,10 @@ export const storeCommits = Effect.fn("storeCommits")(function*(cwd: string, hom
   const known = options.session
   const fresh = Effect.fnUntraced(function*(c: BranchCommit, mayBeOurs: boolean) {
     if (yield* store.has(commitRecordId(subject.id, c.hash))) return false
-    return !before.has(c.hash) || options.again === true || (mayBeOurs && unsure(before.get(c.hash)))
+    const reason = before.get(c.hash)
+    // A commit stored with the others its command made is in that change's record: looked at alone, it would be stored twice.
+    if (reason === MADE_TOGETHER) return false
+    return reason === undefined || options.again === true || (mayBeOurs && unsure(reason))
   })
   // Most sweeps find nothing new: one git call says so, before any session's log is read.
   if (options.since !== undefined) {

@@ -422,6 +422,10 @@ describe("storing commits", () => {
     const [r] = await records(t)
     expect([r.run.base_commit, r.run.head_commit]).toEqual([gitAt(t.repo, undefined, "rev-parse", `${first}^`), second])
     expect(Object.fromEntries(result.skipped)).toEqual({ [MADE_TOGETHER]: 1, [A_COPY]: 1 })
+    // Looking again at what was left out (`singularity store`) doesn't store the first commit apart from its change.
+    const again = await store(t, { again: true })
+    expect(again.stored).toEqual([])
+    expect((await records(t)).map((x) => x.run.head_commit)).toEqual([second])
     const hashes = (cs: Array<Array<{ readonly hash: string }>>) => cs.map((c) => c.map((x) => x.hash))
     expect(hashes(chainsOf([{ hash: "b", parent: "a" }, { hash: "c", parent: "b" }, { hash: "a", parent: "z" }]))).toEqual([["a", "b", "c"]])
     expect(hashes(chainsOf([{ hash: "b", parent: "a" }, { hash: "c", parent: "x" }]))).toEqual([["b"], ["c"]])
