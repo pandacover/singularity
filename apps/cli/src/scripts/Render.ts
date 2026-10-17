@@ -7,6 +7,8 @@
  * instead of showing its change. Pure: Start.ts reads the record and git.
  */
 import type { CommandRun, Detour, FileChange } from "../records/Models.ts"
+import { taskShown } from "../records/Task.ts"
+import { isRequest } from "../traces/Requests.ts"
 
 /** Claude Code cuts a hook's text at 10,000 characters; the hand-over stays under that. */
 export const MAX_HANDOVER_CHARS = 9800
@@ -14,6 +16,19 @@ const MAX_PROMPT_CHARS = 1500
 const MAX_COMMANDS = 8
 const MAX_MISTAKES = 4
 const MAX_COMMAND_CHARS = 200
+
+/**
+ * `text` as inline code, which a command with backticks in it (PowerShell's
+ * escapes, a shell's substitutions) would break: fenced with one backtick
+ * more than its longest run of them, and spaced off one at either end
+ * (CommonMark).
+ */
+export const inlineCode = (text: string): string => {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+  const fence = "`".repeat(longest + 1)
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : ""
+  return `${fence}${pad}${text}${pad}${fence}`
+}
 
 /** Lines a diff chunk adds and removes. */
 export const countLines = (chunk: string): { added: number; removed: number } => {
@@ -51,6 +66,8 @@ export interface FileNow extends FileChange {
 
 export interface ScriptView {
   readonly prompt: string
+  /** Its commit message (records/Task.ts), shown as its task when the prompt asked for nothing. */
+  readonly message?: string | undefined
   /** The commit that holds it; null for an eval's saved run, which was never committed. */
   readonly commit: string | null
   readonly score: number
@@ -126,8 +143,8 @@ export const mistakesToShow = (detours: ReadonlyArray<Detour>): Array<string> =>
     seen.add(failed)
     const symptom = d.symptom.replace(/\s+/g, " ").trim().slice(0, 200)
     const fixed = d.fixed.command?.trim()
-    const then = fixed === undefined || fixed === "" || fixed === failed || fixed.includes("\n") ? "" : ` What worked instead: \`${fixed.slice(0, 200)}\``
-    out.push(`- \`${failed.slice(0, 200)}\` failed: ${symptom}.${then}`)
+    const then = fixed === undefined || fixed === "" || fixed === failed || fixed.includes("\n") ? "" : ` What worked instead: ${inlineCode(fixed.slice(0, 200))}`
+    out.push(`- ${inlineCode(failed.slice(0, 200))} failed: ${symptom}.${then}`)
     if (out.length === MAX_MISTAKES) break
   }
   return out
@@ -191,7 +208,9 @@ export const shareOf = (sizes: ReadonlyArray<number>, room: number): number => {
 
 export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string => {
   const sha = s.commit?.slice(0, 10)
-  const prompt = s.prompt.length > MAX_PROMPT_CHARS ? s.prompt.slice(0, MAX_PROMPT_CHARS) + " …" : s.prompt
+  // When no prompt asked for it ("yes", "commit and open a PR"), its commit message says what it was for.
+  const asked = taskShown(s)
+  const prompt = asked.length > MAX_PROMPT_CHARS ? asked.slice(0, MAX_PROMPT_CHARS) + " …" : asked
   const sources = s.files.filter((f) => !f.snapshot)
   const snapshots = s.files.filter((f) => f.snapshot)
   const committed = sha === undefined ? "" : `, and its change was committed as ${sha}`
@@ -212,7 +231,7 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
         "change along with it (tests, types, generated files, docs), not as a model of your change."
       ]),
     "",
-    "## Its task",
+    asked === s.prompt ? "## Its task" : "## Its task, as its commit message says",
     "",
     prompt.trim(),
     "",
@@ -221,7 +240,7 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
     ...sources.map(fileLine)
   ]
   if (snapshots.length > 0) head.push("", "Snapshots it regenerated:", "", ...snapshots.map(fileLine))
-  if (s.commands.length > 0) head.push("", "## Project commands it ran, in order", "", s.commands.map((c) => `\`${c}\``).join(", "))
+  if (s.commands.length > 0) head.push("", "## Project commands it ran, in order", "", s.commands.map((c) => inlineCode(c)).join(", "))
   if (s.mistakes.length > 0) head.push("", "## Mistakes it made", "", ...s.mistakes)
   if (s.nearby.length > 0) head.push("", "## Mistakes other changes to these files made", "", ...s.nearby)
   const intro = head.join("\n")
@@ -277,4 +296,41 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
     if (cut.length > 0) out += `\nThe whole change: \`git show ${sha}\` (add \`-- <file>\` for one file).\n`
   }
   return out.length <= budget ? out : out.slice(0, budget - 40) + "\n… (cut for room)\n"
+}
+
+/** A stored change as the agent reads it beside its commit, which it just read in git (History.ts). */
+export interface BehindView {
+  readonly commit: string
+  readonly prompt: string
+  readonly commands: ReadonlyArray<string>
+  readonly mistakes: ReadonlyArray<string>
+  readonly nearby: ReadonlyArray<string>
+}
+
+/**
+ * What git doesn't show about a commit the agent just read with `git show`
+ * or `git log` (Start.ts `commitHandover`): the request that asked for it,
+ * when one did (else its commit message was its task, and git has that), the
+ * project commands its session ran, and the mistakes it and other changes to
+ * its files made. Not its diff or its files: the agent has them. Undefined
+ * when memory knows none of these.
+ */
+export const renderBehind = (b: BehindView, budget = MAX_HANDOVER_CHARS): string | undefined => {
+  const asked = isRequest(b.prompt) ? b.prompt.trim() : undefined
+  const what = [
+    ...(asked === undefined ? [] : ["what it was asked"]),
+    ...(b.commands.length > 0 ? ["the project commands it ran"] : []),
+    ...(b.mistakes.length > 0 ? ["the mistakes it made"] : []),
+    ...(b.nearby.length > 0 ? ["mistakes other changes to its files made"] : [])
+  ]
+  if (what.length === 0) return undefined
+  const sha = b.commit.slice(0, 10)
+  const list = what.length === 1 ? what[0] : `${what.slice(0, -1).join(", ")} and ${what[what.length - 1]}`
+  const out = [`# What git doesn't show about ${sha}`, "", `Memory kept the session that made ${sha}, which you just read in git: ${list}.`]
+  if (asked !== undefined) out.push("", "## What it was asked", "", asked.length > MAX_PROMPT_CHARS ? asked.slice(0, MAX_PROMPT_CHARS) + " …" : asked)
+  if (b.commands.length > 0) out.push("", "## Project commands it ran, in order", "", b.commands.map((c) => inlineCode(c)).join(", "))
+  if (b.mistakes.length > 0) out.push("", "## Mistakes it made", "", ...b.mistakes)
+  if (b.nearby.length > 0) out.push("", "## Mistakes other changes to its files made", "", ...b.nearby)
+  const text = out.join("\n") + "\n"
+  return text.length <= budget ? text : text.slice(0, budget - 40) + "\n… (cut for room)\n"
 }

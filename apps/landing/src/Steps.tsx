@@ -29,8 +29,11 @@ export const Steps = () => (
     </div>
     <div className="step s3">
       <div className="n">3</div>
-      <h3>Or later, by file or by asking</h3>
-      <p>A first edit of a file a similar change touched brings that change. The agent can also ask.</p>
+      <h3>Or later, mid-task</h3>
+      <p>
+        A first edit of a file a similar change touched brings that change. Reading a stored commit in git brings what
+        git doesn't show. The agent can also ask.
+      </p>
       <div className="vis">
         <code>singularity recall "make the build check pass"</code>
         <div className="vn">the closest past change, or none</div>

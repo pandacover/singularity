@@ -48,10 +48,10 @@ Under `apps/cli/src`:
 | Directory | What it holds |
 |---|---|
 | `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the recall note in agents' instruction files (`Instructions.ts`), the `singularity` command, Codex hook trust (`CodexHooks.ts`), updating to the latest code with what setup put in place kept current (`Update.ts`) |
-| `scripts/` | memory: at task start, the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`); after nothing at the start, a stored commit to the first watched file the agent edits (`Watch.ts`) |
+| `scripts/` | memory: at task start (a session's first prompt that asks for something, and the first after each commit: `Cycle.ts`), the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`); after nothing at the start, a stored commit to the first watched file the agent edits (`Watch.ts`); and what git doesn't show about a stored commit the agent reads with `git show` or `git log` (`History.ts`) |
 | `workflows/` | the hook script (`hook.ts`) and storing commits (`Commits.ts`, `StoreTrigger.ts`, `Transcripts.ts`); the hand-over log (`Session.ts`) |
-| `records/` | records: what a committed change shows, read from its session and its diff |
-| `traces/` | reading session logs: Claude Code's, and Codex's and Hermes Agent's as Claude Code's |
+| `records/` | records: what a committed change shows, read from its session and its diff; what it was asked and what its commit says, which it is found by (`Task.ts`) |
+| `traces/` | reading session logs: Claude Code's, and Codex's and Hermes Agent's as Claude Code's; whether a prompt asks for a change (`Requests.ts`) |
 | `eval/` | the eval harness and its memory setups (no memory and saved scripts) |
 | `local/` | the memory home and git |
 | `handover/` | only `HookInput.ts`, the hook's input |
@@ -64,8 +64,10 @@ hand-over (the rest of `workflows/`), the learning step (`setup/AutoLearn.ts`,
 `src/hook.ts`), the graph setup, `layer/` and `web/` were removed; tags
 `memory-v0` and `memory-local-first` keep them.
 
-Memory reaches an agent three ways: the task-start hook hands over the
-stored commit most like the task; the recall note (`setup/Instructions.ts`,
+Memory reaches an agent four ways: the task-start hook hands over the
+stored commit most like the task; the tool-call hook, mid-task, hands over
+a stored commit by the file the agent edits, and adds what git doesn't show
+about a stored commit the agent reads in git; the recall note (`setup/Instructions.ts`,
 a marked block in Claude Code's `CLAUDE.md`, Codex's and OpenCode's
 `AGENTS.md`) tells the agent it can run `singularity recall` mid-task; and
 the skill (`setup/Skill.ts`) says the same to agents that read skills.
@@ -79,16 +81,32 @@ Tests mirror it under `apps/cli/test`.
 
 ## Saved scripts at task start
 
+A task starts at a prompt that asks for something (`traces/Requests.ts`:
+four words of its own or more once filler, approval, commit and read-this
+words are taken out; not a question about how things stand; not "don't
+change anything yet"): the session's first such prompt, and the first after
+each commit (`scripts/Cycle.ts`, a marker per session keeping the commit HEAD
+was at). "yes", "commit and open a PR" and "please read @HANDOFF.md" start
+nothing.
+
+A stored change is found by its task, the first prompt of its part of the
+log that asks for something, else the session's last that asked before it
+(`records/Task.ts`), and by its commit message (`task.message`; records
+stored before it get it from git when read, `Git.commitMessages`), the
+message only when it has four words of its own. A task that asks for
+nothing is never searched by.
+
 `scripts/Start.ts` ranks the repo's stored changes against the new prompt
-(`Search.ts`) and examines the best five above the bar, best first. Each
+(`Search.ts`, the best score over those texts) and examines the best five above the bar, best first. Each
 costs a few git calls (30 to 100 ms on markdownlint and excalidraw, under
 0.5 s for a sixty-file change) and no model call:
 
 - **Commit missing** (a rebase, another clone): passed over this time only.
 - **Reverted**: a commit since says `This reverts commit <sha>`.
 - **Superseded**: a newer stored change (the commit history's order, else the
-  time it was made) of mostly the same files (Jaccard 0.8) whose task scores
-  0.8 against this one both ways (`Search.score`).
+  time it was made) of mostly the same files (Jaccard 0.8) whose task or
+  message scores 0.8 against this one's both ways (`Search.score`); two
+  changes filed under the same "commit and then start" aren't alike for it.
 - **Stale files** (`Fresh.ts`): for each file it changed, the share of its
   meaningful added lines (8 characters or more besides spaces, a letter or
   digit, not an import of one name or other boilerplate) still in today's
@@ -143,11 +161,49 @@ shows changed (agents also edit with sed and scripts). The first match
 takes the watch and hands over the first of its changes still worth it,
 examined as at task start (`Start.fileHandover`), with its own intro and
 the edited file's change shown first; the log line has `moment: "file"`.
-One hand-over a session; the watch also ends at session end, and a watch
-older than a day is swept at the next task start. The common call costs
+A change the session was given already (a commit it read, below) is
+skipped.
+One hand-over a task; the watch ends at the session's next task start and at
+session end, and a watch older than a day is swept at the next task start. The common call costs
 one look at the watch folder (timed at about 0.1 s a call either way).
 `node apps/cli/examples/scripts/check-file-handover.ts` shows what it would
 hand over on the markdownlint and excalidraw tasks.
+
+### A hand-over by commit
+
+Agents read the change before theirs with `git show`, unprompted (in the
+note test of 2026-10-17, the first command of every session that added a
+rule like an earlier one). Git has that change's diff; memory has the rest.
+After a call that reads commits, the tool-call hook adds what git doesn't
+show about the first one memory stored (`History.ts`, plain node, then
+`Start.commitHandover`): the request that asked for it (when one did, else
+its commit message was its task, and git has that), the project commands its
+session ran, its mistakes, and other changes' mistakes in its files, as at
+task start (`Render.renderBehind`, nothing when it has none of these). A
+call reads commits when it runs `git show`, or `git log` printing a diff or
+a stat. They're the commits its output heads with `commit <hash>`, else the
+lines it starts with a hash, else the hashes and `HEAD~n` or `@~n`
+revisions its command names (resolved in the repo; not `<commit>:<path>`,
+`HEAD@{1}` or `@{u}`), a command continued over lines read as one. More
+than two commits listed is a survey: nothing. A reading never gives a session
+its own commits. Every hand-over notes its commit for the session (task
+start, file, a reading, or `singularity recall`, which Claude Code's
+`CLAUDE_CODE_SESSION_ID` ties to the session):
+`<tenant>/scripts/sessions/<id>.given`. A reading or a watched file skips a
+commit noted there; a task's start doesn't, since a new task may need the
+same change again. The log line has `moment: "git"`.
+A call ends at the raw check (`git` then `show` or `log` in the input) or at
+the plain one before the hand-over's modules load, in about 0.1 s; a
+hand-over takes about 0.9 s.
+`node apps/cli/examples/scripts/replay-git-handover.ts` replays it on the
+note test, the user's own sessions and the 2026-10-16 markdownlint runs.
+
+The hook script ends by running out of work, not with `process.exit`: on
+Windows, `process.exit` while other threads still finish work trips a libuv
+assertion (async.c line 76), and the hook dies with exit 127, which Claude
+Code logs as a hook error, dropping what the hook printed (215 of 608 runs
+under CPU load; 0 of 608 since; RESULTS.md). A 5 s timer that doesn't hold
+the process open ends a hook that something else would.
 
 `node apps/cli/examples/scripts/check-staleness.ts [repo ...]` replays the
 staleness rules over a repo's history (read-only: files are read at each

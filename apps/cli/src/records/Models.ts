@@ -235,7 +235,8 @@ export const WorkflowRecord = Schema.Struct({
   subject: Schema.String,
   created_at: Schema.String,
   run: RunInfo,
-  task: Schema.Struct({ prompt: Schema.String, followups: Schema.Array(Schema.String) }),
+  /** What it was asked (records/Task.ts); `message` is its commit message, which records stored before it lack. */
+  task: Schema.Struct({ prompt: Schema.String, followups: Schema.Array(Schema.String), message: Schema.optionalKey(Schema.String) }),
   files: Schema.Array(FileChange),
   /** Records built before spots were kept lack them; a graph build reads them from the run's diff then (Merge.ts). */
   spots: Schema.optionalKey(Schema.Array(Spot)),

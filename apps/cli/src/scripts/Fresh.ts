@@ -32,6 +32,7 @@
  */
 import { Effect, FileSystem, Path, Predicate } from "effect"
 import { git } from "../local/Git.ts"
+import { taskKeys } from "../records/Task.ts"
 import { score } from "./Search.ts"
 
 /** Below this share of its added lines still there, a file has changed past recognition. */
@@ -143,12 +144,19 @@ export const jaccard = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): num
   return either === 0 ? 0 : both / either
 }
 
-/** Whether two stored changes are one change made twice: mostly the same files, and tasks that ask for the same thing both ways. */
+/**
+ * Whether two stored changes are one change made twice: mostly the same
+ * files, and tasks that ask for the same thing both ways, by the texts each
+ * is found by (records/Task.ts `taskKeys`). Two changes filed under the same
+ * "commit and then start" aren't alike for that: their messages say what each
+ * did.
+ */
 export const sameChange = (
-  a: { readonly files: ReadonlyArray<string>; readonly prompt: string },
-  b: { readonly files: ReadonlyArray<string>; readonly prompt: string }
+  a: { readonly files: ReadonlyArray<string>; readonly prompt: string; readonly message?: string | undefined },
+  b: { readonly files: ReadonlyArray<string>; readonly prompt: string; readonly message?: string | undefined }
 ): boolean =>
-  jaccard(a.files, b.files) >= SUPERSEDE_FILES && Math.min(score(a.prompt, b.prompt), score(b.prompt, a.prompt)) >= SUPERSEDE_TASK
+  jaccard(a.files, b.files) >= SUPERSEDE_FILES &&
+  taskKeys(a).some((x) => taskKeys(b).some((y) => Math.min(score(x, y), score(y, x)) >= SUPERSEDE_TASK))
 
 const SCRIPT_KEY = /^(npm|yarn|pnpm|bun) (\S+)$/
 

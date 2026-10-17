@@ -6,12 +6,14 @@
  * run the same hook script as every other agent's hooks, in Claude Code's
  * format.
  *
- * - `pre_llm_call`, Hermes's UserPromptSubmit: the hand-over, added to the
- *   user's message.
+ * - `pre_llm_call`, Hermes's UserPromptSubmit (once a turn): the hand-over,
+ *   added to the user's message. Each message in a repository goes to the
+ *   hook script, which tells the ones that start a task (src/scripts/Cycle.ts).
  * - `transform_tool_result`: after a shell command or an edit, the hook
- *   script, which starts storing when the call committed. It adds nothing to
- *   the result. It runs only in sessions whose first prompt memory saw (the
- *   marker src/scripts/Hook.ts writes).
+ *   script, which starts storing when the call committed. What it has for the
+ *   agent goes after the result: a hand-over by file, or what git doesn't show
+ *   about a commit the command read. It runs only in sessions where a task
+ *   started under memory (the marker src/scripts/Hook.ts writes).
  * - `on_session_finalize`, Hermes's SessionEnd (when the CLI, the TUI or the
  *   gateway closes a session): memory stores the changes the session
  *   committed with its checks passing that it hasn't stored yet. Its
@@ -53,7 +55,8 @@ export const pluginCode = (launch: Launch): string =>
 """singularity's memory in Hermes Agent.
 
 When a task starts, hands over the past change in its repository most like it
-(pre_llm_call); after a shell command that commits, stores the change
+(pre_llm_call); after a shell command that commits, stores the change, and
+after one that edits a file or reads a commit, adds what memory has on it
 (transform_tool_result); when a session closes, stores the changes it
 committed with their checks passing (on_session_finalize). All run singularity's hook script in
 Claude Code's hook format. A hook must never break the session it serves:
@@ -79,9 +82,6 @@ TOOL_TIMEOUT_S = 15
 END_TIMEOUT_S = 25
 # Hermes's tools that can trip a known mistake: shell commands and edits.
 TOOLS = frozenset({"terminal", "patch", "write_file"})
-# Sessions memory had nothing for, by the directory it looked in: a chat's later messages from
-# there would find nothing either (a long one, through Hermes's gateway, would start node each time).
-_NOTHING: dict[str, str] = {}
 
 
 def _home() -> str:
@@ -99,7 +99,7 @@ def _log(event: str, error: BaseException) -> None:
 
 
 def _has_session(session_id: str) -> bool:
-    """Whether memory has seen this session's first prompt (the marker src/scripts/Hook.ts writes)."""
+    """Whether a task of this session started under memory (the marker src/scripts/Hook.ts writes)."""
     try:
         with open(os.path.join(_home(), "config.json"), encoding="utf-8") as f:
             tenant = json.load(f).get("tenant")
@@ -108,7 +108,7 @@ def _has_session(session_id: str) -> bool:
     if not isinstance(tenant, str):
         return False
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
-    # Saved scripts mark a session at its first prompt (src/scripts/Hook.ts); older memory kept a JSON file.
+    # Saved scripts mark a session when its first task starts (src/scripts/Hook.ts); older memory kept a JSON file.
     return os.path.exists(os.path.join(_home(), "tenants", tenant, "scripts", "sessions", name)) or any(
         os.path.exists(os.path.join(_home(), "tenants", tenant, kind, "sessions", name + ".json")) for kind in ("workflows", "web"))
 
@@ -169,29 +169,25 @@ def _off() -> bool:
 
 
 def on_pre_llm_call(session_id: str = "", user_message: Any = None, **_: Any) -> Optional[dict]:
-    """The hand-over, with a task's first message; follow-ups get nothing."""
+    """The hand-over, with a message that starts a task. The hook script tells which do (the
+    first that asks for something, then the first after each commit), as for every agent."""
     try:
         prompt = _text(user_message)
-        if _off() or not session_id or not prompt.strip() or _has_session(session_id):
+        if _off() or not session_id or not prompt.strip():
             return None
         cwd = _cwd()
-        if _NOTHING.get(session_id) == cwd or not _in_repo(cwd):
+        if not _in_repo(cwd):
             return None
         payload = {"session_id": session_id, "cwd": cwd, "hook_event_name": "UserPromptSubmit", "prompt": prompt}
         text = _hook("user-prompt-submit", payload, START_TIMEOUT_S)
-        if text:
-            return {"context": text}
-        if len(_NOTHING) >= 1000:
-            _NOTHING.clear()
-        _NOTHING[session_id] = cwd
-        return None
+        return {"context": text} if text else None
     except Exception as error:
         _log("pre_llm_call", error)
         return None
 
 
 def on_transform_tool_result(tool_name: str = "", args: Any = None, result: Any = None, session_id: str = "", **_: Any) -> Optional[str]:
-    """Starts storing when the call committed; returns nothing."""
+    """Starts storing when the call committed; the result, with what memory has for the agent after it."""
     try:
         if _off() or tool_name not in TOOLS or not isinstance(result, str) or not session_id or not _has_session(session_id):
             return None

@@ -21,12 +21,21 @@
  * When the start hands over nothing, it can name files to watch instead
  * (Search.ts `watchFiles`): the first of them the agent edits brings a
  * stored change to it, chosen and shown the same way (`fileHandover`,
- * started by Watch.ts). At most one hand-over a session, either way.
+ * started by Watch.ts). At most one hand-over a task, either way; a session
+ * starts a task at its first prompt that asks for something and at the first
+ * after each commit (Cycle.ts). Apart from those, when the agent reads a
+ * stored commit in git, what git doesn't show about it comes along
+ * (`commitHandover`, started by History.ts), once a commit a session.
+ *
+ * A record is found by its task when that asks for something, and by its
+ * commit message (records/Task.ts); records stored before messages were kept
+ * get theirs from git here.
  */
 import { DateTime, Effect } from "effect"
-import { git, hasCommit, identifyRepo } from "../local/Git.ts"
+import { commitMessages, git, hasCommit, identifyRepo } from "../local/Git.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
+import { changeMessage } from "../records/Task.ts"
 import { logHandover } from "../workflows/Session.ts"
 import { isAncestor, judgeFile, liveCommands, revertedBy, sameChange, type Today, type Verdict } from "./Fresh.ts"
 import {
@@ -38,10 +47,11 @@ import {
   MAX_HANDOVER_CHARS,
   mistakesNearby,
   mistakesToShow,
+  renderBehind,
   renderScript
 } from "./Render.ts"
 import { readRetired, retire, type Retirement } from "./Retired.ts"
-import { MIN_SCORE, rank, rankRecall, score, tellingFiles, watchFiles } from "./Search.ts"
+import { MIN_SCORE, rank, rankRecall, scoreTask, tellingFiles, watchFiles } from "./Search.ts"
 
 export interface ScriptsStart {
   readonly text: string | undefined
@@ -146,8 +156,14 @@ const openStore = Effect.fn("scripts.openStore")(function*(cwd: string, tenantDi
   const subject = repo === undefined ? undefined : yield* records.subjectFor(repo)
   if (repo === undefined || subject === undefined) return undefined
   const retired = yield* readRetired(tenantDir)
-  const stored = (yield* records.find({ subject: subject.id, outcome: "success" }))
+  const found = (yield* records.find({ subject: subject.id, outcome: "success" }))
     .filter((r): r is Stored => r.run.head_commit !== null && !retired.has(r.id))
+  // Records stored before commit messages were kept get their head commit's from git: two calls for all of them.
+  const messages = yield* commitMessages(repo.root, found.filter((r) => r.task.message === undefined).map((r) => r.run.head_commit))
+  const stored = found.map((r): Stored => {
+    const message = r.task.message === undefined ? messages.get(r.run.head_commit) : undefined
+    return message === undefined ? r : { ...r, task: { ...r.task, message: changeMessage([message]) } }
+  })
   return { root: repo.root, subject: subject.id, stored, today: { root: repo.root }, now: DateTime.formatIso(yield* DateTime.now) } satisfies Store
 })
 
@@ -183,7 +199,8 @@ const choose = Effect.fn("scripts.choose")(function*(s: Store, candidates: Reado
     const files = record.files.filter((f) => !f.snapshot).map((f) => f.path)
     let superseded: Stored | undefined
     for (const other of s.stored) {
-      if (other.id === record.id || !sameChange({ files, prompt: record.task.prompt }, { files: other.files.filter((f) => !f.snapshot).map((f) => f.path), prompt: other.task.prompt })) continue
+      const theirs = { files: other.files.filter((f) => !f.snapshot).map((f) => f.path), prompt: other.task.prompt, message: other.task.message }
+      if (other.id === record.id || !sameChange({ files, prompt: record.task.prompt, message: record.task.message }, theirs)) continue
       if ((yield* hasCommit(s.root, other.run.head_commit)) && (yield* newer(s.root, other, record))) {
         superseded = other
         break
@@ -204,6 +221,23 @@ const choose = Effect.fn("scripts.choose")(function*(s: Store, candidates: Reado
   return { picked: undefined, passed, retiring }
 })
 
+/** What memory has of a stored change that its commit doesn't: the project commands it ran, its mistakes, and other changes' in its files. */
+const extrasOf = Effect.fn("scripts.extrasOf")(function*(s: Store, record: Stored) {
+  const own = mistakesToShow(record.detours)
+  // Other changes' mistakes come through a file the two share only when few changes touch it: a README or a
+  // test file most changes edit linked every change to every other, and with it every trap seen anywhere.
+  const links = tellingFiles(s.stored.map((r) => ({ files: r.files.map((f) => f.path) })), 2)
+  return {
+    commands: yield* liveCommands(s.today, record.run.head_commit, commandsToShow(record.commands), record.files.map((f) => f.path)),
+    mistakes: own,
+    nearby: mistakesNearby(
+      record.files.map((f) => f.path).filter(links),
+      [...s.stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
+      own
+    )
+  }
+})
+
 /** The chosen change as the agent reads it; `touched` for a hand-over mid-task, by the file the agent edited. */
 const show = Effect.fn("scripts.show")(function*(
   s: Store,
@@ -212,23 +246,13 @@ const show = Effect.fn("scripts.show")(function*(
   touched?: string
 ) {
   const record = picked.record
-  const head = record.run.head_commit
-  const own = mistakesToShow(record.detours)
-  // Other changes' mistakes come through a file the two share only when few changes touch it: a README or a
-  // test file most changes edit linked every change to every other, and with it every trap seen anywhere.
-  const links = tellingFiles(s.stored.map((r) => ({ files: r.files.map((f) => f.path) })), 2)
   return renderScript({
     prompt: record.task.prompt,
-    commit: head,
+    message: record.task.message,
+    commit: record.run.head_commit,
     score: picked.score,
     files: picked.judged.files.map(({ verdict: _, ...f }) => f),
-    commands: yield* liveCommands(s.today, head, commandsToShow(record.commands), record.files.map((f) => f.path)),
-    mistakes: own,
-    nearby: mistakesNearby(
-      record.files.map((f) => f.path).filter(links),
-      [...s.stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
-      own
-    ),
+    ...(yield* extrasOf(s, record)),
     diff: picked.judged.diff,
     touched
   }, budget)
@@ -265,7 +289,7 @@ export const startScripts = Effect.fn("startScripts")(function*(
   const nothing: ScriptsStart = { text: undefined, picked: null, score: 0, passed: [] }
   const s = yield* openStore(input.cwd, options.tenantDir)
   if (s === undefined) return nothing
-  const docs = s.stored.map((r) => ({ id: r.id, prompt: r.task.prompt, files: r.files.map((f) => f.path), record: r }))
+  const docs = s.stored.map((r) => ({ id: r.id, prompt: r.task.prompt, message: r.task.message, files: r.files.map((f) => f.path), record: r }))
   const ranked = options.query === true
     ? rankRecall(input.prompt, docs)
     : rank(input.prompt, docs).map((r) => ({ ...r, matches: r.score >= (options.minScore ?? MIN_SCORE) }))
@@ -308,17 +332,29 @@ export const startScripts = Effect.fn("startScripts")(function*(
  * nothing edited `file`, which the stored changes `ids` changed (best
  * first, as `watchFiles` ranked them for the task's `prompt`). The first
  * still worth handing over is shown, its change to `file` first, or nothing.
+ * A change the session was given already (`given`: a commit it read in git
+ * since, History.ts) isn't handed over again.
  */
 export const fileHandover = Effect.fn("scripts.fileHandover")(function*(
-  input: { readonly sessionId: string; readonly prompt: string; readonly cwd: string; readonly file: string; readonly ids: ReadonlyArray<string> },
+  input: {
+    readonly sessionId: string
+    readonly prompt: string
+    readonly cwd: string
+    readonly file: string
+    readonly ids: ReadonlyArray<string>
+    readonly given?: ReadonlyArray<string> | undefined
+  },
   options: { readonly tenantDir: string; readonly persist?: boolean | undefined; readonly budget?: number | undefined }
 ) {
   const nothing: ScriptsStart = { text: undefined, picked: null, score: 0, passed: [] }
   const s = yield* openStore(input.cwd, options.tenantDir)
   if (s === undefined) return nothing
+  const given = input.given ?? []
   const candidates = input.ids.flatMap((id) => {
     const record = s.stored.find((r) => r.id === id)
-    return record === undefined ? [] : [{ record, score: score(input.prompt, record.task.prompt) }]
+    return record === undefined || given.includes(record.run.head_commit)
+      ? []
+      : [{ record, score: scoreTask(input.prompt, { id: record.id, prompt: record.task.prompt, message: record.task.message }) }]
   })
   const { picked, passed, retiring } = yield* choose(s, candidates)
   const text = picked === undefined ? undefined : yield* show(s, picked, options.budget ?? MAX_HANDOVER_CHARS, input.file)
@@ -341,6 +377,62 @@ export const fileHandover = Effect.fn("scripts.fileHandover")(function*(
     picked: result.picked,
     score: result.score,
     passed,
+    chars: text?.length ?? 0,
+    text: text ?? null
+  })
+  return result
+})
+
+/**
+ * A hand-over mid-task, by commit (History.ts): the agent read past commits
+ * with `git show` or `git log`, `hashes` (whole or a prefix) or `revs` to
+ * resolve. The first of them memory stored, that this session didn't make
+ * and wasn't given yet (`given`), brings what git doesn't show about it
+ * (Render.ts `renderBehind`), or nothing when memory has nothing more on it.
+ * Its files aren't judged against today's code (Fresh.ts): the agent is
+ * reading that very commit.
+ */
+export const commitHandover = Effect.fn("scripts.commitHandover")(function*(
+  input: {
+    readonly sessionId: string
+    readonly cwd: string
+    readonly command: string
+    readonly hashes: ReadonlyArray<string>
+    readonly revs: ReadonlyArray<string>
+    readonly given: ReadonlyArray<string>
+  },
+  options: { readonly tenantDir: string; readonly persist?: boolean | undefined }
+) {
+  const nothing: ScriptsStart = { text: undefined, picked: null, score: 0, passed: [] }
+  const s = yield* openStore(input.cwd, options.tenantDir)
+  if (s === undefined || s.stored.length === 0) return nothing
+  const resolved: Array<string> = []
+  for (const rev of input.revs) {
+    const hash = yield* git(s.root, ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`]).pipe(Effect.map((h) => h.trim()), Effect.orElseSucceed(() => ""))
+    if (hash !== "") resolved.push(hash)
+  }
+  const record = [...input.hashes, ...resolved]
+    .flatMap((h) => s.stored.filter((r) => r.run.head_commit.toLowerCase().startsWith(h.toLowerCase())).slice(0, 1))
+    .find((r) => r.run.session_id !== input.sessionId && !input.given.includes(r.run.head_commit))
+  if (record === undefined) return nothing
+  const text = renderBehind({ commit: record.run.head_commit, prompt: record.task.prompt, ...(yield* extrasOf(s, record)) })
+  const result: ScriptsStart = {
+    text,
+    picked: text === undefined ? null : { id: record.id, commit: record.run.head_commit },
+    score: text === undefined ? 0 : 1,
+    passed: []
+  }
+  if (options.persist === false) return result
+  yield* logHandover(options.tenantDir, {
+    at: s.now,
+    session_id: input.sessionId,
+    moment: "git",
+    memory: "scripts",
+    subject: s.subject,
+    stored: s.stored.length,
+    command: input.command.slice(0, 300),
+    read: record.run.head_commit,
+    picked: result.picked,
     chars: text?.length ?? 0,
     text: text ?? null
   })

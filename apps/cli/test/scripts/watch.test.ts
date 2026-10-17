@@ -128,6 +128,45 @@ const hook = (home: string, event: string, input: Record<string, unknown>) => {
   return done.stdout
 }
 
+describe("which prompts start a task, through the hooks", () => {
+  it("hands over at the first prompt that asks, again at the first after each commit, and never for one that asks for nothing", async () => {
+    const { repo, home } = newRepo()
+    const tenantDir = join(home, "tenants", "local")
+    const base = git(repo, "rev-parse", "HEAD")
+    write(repo, "lib/md061.mjs", "export const md061 = (params, onError) => {\n  const maximum = params.config.maximum ?? 6\n}\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "MD061")
+    await storeChange(repo, tenantDir, RULE, base, git(repo, "rev-parse", "HEAD"))
+
+    const say = (session_id: string, prompt: string) => hook(home, "user-prompt-submit", { session_id, cwd: repo, hook_event_name: "UserPromptSubmit", prompt })
+    const marker = (s: string) => join(tenantDir, "scripts", "sessions", s)
+    const LIKE = "A past change in this repository like your task"
+    const s = "bbbbbbbb-0000-0000-0000-000000000001"
+    // Pointers to read and approvals start nothing, and leave no marker.
+    expect(say(s, "please read @HANDOFF.md")).toBe("")
+    expect(existsSync(marker(s))).toBe(false)
+    expect(say(s, OTHER_RULE)).toContain(LIKE)
+    expect(say(s, "yes, go ahead")).toBe("")
+    // The same task's follow-up, before any commit: nothing.
+    expect(say(s, OTHER_RULE)).toBe("")
+    write(repo, "lib/md062.mjs", "export const md062 = 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "MD062")
+    expect(say(s, "commit and open a PR")).toBe("")
+    // After a commit, the next request is a new task.
+    expect(say(s, OTHER_RULE)).toContain(LIKE)
+
+    // A session whose marker predates commits being kept starts its next task after its next commit.
+    const old = "bbbbbbbb-0000-0000-0000-000000000002"
+    mkdirSync(join(tenantDir, "scripts", "sessions"), { recursive: true })
+    writeFileSync(marker(old), "an earlier first prompt")
+    expect(say(old, OTHER_RULE)).toBe("")
+    expect(JSON.parse(readFileSync(marker(old), "utf-8")).head).toBe(git(repo, "rev-parse", "HEAD"))
+    git(repo, "commit", "-q", "--allow-empty", "-m", "later")
+    expect(say(old, OTHER_RULE)).toContain(LIKE)
+  }, 60_000)
+})
+
 describe("hand-over by file, through the hooks", () => {
   it("watches after a start with nothing, hands over once for the first watched file edited, and ends with the session", async () => {
     const { repo, home } = newRepo()
@@ -164,6 +203,14 @@ describe("hand-over by file, through the hooks", () => {
     expect(log.map((l) => [l.moment, l.file ?? null, l.picked?.commit ?? null])).toEqual([["start", null, null], ["file", "lib/md061.mjs", head]])
     // One a session.
     expect(hook(home, "post-tool-use", call("python3 fix.py lib/md061.mjs"))).toBe("")
+
+    // A change the session read in git already isn't handed over again for its file.
+    const reader = { session_id: "aaaaaaaa-0000-0000-0000-000000000002", cwd: repo }
+    const bash = (command: string, stdout: string) => ({ ...reader, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command }, tool_response: { stdout } })
+    expect(hook(home, "user-prompt-submit", { ...reader, hook_event_name: "UserPromptSubmit", prompt: FIX })).toBe("")
+    const shown = hook(home, "post-tool-use", bash(`git show --stat ${head.slice(0, 10)}`, `commit ${head}\nAuthor: A <a@b.c>\n\n    MD061\n\n lib/md061.mjs | 3 +++\n`))
+    expect(JSON.parse(shown).hookSpecificOutput.additionalContext).toContain(`# What git doesn't show about ${head.slice(0, 10)}`)
+    expect(hook(home, "post-tool-use", bash("python3 fix.py lib/md061.mjs", ""))).toBe("")
 
     // A task like no stored one watches nothing; one handed a change at the start watches nothing either.
     expect(hook(home, "user-prompt-submit", { ...at, session_id: "s-unrelated", hook_event_name: "UserPromptSubmit", prompt: UNRELATED })).toBe("")

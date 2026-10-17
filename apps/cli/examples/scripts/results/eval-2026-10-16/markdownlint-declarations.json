@@ -1,0 +1,307 @@
+[
+  {
+    "pass": 1,
+    "arm": "without",
+    "task": "t11-circular-extends",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "without",
+    "task": "t12-no-empty-headings",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t02-code-block-max-lines",
+    "passed": true,
+    "stale": []
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t03-md024-ignore-case",
+    "passed": true,
+    "stale": []
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t04-list-max-depth",
+    "passed": true,
+    "stale": []
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t05-get-rules",
+    "passed": true,
+    "stale": [
+      "exports.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t06-rename-doc-src",
+    "passed": true,
+    "stale": [
+      "exports.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t07-link-url-scheme",
+    "passed": true,
+    "stale": [
+      "exports.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t08-todo-comments-example",
+    "passed": true,
+    "stale": [
+      "exports.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t09-md014-prompts",
+    "passed": true,
+    "stale": [
+      "exports.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t10-ol-delimiter-style",
+    "passed": true,
+    "stale": [
+      "exports.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t11-circular-extends",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 1,
+    "arm": "with",
+    "task": "t12-no-empty-headings",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 2,
+    "arm": "without",
+    "task": "t10-ol-delimiter-style",
+    "passed": false,
+    "stale": []
+  },
+  {
+    "pass": 2,
+    "arm": "without",
+    "task": "t11-circular-extends",
+    "passed": false,
+    "stale": []
+  },
+  {
+    "pass": 2,
+    "arm": "without",
+    "task": "t12-no-empty-headings",
+    "passed": false,
+    "stale": []
+  },
+  {
+    "pass": 2,
+    "arm": "with",
+    "task": "t09-md014-prompts",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 2,
+    "arm": "with",
+    "task": "t10-ol-delimiter-style",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 2,
+    "arm": "with",
+    "task": "t11-circular-extends",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 2,
+    "arm": "with",
+    "task": "t12-no-empty-headings",
+    "passed": true,
+    "stale": [
+      "exports.d.mts",
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t02-code-block-max-lines",
+    "passed": true,
+    "stale": []
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t03-md024-ignore-case",
+    "passed": true,
+    "stale": []
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t04-list-max-depth",
+    "passed": true,
+    "stale": []
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t05-get-rules",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t06-rename-doc-src",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t07-link-url-scheme",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t08-todo-comments-example",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t09-md014-prompts",
+    "passed": false,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t10-ol-delimiter-style",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t11-circular-extends",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "without",
+    "task": "t12-no-empty-headings",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "with",
+    "task": "t09-md014-prompts",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "with",
+    "task": "t10-ol-delimiter-style",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "with",
+    "task": "t11-circular-extends",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  },
+  {
+    "pass": 3,
+    "arm": "with",
+    "task": "t12-no-empty-headings",
+    "passed": true,
+    "stale": [
+      "markdownlint.d.mts"
+    ]
+  }
+]

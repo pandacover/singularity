@@ -1,0 +1,39 @@
+# Mistakes memory stored in the markdownlint runs (2026-10-16, with arm, three passes)
+
+- 65 stored mistakes; their token cost matches the transcript's responses for 65, their failed call for 65
+
+| teaches about | mistakes | says what fixed it | a later task of the pass made it again | left out of hand-overs (spans lines) | what they cost |
+|---|---|---|---|---|---|
+| this repository | 33 | 20 | 16 | 19 | $1.52 |
+| this machine or its tools | 14 | 9 | 8 | 14 | $0.77 |
+| only its own task | 4 | 4 | 0 | 2 | $0.18 |
+| can't tell (says only that tests failed) | 9 | 7 | 0 | 4 | $0.43 |
+| noise (a tool's own error, the agent's own assert) | 5 | 4 | 0 | 3 | $0.12 |
+
+Stored mistakes by key: plan-count 17, python-encoding 11, tests-failed 9, markers 5, lint:@stylistic/space-before-function-paren 4, lint:no-continue 3, python-escapes 3, lint:unicorn/prefer-regexp-escape 3, lint:consistent-return 3, coverage 2, snapshot 2, missing-doc 1, lint:unicorn/prefer-set-has 1, lint:unicorn/prefer-split-limit 1, types 1, lint:regexp/use-ignore-case 1, lint:unicorn/no-array-sort 1, lint:@stylistic/space-infix-ops 1, lint:node-test/require-assertion 1, lint:unicorn/prefer-then-catch 1, lint:unicorn/prefer-structured-clone 1, own-script 1, file-count 1, project-files 1, lint:regexp/sort-flags 1, lint:no-await-in-loop 1, lint:@stylistic/comma-spacing 1, lint:no-use-before-define 1
+
+Tasks 2-12: $9.24, 61 stored mistakes. The most a warning could have spared:
+
+| memory could tell | mistakes matched | dollars | share | without the count mistakes: matched | dollars | share |
+|---|---|---|---|---|---|---|
+| what the hand-over showed | 3 | $0.20 | 2.2% | 0 | $0.00 | 0.0% |
+| every mistake of the change handed over | 8 | $0.48 | 5.2% | 1 | $0.05 | 0.5% |
+| every mistake stored so far | 24 | $0.99 | 10.7% | 10 | $0.31 | 3.4% |
+
+Of every mistake stored so far, by what it teaches (a mistake can match two): the test counts (plan, files) 14 ($0.68, 7.4%); this machine or its tools 8 ($0.23, 2.5%); the rest of this repository's 2 ($0.08, 0.9%)
+Inside the count mistakes a warning could have spared: looking $0.11, edits beyond the first $0.00, test runs beyond the first $0.31, no tool $0.00; it couldn't spare the first edit $0.03 and the first rerun $0.22
+So the most a list of every stored mistake could spare, the counts' unavoidable part taken out: $0.73, 8.0%
+
+Tasks 3-12: $7.65, 49 stored mistakes. The most a warning could have spared:
+
+| memory could tell | mistakes matched | dollars | share | without the count mistakes: matched | dollars | share |
+|---|---|---|---|---|---|---|
+| what the hand-over showed | 3 | $0.20 | 2.6% | 0 | $0.00 | 0.0% |
+| every mistake of the change handed over | 6 | $0.39 | 5.1% | 1 | $0.05 | 0.7% |
+| every mistake stored so far | 22 | $0.91 | 11.9% | 10 | $0.31 | 4.1% |
+
+Of every mistake stored so far, by what it teaches (a mistake can match two): the test counts (plan, files) 12 ($0.60, 7.8%); this machine or its tools 8 ($0.23, 3.0%); the rest of this repository's 2 ($0.08, 1.1%)
+Inside the count mistakes a warning could have spared: looking $0.11, edits beyond the first $0.00, test runs beyond the first $0.29, no tool $0.00; it couldn't spare the first edit $0.00 and the first rerun $0.19
+So the most a list of every stored mistake could spare, the counts' unavoidable part taken out: $0.72, 9.4%
+
+C:\Users\luvma\.singularity: 57 records (chat-v2, singularity), 250 stored mistakes by kind {"command_error":101,"type_error":54,"test_failure":58,"tool_error":15,"edit_mismatch":4,"not_found":18}; left out of hand-overs as spanning lines 131; Python's charmap error 0; symptom says only that tests failed 10; files_edited recorded 99

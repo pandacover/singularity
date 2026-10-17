@@ -38,12 +38,18 @@ installs: the seven daily commands only, so nothing user-facing may point users
 or agents at another one), `src/local/` (the memory home in `~/.singularity`,
 and git), `src/records/` (records of committed changes: extraction, where
 edits went, the store; whether a call failed: `Outcome.ts`), `src/commands/`
-(CLI commands). Memory is saved scripts, `src/scripts/`: at a session's first
-prompt the hook (`src/workflows/hook.ts`, which calls `src/scripts/Hook.ts`)
-hands over the stored commit most like the task, read from git, with no
-model call and no learning step; when it hands over nothing, the first file
-the agent edits that a stored commit touched brings that commit
-(`src/scripts/Watch.ts`, from the tool-call hook). On this branch everything else was
+(CLI commands). Memory is saved scripts, `src/scripts/`: at a prompt that
+starts a task (one that asks for something, `src/traces/Requests.ts`: the
+session's first such, then the first after each commit, `src/scripts/Cycle.ts`)
+the hook (`src/workflows/hook.ts`, which calls `src/scripts/Hook.ts`)
+hands over the stored commit most like the task, found by the prompt that
+asked for it and by its commit message (`src/records/Task.ts`), read from
+git, with no model call and no learning step; when it hands over nothing,
+the first file the agent edits that a stored commit touched brings that
+commit (`src/scripts/Watch.ts`, from the tool-call hook); and when the agent
+reads a stored commit with `git show` or `git log`, the tool-call hook adds
+what git doesn't show about it, once a session: the request, the project
+commands its session ran, its mistakes (`src/scripts/History.ts`). On this branch everything else was
 removed: memory v0 (`src/memory/`, `src/search/`, most of `src/handover/`,
 `src/hook.ts`; tag `memory-v0`), memory v1's learning and hand-over (the rest
 of `src/workflows/`; tag `memory-local-first`), the graph setup (`src/graph/`
@@ -162,8 +168,8 @@ records use those keys.
   names). They must never break a session (errors go to
   `~/.singularity/hook-errors.log`, exit 0), and the tool-call hook runs
   after every call, so `src/workflows/hook.ts` loads modules only for the
-  event at hand and only when the call may have committed. Keep it fast
-  (about 0.1 s a call). Tests use a temporary `SINGULARITY_HOME`, never the
+  event at hand and only when the call may have committed, edited a
+  watched file or read a commit. Keep it fast (about 0.1 s a call). Tests use a temporary `SINGULARITY_HOME`, never the
   real one.
 - Two memory homes. `~/.singularity` is our own: the memory of the sessions
   we work in, with singularity set up in our Claude Code. Evals and

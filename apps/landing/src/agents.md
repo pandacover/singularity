@@ -7,9 +7,10 @@ Source: https://github.com/pandacover/singularity (MIT license)
 ## What it does
 
 1. Store. When a session commits a change and the last test, typecheck, build or lint before the commit passed, memory records it. A change to docs alone needs no check. The record holds the task as the person wrote it, the files changed, the commands that ran, and what failed and what fixed it. Records stay on the machine.
-2. Hand over. At task start, memory scores every stored task against the new one by plain text matching and picks the best one above a fixed bar. It reads that change from git as the code is now, leaves out files changed since, and adds it to the agent's first prompt: the past task, the files it changed, the commands it ran, its mistakes, and its diff. The agent still writes every line itself.
+2. Hand over. At task start, memory scores every stored task against the new one by plain text matching and picks the best one above a fixed bar. It reads that change from git as the code is now, leaves out files changed since, and adds it to the agent's first prompt: the past task, the files it changed, the commands it ran, its mistakes, and its diff. The agent still writes every line itself. A task starts at the first message that asks for something, and again at the first one after each commit, so each new task in a long session can get one. Messages like "yes" or "commit it" start none.
 3. Hand over by file. When nothing clears the bar at task start, memory waits. The first time the agent edits a file that a somewhat similar stored change touched, and few other changes did, that change arrives. A task gets one hand-over at most.
-4. Recall. Setup adds a short note to the user-level instructions of Claude Code, Codex and OpenCode. It tells the agent it can run `singularity recall "<what it is about to do>"` before work likely done before in the repository.
+4. What git doesn't show. When the agent reads a stored change with `git show` or `git log`, memory adds what the commit doesn't hold: the task that asked for it, the commands its session ran, and its mistakes. It adds each change once a session, and never the session's own.
+5. Recall. Setup adds a short note to the user-level instructions of Claude Code, Codex and OpenCode. It tells the agent it can run `singularity recall "<what it is about to do>"` before work likely done before in the repository.
 
 ## Before installing
 
@@ -111,6 +112,7 @@ To delete memory too, every record and the installed code, ask the user first, t
 | `tenants/local/records/` | one record per stored change |
 | `tenants/local/scripts/retired.jsonl` | stored changes memory no longer hands over: reverted, replaced, or their files gone |
 | `watch/` | for each running session that got nothing at task start, the files whose first edit brings a hand-over |
+| `tenants/local/scripts/sessions/` | for each session, the commit its last task started at, and the changes memory gave it |
 | `tenants/local/skipped.jsonl` | commits memory left out, and why; `singularity status` sums them up |
 | `store.log` | what storing in the background did |
 | `hook-errors.log` | hook errors; they never break a session |
@@ -118,7 +120,7 @@ To delete memory too, every record and the installed code, ask the user first, t
 ## When something is off
 
 - Memory knows nothing in a repository. It stores changes as sessions commit them with a passing check. `singularity status` shows what it kept and left out, and `singularity store` looks through earlier sessions.
-- A task got nothing. No stored task was close enough. `singularity recall "<task>"` shows the closest one, or says there is none.
+- A task got nothing. No stored task was close enough, or its message asked for nothing ("yes", "commit it"). `singularity recall "<task>"` shows the closest one, or says there is none.
 - Codex hands nothing over. Its hooks aren't trusted yet, so the user opens Codex and types `/hooks`.
 - Hooks are failing. See `~/.singularity/hook-errors.log`. `singularity status` counts the errors too.
 

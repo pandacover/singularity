@@ -25,6 +25,12 @@
 //
 // --fake <dir> applies <dir>/<task-id>.patch and records it instead of
 // running Claude Code, to try the driver and the checks for free.
+//
+// --setting-sources project,local keeps the user's own settings, CLAUDE.md,
+// skills and plugins out of the sessions, as a config folder of the run's own
+// does (--claude-config), while they still use the user's login. The with
+// arm's recall note then goes in the system prompt, as eval runs of the
+// scripts setup have it (src/eval/Recall.ts).
 import { execFileSync, spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs"
@@ -49,6 +55,7 @@ const { values: opts } = parseArgs({
     // A Claude Code config folder of the run's own, so the machine's skills,
     // plugins and settings stay out (as in the cloud measurements).
     "claude-config": { type: "string" },
+    "setting-sources": { type: "string" },
     "timeout-min": { type: "string", default: "60" }
   }
 })
@@ -135,22 +142,27 @@ const SESSION_VARS = new Set([
 const emptyHome = path.join(path.dirname(out), "empty-singularity-home")
 
 // With --app, what setup gives an agent besides hooks: the recall note in the
-// agent's CLAUDE.md (the run's own config folder, --claude-config) and the
-// `singularity` command on PATH, running <app>'s code with the arm's memory.
+// agent's CLAUDE.md (the run's own config folder, --claude-config; in the
+// system prompt when the user's settings are left out) and the `singularity`
+// command on PATH, running <app>'s code with the arm's memory.
 const launcherDir = path.join(out, "bin")
+const withoutUserSettings = opts["setting-sources"] !== undefined && !opts["setting-sources"].split(",").includes("user")
+let noteFile
 if (app) {
   fs.mkdirSync(launcherDir, { recursive: true })
   const cli = path.join(app, "apps", "cli", "src", "singularity.ts")
   fs.writeFileSync(path.join(launcherDir, "singularity"), `#!/bin/sh\nexec "${process.execPath}" "${cli}" "$@"\n`, { mode: 0o755 })
   fs.writeFileSync(path.join(launcherDir, "singularity.cmd"), `@"${process.execPath}" "${cli}" %*\r\n`)
-  if (opts["claude-config"]) {
-    const instructions = path.join(app, "apps", "cli", "src", "setup", "Instructions.ts")
-    if (fs.existsSync(instructions)) {
-      const { NOTE_BLOCK } = await import(pathToFileURL(instructions).href)
-      const claudeMd = path.join(path.resolve(opts["claude-config"]), "CLAUDE.md")
-      fs.mkdirSync(path.dirname(claudeMd), { recursive: true })
-      fs.writeFileSync(claudeMd, NOTE_BLOCK + "\n")
-    }
+  const instructions = path.join(app, "apps", "cli", "src", "setup", "Instructions.ts")
+  if (fs.existsSync(instructions) && opts["claude-config"]) {
+    const { NOTE_BLOCK } = await import(pathToFileURL(instructions).href)
+    const claudeMd = path.join(path.resolve(opts["claude-config"]), "CLAUDE.md")
+    fs.mkdirSync(path.dirname(claudeMd), { recursive: true })
+    fs.writeFileSync(claudeMd, NOTE_BLOCK + "\n")
+  } else if (fs.existsSync(instructions) && withoutUserSettings) {
+    const { RECALL_NOTE } = await import(pathToFileURL(instructions).href)
+    noteFile = path.join(out, "recall-note.md")
+    fs.writeFileSync(noteFile, RECALL_NOTE + "\n")
   }
 }
 
@@ -338,6 +350,8 @@ const doTask = async (task, index) => {
       "--allowed-tools", "Bash,PowerShell,Read,Edit,Write,Glob,Grep"
     ]
     if (app) args.push("--settings", settingsFile)
+    if (opts["setting-sources"] !== undefined) args.push("--setting-sources", opts["setting-sources"])
+    if (noteFile) args.push("--append-system-prompt-file", noteFile)
     agent = await run(opts.claude, args, {
       cwd: repo, env: agentEnv(), input: task.prompt, timeoutMs: Number(opts["timeout-min"]) * 60000,
       stdoutFile: path.join(dir, "agent.stdout"), stderrFile: path.join(dir, "agent.stderr")

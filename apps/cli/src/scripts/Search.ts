@@ -16,15 +16,23 @@
  * the boilerplate. Below `MIN_SCORE` nothing is handed over: no script beats
  * a wrong one. No model call, and only the prompts: what the agent would know.
  *
+ * A stored change is found by its prompt only when that asks for something,
+ * and by its commit message too (records/Task.ts `taskKeys`): in daily use
+ * half the prompts commits were stored under were "yes" or "commit and open a
+ * PR", which matched the next session's "yes" word for word.
+ *
  * Pure functions; the callers read the store.
  */
 import { cosine, words } from "../graph/Similarity.ts"
+import { taskKeys } from "../records/Task.ts"
 import { fileKind, isSnapshot } from "./Render.ts"
 
 /** A saved script, as the search sees it. */
 export interface SearchDoc {
   readonly id: string
   readonly prompt: string
+  /** Its commit message, when it was committed (records/Task.ts). */
+  readonly message?: string | undefined
 }
 
 export interface Ranked<D extends SearchDoc = SearchDoc> {
@@ -52,9 +60,16 @@ export const score = (prompt: string, old: string): number => {
   return total === 0 ? 0 : Math.sqrt((held / total) * cosine(a, b))
 }
 
+/**
+ * How alike a new task is to a stored one: `score` against each text the
+ * stored change is found by (records/Task.ts `taskKeys`: its task when that
+ * asks for something, and its commit message's first line), the best.
+ */
+export const scoreTask = (prompt: string, doc: SearchDoc): number => Math.max(0, ...taskKeys(doc).map((key) => score(prompt, key)))
+
 /** Every script with its score, best first (store order on ties). */
 export const rank = <D extends SearchDoc>(prompt: string, docs: ReadonlyArray<D>): Array<Ranked<D>> =>
-  docs.map((doc) => ({ doc, score: score(prompt, doc.prompt) })).sort((x, y) => y.score - x.score)
+  docs.map((doc) => ({ doc, score: scoreTask(prompt, doc) })).sort((x, y) => y.score - x.score)
 
 /** The script to hand over, or undefined when none clears `minScore`. */
 export const pick = <D extends SearchDoc>(prompt: string, docs: ReadonlyArray<D>, minScore = MIN_SCORE): Ranked<D> | undefined => {
@@ -80,13 +95,13 @@ export interface RecallDoc extends SearchDoc {
 /** Every script with how well it answers a recall query, best first; `score` is the better of the two measures. */
 export const rankRecall = <D extends RecallDoc>(query: string, docs: ReadonlyArray<D>): Array<Ranked<D> & { readonly matches: boolean }> => {
   const q = [...words(query).keys()]
-  const texts = docs.map((d) => words(`${d.prompt} ${d.files.join(" ")}`))
+  const texts = docs.map((d) => words(`${taskKeys(d).join(" ")} ${d.files.join(" ")}`))
   const idf = new Map(q.map((w) => [w, Math.log((docs.length + 1) / (texts.filter((t) => t.has(w)).length + 1)) + 1] as const))
   const all = q.reduce((s, w) => s + idf.get(w)!, 0)
   return docs.map((doc, i) => {
     const held = q.filter((w) => texts[i].has(w))
     const covered = all === 0 ? 0 : held.reduce((s, w) => s + idf.get(w)!, 0) / all
-    const asTask = score(query, doc.prompt)
+    const asTask = scoreTask(query, doc)
     // One matching word is too little to go on, unless the query is one word.
     const matches = asTask >= MIN_SCORE || (covered >= QUERY_MIN && (held.length >= 2 || q.length === 1))
     return { doc, score: Math.max(asTask, covered), matches }

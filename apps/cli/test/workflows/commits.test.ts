@@ -161,12 +161,12 @@ describe("storing commits", () => {
     const result = await store(t)
     expect(result.stored).toEqual([commitRecordId("app", first), commitRecordId("app", second)])
     const [one, two] = await records(t)
-    expect(one.task).toEqual({ prompt: "Add blue to the colors", followups: [] })
+    expect(one.task).toEqual({ prompt: "Add blue to the colors", followups: [], message: "colors red blue" })
     expect([one.run.base_commit, one.run.head_commit]).toEqual([gitAt(t.repo, undefined, "rev-parse", `${first}^`), first])
     expect(one.run.segment).toEqual({ from: null, to: at(5) })
     expect(one.checks.map((c) => c.command)).toEqual(["npm test"])
     // The second commit's record starts after the first one's commit.
-    expect(two.task).toEqual({ prompt: "Now add green", followups: [] })
+    expect(two.task).toEqual({ prompt: "Now add green", followups: [], message: "colors red blue green" })
     expect(two.run.segment).toEqual({ from: at(5), to: at(15) })
     expect([two.run.base_commit, two.run.head_commit]).toEqual([first, second])
     expect(two.commands.map((c) => c.command)).toEqual(["timeout 600 npx turbo run test", "git add -A && git commit -m 'Add green'"])
@@ -174,6 +174,32 @@ describe("storing commits", () => {
     // Whichever moment looks again, nothing is stored twice.
     expect((await store(t)).stored).toEqual([])
     expect((await store(t, { session: { sessionId: s1, transcript: "" } })).stored).toEqual([])
+  }, 60_000)
+
+  it("files each change under the prompt that asked for it, past approvals and pointers to read, with its commit message", async () => {
+    const t = setup()
+    const s1 = "aaaaaaa1-0000-0000-0000-000000000002"
+    const ask = "Add teal to the colors list, then orange as a change of its own after it"
+    const first = commitColors(t.repo, 5, ["red", "teal"])
+    const second = commitColors(t.repo, 15, ["red", "teal", "orange"])
+    writeTranscript(t.claudeHome, t.repo, s1, [
+      { prompt: "please read @HANDOFF.md", at: 0 },
+      { prompt: ask, at: 1 },
+      { edit: ["red", "teal"], from: ["red"], at: 2 },
+      { bash: "npm test", at: 3 },
+      { bash: "git commit -am 'Add teal'", at: 5 },
+      // Nothing of the next change's own asks for it: the session asked before the commit.
+      { prompt: "yes", at: 8 },
+      { edit: ["red", "teal", "orange"], from: ["red", "teal"], at: 10 },
+      { bash: "npm test", at: 12 },
+      { bash: "git commit -am 'Add orange'", at: 15 }
+    ])
+    await store(t)
+    const [one, two] = await records(t)
+    expect(one.task).toEqual({ prompt: ask, followups: ["please read @HANDOFF.md"], message: "colors red teal" })
+    expect(two.run.head_commit).toBe(second)
+    expect(one.run.head_commit).toBe(first)
+    expect(two.task).toEqual({ prompt: ask, followups: ["yes"], message: "colors red teal orange" })
   }, 60_000)
 
   it("folds a follow-up commit of only the same files, with no new prompt, into the change before it", async () => {
