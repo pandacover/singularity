@@ -77,7 +77,8 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
       }
       // A stored commit the agent read with git show or git log: what git doesn't show about it. Most calls end at
       // the first check, no "git" then "show" or "log" in the input, and most of the rest at the second
-      // (History.ts), before the hand-over's modules load; its failure is logged apart too.
+      // (History.ts), before the hand-over's modules load; its failure is logged apart too. The input is JSON,
+      // where a command's newlines are written `\n`: one line, so `.` needs no `s` flag to span them.
       if (out === undefined && /\bgit\b.{0,160}?\b(?:show|log)\b/.test(stdin)) {
         try {
           if ((await import("../scripts/History.ts")).readsCommits(stdin)) out = await (await import("../scripts/Hook.ts")).handOverRead(stdin)

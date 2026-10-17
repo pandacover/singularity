@@ -17,6 +17,19 @@ const MAX_COMMANDS = 8
 const MAX_MISTAKES = 4
 const MAX_COMMAND_CHARS = 200
 
+/**
+ * `text` as inline code, which a command with backticks in it (PowerShell's
+ * escapes, a shell's substitutions) would break: fenced with one backtick
+ * more than its longest run of them, and spaced off one at either end
+ * (CommonMark).
+ */
+export const inlineCode = (text: string): string => {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+  const fence = "`".repeat(longest + 1)
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : ""
+  return `${fence}${pad}${text}${pad}${fence}`
+}
+
 /** Lines a diff chunk adds and removes. */
 export const countLines = (chunk: string): { added: number; removed: number } => {
   let added = 0
@@ -130,8 +143,8 @@ export const mistakesToShow = (detours: ReadonlyArray<Detour>): Array<string> =>
     seen.add(failed)
     const symptom = d.symptom.replace(/\s+/g, " ").trim().slice(0, 200)
     const fixed = d.fixed.command?.trim()
-    const then = fixed === undefined || fixed === "" || fixed === failed || fixed.includes("\n") ? "" : ` What worked instead: \`${fixed.slice(0, 200)}\``
-    out.push(`- \`${failed.slice(0, 200)}\` failed: ${symptom}.${then}`)
+    const then = fixed === undefined || fixed === "" || fixed === failed || fixed.includes("\n") ? "" : ` What worked instead: ${inlineCode(fixed.slice(0, 200))}`
+    out.push(`- ${inlineCode(failed.slice(0, 200))} failed: ${symptom}.${then}`)
     if (out.length === MAX_MISTAKES) break
   }
   return out
@@ -227,7 +240,7 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
     ...sources.map(fileLine)
   ]
   if (snapshots.length > 0) head.push("", "Snapshots it regenerated:", "", ...snapshots.map(fileLine))
-  if (s.commands.length > 0) head.push("", "## Project commands it ran, in order", "", s.commands.map((c) => `\`${c}\``).join(", "))
+  if (s.commands.length > 0) head.push("", "## Project commands it ran, in order", "", s.commands.map((c) => inlineCode(c)).join(", "))
   if (s.mistakes.length > 0) head.push("", "## Mistakes it made", "", ...s.mistakes)
   if (s.nearby.length > 0) head.push("", "## Mistakes other changes to these files made", "", ...s.nearby)
   const intro = head.join("\n")
@@ -315,7 +328,7 @@ export const renderBehind = (b: BehindView, budget = MAX_HANDOVER_CHARS): string
   const list = what.length === 1 ? what[0] : `${what.slice(0, -1).join(", ")} and ${what[what.length - 1]}`
   const out = [`# What git doesn't show about ${sha}`, "", `Memory kept the session that made ${sha}, which you just read in git: ${list}.`]
   if (asked !== undefined) out.push("", "## What it was asked", "", asked.length > MAX_PROMPT_CHARS ? asked.slice(0, MAX_PROMPT_CHARS) + " …" : asked)
-  if (b.commands.length > 0) out.push("", "## Project commands it ran, in order", "", b.commands.map((c) => `\`${c}\``).join(", "))
+  if (b.commands.length > 0) out.push("", "## Project commands it ran, in order", "", b.commands.map((c) => inlineCode(c)).join(", "))
   if (b.mistakes.length > 0) out.push("", "## Mistakes it made", "", ...b.mistakes)
   if (b.nearby.length > 0) out.push("", "## Mistakes other changes to its files made", "", ...b.nearby)
   const text = out.join("\n") + "\n"

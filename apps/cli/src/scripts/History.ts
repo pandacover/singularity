@@ -14,10 +14,11 @@
  * list of subjects only is a look around). Which commits it read: the ones
  * its output heads with `commit <hash>`, else the lines it starts with a hash
  * (`--oneline`, `--format=%H`), else the ones its command names: hashes of 7
- * or more hex characters and HEAD-relative revisions (`HEAD~2`, which
- * Start.ts resolves), not a file read at a commit (`<commit>:<path>`). More
- * than two commits listed is a survey (`git log -5 --stat`), not a reading:
- * nothing.
+ * or more hex characters and HEAD-relative revisions (`HEAD~2`, `@~1`, which
+ * Start.ts resolves), not a file read at a commit (`<commit>:<path>`) or a
+ * reflog entry (`HEAD@{1}`). A command continued over lines (`\` or
+ * PowerShell's backtick at a line's end) reads as one line. More than two
+ * commits listed is a survey (`git log -5 --stat`), not a reading: nothing.
  *
  * Mid-task, a session is given a commit once, whichever moment gave it first
  * (a task's start, a watched file, a reading, `recall`):
@@ -77,7 +78,11 @@ export const listedCommits = (output: string): Array<string> => {
   return headed.length > 0 ? headed : hashesOf(plain, /^(?:[*|][*|\\/ ]*)?([0-9a-f]{7,40})(?=\s|$)/gim)
 }
 
-/** The hashes and HEAD-relative revisions a command names, leaving out file reads at a commit (`<commit>:<path>`). */
+/**
+ * The hashes and HEAD-relative revisions (`HEAD~2`, or `@~2`: `@` is git's
+ * short name for HEAD) a command names, leaving out file reads at a commit
+ * (`<commit>:<path>`), reflog entries (`HEAD@{1}`) and upstreams (`@{u}`).
+ */
 export const namedCommits = (command: string): { readonly hashes: Array<string>; readonly revs: Array<string> } => {
   const hashes: Array<string> = []
   for (const m of command.matchAll(/(?<![\w./-])([0-9a-f]{7,40})(?![\w:/-])/gi)) {
@@ -85,7 +90,7 @@ export const namedCommits = (command: string): { readonly hashes: Array<string>;
     if (isHash(hash) && !hashes.includes(hash)) hashes.push(hash)
   }
   const revs: Array<string> = []
-  for (const m of command.matchAll(/(?<![\w./-])(HEAD(?:[~^]\d*)*)(?![\w:/-])/g)) {
+  for (const m of command.matchAll(/(?<![\w./-])((?:HEAD|@)(?:[~^]\d*)*)(?![\w:/@{-])/g)) {
     if (!revs.includes(m[1])) revs.push(m[1])
   }
   return { hashes, revs }
@@ -100,12 +105,14 @@ export const commitsRead = (
   command: string,
   output: string
 ): { readonly hashes: ReadonlyArray<string>; readonly revs: ReadonlyArray<string> } | undefined => {
-  if (!SHOW.test(command) && !(LOG.test(command) && CHANGE.test(output.replace(/\r\n?/g, "\n")))) return undefined
+  // A command continued over lines (`git \` then `log -1 --stat` on the next) is one line.
+  const line = command.replace(/[\\`]\r?\n/g, " ")
+  if (!SHOW.test(line) && !(LOG.test(line) && CHANGE.test(output.replace(/\r\n?/g, "\n")))) return undefined
   const listed = listedCommits(output)
   if (listed.length > MAX_READ) return undefined
   if (listed.length > 0) return { hashes: listed, revs: [] }
   // Nothing listed (`git show HEAD~2 -- file | tail -30`): what the command names.
-  const named = namedCommits(command)
+  const named = namedCommits(line)
   return named.hashes.length + named.revs.length === 0 ? undefined : named
 }
 
@@ -134,8 +141,9 @@ export const givenPath = (tenantDir: string, safeSessionId: string) => join(tena
 export const readGiven = (path: string): Array<string> =>
   existsSync(path) ? readFileSync(path, "utf-8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "") : []
 
-/** Note that a session was given `commit`. */
+/** Note that a session was given `commit`, once. */
 export const addGiven = (path: string, commit: string): void => {
+  if (readGiven(path).includes(commit)) return
   mkdirSync(dirname(path), { recursive: true })
   appendFileSync(path, `${commit}\n`)
 }

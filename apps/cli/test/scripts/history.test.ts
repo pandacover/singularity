@@ -8,8 +8,8 @@ import { identifyRepo } from "../../src/local/Git.ts"
 import { buildRecord, commitRecordId } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { commitsRead, listedCommits, namedCommits } from "../../src/scripts/History.ts"
-import { renderBehind } from "../../src/scripts/Render.ts"
+import { addGiven, commitsRead, givenPath, listedCommits, namedCommits, readGiven, readsCommits } from "../../src/scripts/History.ts"
+import { inlineCode, renderBehind } from "../../src/scripts/Render.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
 import { bash, session } from "../records/fixtures.ts"
@@ -42,6 +42,23 @@ describe("which commits a call read", () => {
     expect(commitsRead(`git show 8a4ba047a3:lib/md064.mjs`, "export const x = 1\n")).toBeUndefined()
     expect(commitsRead(`git show HEAD:package.json`, "{}\n")).toBeUndefined()
     expect(namedCommits(`git show deadbeef -- build/0123abcd9/x.js`)).toEqual({ hashes: [], revs: [] })
+    // `@` is git's short name for HEAD; an email, a reflog entry and an upstream name no commit read.
+    expect(commitsRead(`git show @~1 -- lib/md063.mjs | tail -5`, "+x\n")).toEqual({ hashes: [], revs: ["@~1"] })
+    expect(namedCommits(`git show @ --stat`)).toEqual({ hashes: [], revs: ["@"] })
+    expect(namedCommits(`git log -p --author=me@example.com HEAD@{1} @{u}`)).toEqual({ hashes: [], revs: [] })
+  })
+
+  it("reads a command continued over lines as one", () => {
+    // bash's backslash and PowerShell's backtick at a line's end.
+    expect(commitsRead("git \\\n  log -1 --stat", header(A, "Add MD062.") + "\n" + stat)).toEqual({ hashes: [A], revs: [] })
+    expect(commitsRead("git -C C:/work/repo `\r\n  show HEAD~1 -- lib/md062.mjs | Select-Object -Last 5", "+x\n")).toEqual({ hashes: [], revs: ["HEAD~1"] })
+    // The tool-call hook's input as a whole, JSON, where the newline arrives written `\n`.
+    const stdin = JSON.stringify({
+      session_id: "s", hook_event_name: "PostToolUse", tool_name: "Bash",
+      tool_input: { command: "git \\\n  log -1 --stat" }, tool_response: { stdout: header(A, "Add MD062.") + "\n" + stat }
+    })
+    expect(stdin).not.toContain("\n")
+    expect(readsCommits(stdin)).toBe(true)
   })
 
   it("leaves out surveys, logs without a change, and other git commands", () => {
@@ -81,6 +98,25 @@ describe("what git doesn't show", () => {
     expect(yes).not.toContain("## What it was asked")
     expect(yes).toContain("which you just read in git: the project commands it ran.")
     expect(renderBehind({ commit: A, prompt: "commit and open a PR", commands: [], mistakes: [], nearby: [] })).toBeUndefined()
+  })
+
+  it("fences a command with backticks in it with more of them", () => {
+    expect(inlineCode("npm test")).toBe("`npm test`")
+    expect(inlineCode("Write-Output \"a`tb\"")).toBe("``Write-Output \"a`tb\"``")
+    expect(inlineCode("echo `date`")).toBe("`` echo `date` ``")
+    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test", "echo `date`"], mistakes: [], nearby: [] }))
+      .toContain("## Project commands it ran, in order\n\n`npm test`, `` echo `date` ``")
+  })
+})
+
+describe("what a session was given", () => {
+  it("notes each commit once", () => {
+    const path = givenPath(tempDir(), "s")
+    expect(readGiven(path)).toEqual([])
+    addGiven(path, A)
+    addGiven(path, A)
+    addGiven(path, B)
+    expect(readGiven(path)).toEqual([A, B])
   })
 })
 
@@ -171,6 +207,9 @@ describe("reading a stored commit, through the hooks", () => {
     })).toBe("")
     // The output cut before its header: the revision the command names.
     expect(read("cccccccc-0000-0000-0000-000000000003", "git show HEAD -- lib/md061.mjs | tail -3", "+  const maximum = params.config.maximum ?? 6\n+}\n")).toContain("# What git doesn't show about")
+    // A command continued over lines.
+    const continued = "cccccccc-0000-0000-0000-000000000006"
+    expect(read(continued, `git \\\n  show --stat ${head.slice(0, 10)}`, gitOutput(`git show --stat ${head.slice(0, 10)}`))).toContain("# What git doesn't show about")
     // The session that made it isn't told about its own commit.
     expect(read("11111111-2222-3333-4444-555555555555", `git show ${head.slice(0, 10)}`)).toBe("")
     // A session handed the change at its start isn't given it again.
@@ -189,6 +228,7 @@ describe("reading a stored commit, through the hooks", () => {
     expect(read(recalled, `git show ${head.slice(0, 10)}`)).toBe("")
 
     const log = readFileSync(join(tenantDir, "workflows", "handovers.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l))
-    expect(log.filter((l) => l.moment === "git").map((l) => [l.session_id, l.picked?.commit ?? null])).toEqual([[s, head], ["cccccccc-0000-0000-0000-000000000003", head]])
+    expect(log.filter((l) => l.moment === "git").map((l) => [l.session_id, l.picked?.commit ?? null]))
+      .toEqual([[s, head], ["cccccccc-0000-0000-0000-000000000003", head], [continued, head]])
   }, 60_000)
 })

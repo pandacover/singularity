@@ -182,9 +182,10 @@ session ran, its mistakes, and other changes' mistakes in its files, as at
 task start (`Render.renderBehind`, nothing when it has none of these). A
 call reads commits when it runs `git show`, or `git log` printing a diff or
 a stat. They're the commits its output heads with `commit <hash>`, else the
-lines it starts with a hash, else the hashes and `HEAD~n` revisions its
-command names (resolved in the repo; not `<commit>:<path>`). More than
-two commits listed is a survey: nothing. A reading never gives a session
+lines it starts with a hash, else the hashes and `HEAD~n` or `@~n`
+revisions its command names (resolved in the repo; not `<commit>:<path>`,
+`HEAD@{1}` or `@{u}`), a command continued over lines read as one. More
+than two commits listed is a survey: nothing. A reading never gives a session
 its own commits. Every hand-over notes its commit for the session (task
 start, file, a reading, or `singularity recall`, which Claude Code's
 `CLAUDE_CODE_SESSION_ID` ties to the session):
