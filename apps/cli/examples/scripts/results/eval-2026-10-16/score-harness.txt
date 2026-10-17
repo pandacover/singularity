@@ -1,0 +1,69 @@
+# runs/excalidraw/eval-1016/long
+
+| task | setup | runs | passed | median tokens | range | median $ | median turns | hand-over | recall |
+|---|---|---|---|---|---|---|---|---|---|
+| long-four-changes | no-memory | 8 | 8 | 1,590k | 883k-1,983k | $0.55 | 52.5 |  | 0 |
+| long-four-changes | scripts | 8 | 8 | 1,280k | 1,069k-1,668k | $0.44 | 34 | toggle-minimap 0.847 | 0 |
+| long-mixed-changes | no-memory | 4 | 4 | 1,307k | 923k-1,782k | $0.50 | 69 |  | 0 |
+| long-mixed-changes | scripts | 4 | 4 | 763k | 651k-823k | $0.30 | 21.5 | toggle-minimap 0.788 | 0 |
+
+| task | runs (no memory, scripts) | median tokens | median $ | failed runs (no memory, scripts) | verdict |
+|---|---|---|---|---|---|
+| long-four-changes | 8, 8 | -20% | -21% | 0, 0 | no clear difference |
+| long-mixed-changes | 4, 4 | -42% | -39% | 0, 0 | helps |
+
+Spent: no memory $6.38, scripts $4.75
+
+# runs/excalidraw/eval-1016/short
+
+| task | setup | runs | passed | median tokens | range | median $ | median turns | hand-over | recall |
+|---|---|---|---|---|---|---|---|---|---|
+| midpoint-snap-n | no-memory | 3 | 3 | 410k | 384k-424k | $0.18 | 24 |  | 0 |
+| midpoint-snap-n | scripts | 3 | 3 | 262k | 248k-324k | $0.17 | 20 | altkey-zen-m 0.404 | 0 |
+| save-as-in-text | no-memory | 3 | 3 | 404k | 308k-414k | $0.15 | 17 |  | 0 |
+| save-as-in-text | scripts | 3 | 3 | 338k | 305k-363k | $0.14 | 15 | none (0.376) | 0 |
+| altkey-viewmode-j | no-memory | 3 | 3 | 255k | 232k-314k | $0.12 | 19 |  | 0 |
+| altkey-viewmode-j | scripts | 3 | 3 | 140k | 140k-169k | $0.08 | 9 | altkey-zen-m 0.796 | 0 |
+| toggle-presenter | no-memory | 3 | 3 | 689k | 443k-867k | $0.29 | 47 |  | 0 |
+| toggle-presenter | scripts | 3 | 3 | 349k | 165k-502k | $0.15 | 14 | toggle-minimap 0.807 | 0 |
+| stats-shortcut-k | no-memory | 3 | 3 | 824k | 654k-975k | $0.25 | 32 |  | 0 |
+| stats-shortcut-k | scripts | 3 | 3 | 684k | 482k-850k | $0.24 | 26 | altkey-zen-m 0.626 | 0 |
+| toggle-rulers | no-memory | 3 | 3 | 631k | 373k-691k | $0.31 | 49 |  | 0 |
+| toggle-rulers | scripts | 3 | 3 | 322k | 199k-345k | $0.21 | 33 | toggle-minimap 0.893 | 0 |
+| page-breaks | no-memory | 3 | 3 | 269k | 181k-269k | $0.13 | 17 |  | 0 |
+| page-breaks | scripts | 3 | 3 | 192k | 159k-209k | $0.10 | 13 | toggle-minimap 0.731 | 0 |
+| dropdown-outside-click | no-memory | 3 | 3 | 261k | 252k-290k | $0.11 | 13 |  | 0 |
+| dropdown-outside-click | scripts | 3 | 3 | 294k | 294k-378k | $0.13 | 12 | none (0.192) | 0 |
+| altkey-snap-u | no-memory | 3 | 3 | 352k | 275k-1,363k | $0.17 | 21 |  | 0 |
+| altkey-snap-u | scripts | 3 | 3 | 143k | 105k-145k | $0.07 | 10 | altkey-zen-m 0.728 | 0 |
+
+| task | runs (no memory, scripts) | median tokens | median $ | failed runs (no memory, scripts) | verdict |
+|---|---|---|---|---|---|
+| midpoint-snap-n | 3, 3 | -36% | -4% | 0, 0 | no clear difference |
+| save-as-in-text | 3, 3 | -16% | -6% | 0, 0 | no clear difference |
+| altkey-viewmode-j | 3, 3 | -45% | -33% | 0, 0 | helps |
+| toggle-presenter | 3, 3 | -49% | -50% | 0, 0 | helps |
+| stats-shortcut-k | 3, 3 | -17% | -4% | 0, 0 | no clear difference |
+| toggle-rulers | 3, 3 | -49% | -34% | 0, 0 | helps |
+| page-breaks | 3, 3 | -28% | -26% | 0, 0 | helps |
+| dropdown-outside-click | 3, 3 | +13% | +20% | 0, 0 | hurts |
+| altkey-snap-u | 3, 3 | -59% | -56% | 0, 0 | helps |
+
+Spent: no memory $5.25, scripts $3.70
+
+# runs/validator/eval-1016
+
+| task | setup | runs | passed | median tokens | range | median $ | median turns | hand-over | recall |
+|---|---|---|---|---|---|---|---|---|---|
+| ulid | no-memory | 3 | 3 | 177k | 151k-189k | $0.08 | 16 |  | 0 |
+| ulid | scripts | 3 | 3 | 113k | 113k-146k | $0.07 | 4 | iso31661-numeric 0.441 | 0 |
+| postal-code-pk | no-memory | 3 | 3 | 196k | 172k-254k | $0.07 | 11 |  | 0 |
+| postal-code-pk | scripts | 3 | 3 | 195k | 169k-293k | $0.07 | 12 | none (0.255) | 0 |
+
+| task | runs (no memory, scripts) | median tokens | median $ | failed runs (no memory, scripts) | verdict |
+|---|---|---|---|---|---|
+| ulid | 3, 3 | -36% | -13% | 0, 0 | helps |
+| postal-code-pk | 3, 3 | -1% | +0% | 0, 0 | no clear difference |
+
+Spent: no memory $0.45, scripts $0.41
+

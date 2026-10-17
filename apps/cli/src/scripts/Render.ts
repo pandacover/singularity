@@ -7,6 +7,8 @@
  * instead of showing its change. Pure: Start.ts reads the record and git.
  */
 import type { CommandRun, Detour, FileChange } from "../records/Models.ts"
+import { taskShown } from "../records/Task.ts"
+import { isRequest } from "../traces/Requests.ts"
 
 /** Claude Code cuts a hook's text at 10,000 characters; the hand-over stays under that. */
 export const MAX_HANDOVER_CHARS = 9800
@@ -51,6 +53,8 @@ export interface FileNow extends FileChange {
 
 export interface ScriptView {
   readonly prompt: string
+  /** Its commit message (records/Task.ts), shown as its task when the prompt asked for nothing. */
+  readonly message?: string | undefined
   /** The commit that holds it; null for an eval's saved run, which was never committed. */
   readonly commit: string | null
   readonly score: number
@@ -191,7 +195,9 @@ export const shareOf = (sizes: ReadonlyArray<number>, room: number): number => {
 
 export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string => {
   const sha = s.commit?.slice(0, 10)
-  const prompt = s.prompt.length > MAX_PROMPT_CHARS ? s.prompt.slice(0, MAX_PROMPT_CHARS) + " …" : s.prompt
+  // When no prompt asked for it ("yes", "commit and open a PR"), its commit message says what it was for.
+  const asked = taskShown(s)
+  const prompt = asked.length > MAX_PROMPT_CHARS ? asked.slice(0, MAX_PROMPT_CHARS) + " …" : asked
   const sources = s.files.filter((f) => !f.snapshot)
   const snapshots = s.files.filter((f) => f.snapshot)
   const committed = sha === undefined ? "" : `, and its change was committed as ${sha}`
@@ -212,7 +218,7 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
         "change along with it (tests, types, generated files, docs), not as a model of your change."
       ]),
     "",
-    "## Its task",
+    asked === s.prompt ? "## Its task" : "## Its task, as its commit message says",
     "",
     prompt.trim(),
     "",
@@ -277,4 +283,41 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
     if (cut.length > 0) out += `\nThe whole change: \`git show ${sha}\` (add \`-- <file>\` for one file).\n`
   }
   return out.length <= budget ? out : out.slice(0, budget - 40) + "\n… (cut for room)\n"
+}
+
+/** A stored change as the agent reads it beside its commit, which it just read in git (History.ts). */
+export interface BehindView {
+  readonly commit: string
+  readonly prompt: string
+  readonly commands: ReadonlyArray<string>
+  readonly mistakes: ReadonlyArray<string>
+  readonly nearby: ReadonlyArray<string>
+}
+
+/**
+ * What git doesn't show about a commit the agent just read with `git show`
+ * or `git log` (Start.ts `commitHandover`): the request that asked for it,
+ * when one did (else its commit message was its task, and git has that), the
+ * project commands its session ran, and the mistakes it and other changes to
+ * its files made. Not its diff or its files: the agent has them. Undefined
+ * when memory knows none of these.
+ */
+export const renderBehind = (b: BehindView, budget = MAX_HANDOVER_CHARS): string | undefined => {
+  const asked = isRequest(b.prompt) ? b.prompt.trim() : undefined
+  const what = [
+    ...(asked === undefined ? [] : ["what it was asked"]),
+    ...(b.commands.length > 0 ? ["the project commands it ran"] : []),
+    ...(b.mistakes.length > 0 ? ["the mistakes it made"] : []),
+    ...(b.nearby.length > 0 ? ["mistakes other changes to its files made"] : [])
+  ]
+  if (what.length === 0) return undefined
+  const sha = b.commit.slice(0, 10)
+  const list = what.length === 1 ? what[0] : `${what.slice(0, -1).join(", ")} and ${what[what.length - 1]}`
+  const out = [`# What git doesn't show about ${sha}`, "", `Memory kept the session that made ${sha}, which you just read in git: ${list}.`]
+  if (asked !== undefined) out.push("", "## What it was asked", "", asked.length > MAX_PROMPT_CHARS ? asked.slice(0, MAX_PROMPT_CHARS) + " …" : asked)
+  if (b.commands.length > 0) out.push("", "## Project commands it ran, in order", "", b.commands.map((c) => `\`${c}\``).join(", "))
+  if (b.mistakes.length > 0) out.push("", "## Mistakes it made", "", ...b.mistakes)
+  if (b.nearby.length > 0) out.push("", "## Mistakes other changes to its files made", "", ...b.nearby)
+  const text = out.join("\n") + "\n"
+  return text.length <= budget ? text : text.slice(0, budget - 40) + "\n… (cut for room)\n"
 }

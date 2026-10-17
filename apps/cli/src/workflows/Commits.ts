@@ -37,11 +37,14 @@ import { buildRecord, commitRecordId, recordId } from "../records/Build.ts"
 import { extractMechanical, relativizer } from "../records/Extract.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { classifyKey } from "../records/Shell.ts"
+import { changeMessage } from "../records/Task.ts"
 import { readRetired, retire } from "../scripts/Retired.ts"
+import { isRequest } from "../traces/Requests.ts"
 import {
   EDIT_TOOLS,
   isPersonPrompt,
   parseSession,
+  personText,
   SHELL_TOOLS,
   SHELL_WRITE,
   sliceTrace,
@@ -501,6 +504,18 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
   const base = into === undefined ? first.parent : into.base
 
   const diff = yield* git(ctx.root, ["diff", "--binary", base, head.hash]).pipe(Effect.map((s) => s.replace(/\r\n?/g, "\n")))
+  // What the change did, in the agent's words, whatever the person typed; and when no prompt of its
+  // part of the log asks for anything ("yes", "commit and open a PR"), what the session last asked before it.
+  const messages = yield* git(ctx.root, ["log", "--reverse", "--format=%B%x1e", `${base}..${head.hash}`]).pipe(Effect.orElseSucceed(() => ""))
+  const askedHere = whole.prompts.some((p) => isPersonPrompt(p) && isRequest(personText(p.text)))
+  const asked = askedHere || from === undefined ? undefined : f.trace.prompts
+    .filter((p) => {
+      const t = p.timestamp === undefined ? undefined : DateTime.toEpochMillis(p.timestamp)
+      return t !== undefined && t <= from && isPersonPrompt(p)
+    })
+    .map((p) => personText(p.text))
+    .filter(isRequest)
+    .at(-1)
   const record = buildRecord({
     id: commitRecordId(ctx.subject, head.hash),
     tenant: ctx.tenant,
@@ -525,7 +540,9 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
       cost_usd: null,
       tokens: usageTotal(traceUsage(whole))
     },
-    createdAt: ctx.createdAt
+    createdAt: ctx.createdAt,
+    message: changeMessage(messages.split("\x1e")),
+    asked
   })
   return { record, folds: into?.id }
 })

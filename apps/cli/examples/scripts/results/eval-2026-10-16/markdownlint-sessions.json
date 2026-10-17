@@ -1,0 +1,4075 @@
+[
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 1,
+  "task": "t01-heading-max-level",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.33335499999999996,
+  "recordCost": 0.33335499999999996,
+  "calls": 19,
+  "beforeEdit": 0.17485379999999998,
+  "history": 0.0325566,
+  "editToCheck": 0.07212359999999998,
+  "checkToEnd": 0.0863776,
+  "failingStretch": 0.029688399999999997,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "readme",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log --stat -3 --format=%s -- lib/md060.mjs lib/md060.js | head -40",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git log --all --oneline -i --grep=\"MD060\\|MD059\" | head",
+    "kind": "search",
+    "refs": []
+   },
+   {
+    "command": "git show 3532e311 --stat --format=%s",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git show 3532e311 -- lib/rules.mjs lib/md060.mjs README.md package.json | head -150",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 2,
+  "task": "t02-code-block-max-lines",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.5922849999999998,
+  "recordCost": 0.592285,
+  "calls": 35,
+  "beforeEdit": 0.06719919999999999,
+  "history": 0.032962599999999995,
+  "editToCheck": 0.25962280000000004,
+  "checkToEnd": 0.265463,
+  "failingStretch": 0.1752074,
+  "failures": [
+   {
+    "kinds": [
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show --stat HEAD~2 | head -5",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git show HEAD -- README.md doc-build doc/md061.md lib/md061.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mj",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD -- doc/Rules.md | head -80",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD -- test/markdownlint-test-scenarios.mjs.snapshot | head -40",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 3,
+  "task": "t03-md024-ignore-case",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.17900779999999997,
+  "recordCost": 0.17900779999999997,
+  "calls": 11,
+  "beforeEdit": 0.0590182,
+  "history": 0.0225034,
+  "editToCheck": 0.0514924,
+  "checkToEnd": 0.0684972,
+  "failingStretch": 0.0164066,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "test markers",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 HEAD | cat",
+    "kind": "commit",
+    "refs": [
+     1,
+     2
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 4,
+  "task": "t04-list-max-depth",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.23958680000000002,
+  "recordCost": 0.23958680000000002,
+  "calls": 15,
+  "beforeEdit": 0.0706204,
+  "history": 0.0320348,
+  "editToCheck": 0.057400599999999996,
+  "checkToEnd": 0.11156579999999999,
+  "failingStretch": 0.0607284,
+  "failures": [
+   {
+    "kinds": [
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- README.md doc-build lib/md062.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/mark",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 5,
+  "task": "t05-get-rules",
+  "kind": "one-off",
+  "passed": false,
+  "cost": 0.1696566,
+  "recordCost": 0.1696566,
+  "calls": 9,
+  "beforeEdit": 0.1696566,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0,
+  "failingStretch": 0.032348,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log --oneline | head -1",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 6,
+  "task": "t06-rename-doc-src",
+  "kind": "update",
+  "passed": false,
+  "cost": 0.0684536,
+  "recordCost": 0.0684536,
+  "calls": 6,
+  "beforeEdit": 0.0292982,
+  "history": 0,
+  "editToCheck": 0.0081794,
+  "checkToEnd": 0.030975999999999997,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 7,
+  "task": "t07-link-url-scheme",
+  "kind": "new-rule",
+  "passed": false,
+  "cost": 0.45735279999999995,
+  "recordCost": 0.45735279999999995,
+  "calls": 24,
+  "beforeEdit": 0.0950942,
+  "history": 0.0347386,
+  "editToCheck": 0.114899,
+  "checkToEnd": 0.24735959999999999,
+  "failingStretch": 0.1729534,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "project files"
+    ],
+    "memorySaw": false
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~3 | cat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show --stat HEAD~1 | head -30",
+    "kind": "commit",
+    "refs": [
+     5
+    ]
+   },
+   {
+    "command": "git show HEAD~3 -- README.md doc-build doc/md063.md lib/md063.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 8,
+  "task": "t08-todo-comments-example",
+  "kind": "look-alike",
+  "passed": false,
+  "cost": 0.4837572000000001,
+  "recordCost": 0.48375720000000005,
+  "calls": 30,
+  "beforeEdit": 0.0616046,
+  "history": 0,
+  "editToCheck": 0.037799,
+  "checkToEnd": 0.38435359999999996,
+  "failingStretch": 0.100107,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 9,
+  "task": "t09-md014-prompts",
+  "kind": "rule-option",
+  "passed": false,
+  "cost": 0.27659819999999996,
+  "recordCost": 0.27659819999999996,
+  "calls": 15,
+  "beforeEdit": 0.10290099999999999,
+  "history": 0.0566334,
+  "editToCheck": 0.0498386,
+  "checkToEnd": 0.1238586,
+  "failingStretch": 0.048378199999999996,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "test markers",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- test/markdownlint-test.mjs test/markdownlint-test-project.mjs README.md | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- test/markdownlint-test-scenarios.mjs.snapshot | head -60",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 10,
+  "task": "t10-ol-delimiter-style",
+  "kind": "new-rule",
+  "passed": false,
+  "cost": 0.37236299999999994,
+  "recordCost": 0.37236299999999994,
+  "calls": 19,
+  "beforeEdit": 0.1283674,
+  "history": 0.0336702,
+  "editToCheck": 0.0578168,
+  "checkToEnd": 0.1861788,
+  "failingStretch": 0.10304359999999999,
+  "failures": [
+   {
+    "kinds": [
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "readme",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~2 | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- README.md doc-src lib/md064.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/markdo",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 11,
+  "task": "t11-circular-extends",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.1815458,
+  "recordCost": 0.1815458,
+  "calls": 10,
+  "beforeEdit": 0.0300916,
+  "history": 0,
+  "editToCheck": 0.0929888,
+  "checkToEnd": 0.0584654,
+  "failingStretch": 0.01839,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "without",
+  "index": 12,
+  "task": "t12-no-empty-headings",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.38199440000000007,
+  "recordCost": 0.38199440000000007,
+  "calls": 23,
+  "beforeEdit": 0.097709,
+  "history": 0.0655426,
+  "editToCheck": 0.0831716,
+  "checkToEnd": 0.2011138,
+  "failingStretch": 0.1332004,
+  "failures": [
+   {
+    "kinds": [
+     "readme",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~2 | cat",
+    "kind": "commit",
+    "refs": [
+     9
+    ]
+   },
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- README.md lib/constants.mjs lib/rules.mjs schema/build-config-schema.mjs test/markdownlint-test-project.mjs test/markdownlint-test.mjs doc-sr",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 1,
+  "task": "t01-heading-max-level",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.3161158,
+  "recordCost": 0.31611579999999995,
+  "calls": 20,
+  "beforeEdit": 0.14887900000000004,
+  "history": 0.0226536,
+  "editToCheck": 0.06343019999999999,
+  "checkToEnd": 0.10380659999999998,
+  "failingStretch": 0.058649599999999996,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "test markers",
+     "readme",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log --stat -3 --format=%s -- lib/md060.mjs | head -50",
+    "kind": "path",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 2,
+  "task": "t02-code-block-max-lines",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.624272,
+  "recordCost": 0.624272,
+  "calls": 31,
+  "beforeEdit": 0.08597840000000001,
+  "history": 0.0673842,
+  "editToCheck": 0.22077,
+  "checkToEnd": 0.31752359999999996,
+  "failingStretch": 0.2622652,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage",
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 22fd2e83 --stat | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 22fd2e83 -- README.md doc-build/md061.md schema/.markdownlint.jsonc schema/.markdownlint.yaml test/heading-max-level.md | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 22fd2e83 -- doc/md061.md | head -50",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.57,
+   "chars": 7998,
+   "hidden": []
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 3,
+  "task": "t03-md024-ignore-case",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.28792919999999994,
+  "recordCost": 0.28792920000000005,
+  "calls": 15,
+  "beforeEdit": 0.07579319999999999,
+  "history": 0,
+  "editToCheck": 0.0200228,
+  "checkToEnd": 0.19211319999999998,
+  "failingStretch": 0.12425299999999999,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": {
+   "picked": 1,
+   "score": 0.423,
+   "chars": 9395,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 4,
+  "task": "t04-list-max-depth",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.19877479999999997,
+  "recordCost": 0.19877480000000003,
+  "calls": 11,
+  "beforeEdit": 0.1027674,
+  "history": 0.04082759999999999,
+  "editToCheck": 0.045048599999999994,
+  "checkToEnd": 0.0509588,
+  "failingStretch": 0.0109418,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show b50db32d --stat | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show b50db32d -- test/markdownlint-test.mjs test/markdownlint-test-project.mjs schema/build-config-schema.mjs package.json | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show b50db32d -- README.md | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.614,
+   "chars": 9395,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 5,
+  "task": "t05-get-rules",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.20652700000000002,
+  "recordCost": 0.20652700000000002,
+  "calls": 10,
+  "beforeEdit": 0.0951436,
+  "history": 0,
+  "editToCheck": 0.023656,
+  "checkToEnd": 0.0877274,
+  "failingStretch": 0.026683399999999996,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "types"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 6,
+  "task": "t06-rename-doc-src",
+  "kind": "update",
+  "passed": true,
+  "cost": 0.066575,
+  "recordCost": 0.066575,
+  "calls": 6,
+  "beforeEdit": 0.066575,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 7,
+  "task": "t07-link-url-scheme",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.32579179999999996,
+  "recordCost": 0.32579179999999996,
+  "calls": 14,
+  "beforeEdit": 0.11977199999999999,
+  "history": 0.11977199999999999,
+  "editToCheck": 0.09122500000000003,
+  "checkToEnd": 0.1147948,
+  "failingStretch": 0.06638340000000001,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 22fd2e8319 --stat | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 22fd2e8319 -- README.md doc-build doc/Rules.md doc/md061.md test/markdownlint-test.mjs test/markdownlint-test-project.mjs schema/.markdownlint.yaml | h",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show d70a5f96 --stat | cat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show d70a5f96 -- lib README.md schema/build-config-schema.mjs schema/.markdownlint.yaml schema/.markdownlint.jsonc test/markdownlint-test.mjs test/markdownl",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show d70a5f96 -- doc-build doc-src | head -5",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.416,
+   "chars": 9070,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 8,
+  "task": "t08-todo-comments-example",
+  "kind": "look-alike",
+  "passed": true,
+  "cost": 0.3445112000000001,
+  "recordCost": 0.3445112000000001,
+  "calls": 23,
+  "beforeEdit": 0.0678616,
+  "history": 0,
+  "editToCheck": 0.0224696,
+  "checkToEnd": 0.25417999999999996,
+  "failingStretch": 0.1244178,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 9,
+  "task": "t09-md014-prompts",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.3404959999999999,
+  "recordCost": 0.34049599999999997,
+  "calls": 17,
+  "beforeEdit": 0.1410454,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0.19945060000000003,
+  "failingStretch": 0.086317,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "lint",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": {
+   "picked": 3,
+   "score": 0.489,
+   "chars": 9326,
+   "hidden": [
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 10,
+  "task": "t10-ol-delimiter-style",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.36775460000000004,
+  "recordCost": 0.3677546000000001,
+  "calls": 21,
+  "beforeEdit": 0.1203808,
+  "history": 0.054498599999999994,
+  "editToCheck": 0.0654526,
+  "checkToEnd": 0.18192119999999998,
+  "failingStretch": 0.10781,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~2 | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- README.md doc-src test/markdownlint-test-project.mjs test/markdownlint-test.mjs lib/rules.mjs schema/build-config-schema.mjs test/link-url-sc",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.471,
+   "chars": 9070,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 11,
+  "task": "t11-circular-extends",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.22754879999999997,
+  "recordCost": 0.22754879999999997,
+  "calls": 12,
+  "beforeEdit": 0.0300114,
+  "history": 0,
+  "editToCheck": 0.10013559999999999,
+  "checkToEnd": 0.09740179999999998,
+  "failingStretch": 0.0453074,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": {
+   "file": "lib/markdownlint.mjs",
+   "picked": 5
+  },
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 1,
+  "arm": "with",
+  "index": 12,
+  "task": "t12-no-empty-headings",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.35107579999999994,
+  "recordCost": 0.3510758,
+  "calls": 19,
+  "beforeEdit": 0.0971276,
+  "history": 0.0971276,
+  "editToCheck": 0.10065879999999999,
+  "checkToEnd": 0.1532894,
+  "failingStretch": 0.0938032,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 22fd2e8319 --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git log --oneline -3 -- doc-src doc-build | head",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git show 73b0d0c7 --stat",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show 73b0d0c7 -- README.md doc-src lib/constants.mjs lib/rules.mjs test/markdownlint-test-project.mjs test/markdownlint-test.mjs test/list-item-prefix-paddi",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show 73b0d0c7 -- test/markdownlint-test-project.mjs test/markdownlint-test.mjs",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show 73b0d0c7 -- schema/.markdownlint.jsonc",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.526,
+   "chars": 9070,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 1,
+  "task": "t01-heading-max-level",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.38595820000000003,
+  "recordCost": 0.38595820000000003,
+  "calls": 22,
+  "beforeEdit": 0.15298599999999998,
+  "history": 0.0657344,
+  "editToCheck": 0.07351300000000001,
+  "checkToEnd": 0.1594592,
+  "failingStretch": 0.08376199999999999,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~5 | head -5",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git log --oneline -40 | grep -i -E \"md05|rule\"",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git log -3 --stat --format=%s -- lib/md059.mjs | head -50",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git show --stat --format=%s $(git log --format=%h --diff-filter=A -1 -- lib/md059.mjs) | cat",
+    "kind": "path",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 2,
+  "task": "t02-code-block-max-lines",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.45275399999999993,
+  "recordCost": 0.45275399999999993,
+  "calls": 25,
+  "beforeEdit": 0.06804579999999999,
+  "history": 0.06804579999999999,
+  "editToCheck": 0.14895779999999997,
+  "checkToEnd": 0.23575040000000003,
+  "failingStretch": 0.1901198,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD -- README.md doc-build lib/md061.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/markdo",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD -- doc/md061.md | tail -35",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 3,
+  "task": "t03-md024-ignore-case",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.170652,
+  "recordCost": 0.17065199999999997,
+  "calls": 11,
+  "beforeEdit": 0.13118539999999998,
+  "history": 0.0121844,
+  "editToCheck": 0,
+  "checkToEnd": 0.039466600000000004,
+  "failingStretch": 0.0115972,
+  "failures": [
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 4,
+  "task": "t04-list-max-depth",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.248347,
+  "recordCost": 0.248347,
+  "calls": 13,
+  "beforeEdit": 0.1011724,
+  "history": 0.0349974,
+  "editToCheck": 0.0653402,
+  "checkToEnd": 0.08183439999999999,
+  "failingStretch": 0.013700399999999998,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show --stat HEAD~2 | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- README.md doc-build lib/md062.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/mark",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show HEAD~1:schema/.markdownlint.yaml | tail -c 50 | od -c | tail -3",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 5,
+  "task": "t05-get-rules",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.220328,
+  "recordCost": 0.22032799999999997,
+  "calls": 10,
+  "beforeEdit": 0.0909492,
+  "history": 0,
+  "editToCheck": 0.031366000000000005,
+  "checkToEnd": 0.0980128,
+  "failingStretch": 0.020685600000000002,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "lint",
+     "types"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 6,
+  "task": "t06-rename-doc-src",
+  "kind": "update",
+  "passed": true,
+  "cost": 0.06613200000000001,
+  "recordCost": 0.066132,
+  "calls": 6,
+  "beforeEdit": 0.06613200000000001,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 7,
+  "task": "t07-link-url-scheme",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.3969112,
+  "recordCost": 0.3969112,
+  "calls": 20,
+  "beforeEdit": 0.10572079999999999,
+  "history": 0.0348618,
+  "editToCheck": 0.0846584,
+  "checkToEnd": 0.20653199999999997,
+  "failingStretch": 0.1010666,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat 8b16825a | cat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show --stat 555c9edc | head -30",
+    "kind": "commit",
+    "refs": [
+     5
+    ]
+   },
+   {
+    "command": "git show 8b16825a -- README.md doc-build lib/md063.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/li",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show --stat HEAD | cat",
+    "kind": "commit",
+    "refs": [
+     6
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 8,
+  "task": "t08-todo-comments-example",
+  "kind": "look-alike",
+  "passed": true,
+  "cost": 0.3187267999999999,
+  "recordCost": 0.3187267999999999,
+  "calls": 19,
+  "beforeEdit": 0.059996999999999995,
+  "history": 0,
+  "editToCheck": 0.25872979999999995,
+  "checkToEnd": 0,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 9,
+  "task": "t09-md014-prompts",
+  "kind": "rule-option",
+  "passed": false,
+  "cost": 0.2843658,
+  "recordCost": 0.2843658,
+  "calls": 15,
+  "beforeEdit": 0.07499159999999999,
+  "history": 0.07499159999999999,
+  "editToCheck": 0.08368400000000001,
+  "checkToEnd": 0.1256902,
+  "failingStretch": 0.0624318,
+  "failures": [
+   {
+    "kinds": [
+     "types"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~4 HEAD~1 | head -60",
+    "kind": "commit",
+    "refs": [
+     4,
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~3 -- schema/build-config-schema.mjs schema/.markdownlint.jsonc test/markdownlint-test.mjs test/markdownlint-test-project.mjs",
+    "kind": "commit",
+    "refs": [
+     5
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- schema/build-config-schema.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml test/markdownlint-test.mjs test/markdownlint-test-project",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 10,
+  "task": "t10-ol-delimiter-style",
+  "kind": "new-rule",
+  "passed": false,
+  "cost": 0.37446480000000004,
+  "recordCost": 0.3744648000000001,
+  "calls": 20,
+  "beforeEdit": 0.11157119999999998,
+  "history": 0.0334256,
+  "editToCheck": 0.09936220000000001,
+  "checkToEnd": 0.1635314,
+  "failingStretch": 0.1294658,
+  "failures": [
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "coverage",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat 37192f3c | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show 37192f3c -- README.md doc-src lib/md064.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/mark",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 11,
+  "task": "t11-circular-extends",
+  "kind": "one-off",
+  "passed": false,
+  "cost": 0.1835906,
+  "recordCost": 0.1835906,
+  "calls": 10,
+  "beforeEdit": 0.0569378,
+  "history": 0,
+  "editToCheck": 0.063184,
+  "checkToEnd": 0.06346879999999999,
+  "failingStretch": 0.015411600000000001,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "without",
+  "index": 12,
+  "task": "t12-no-empty-headings",
+  "kind": "new-rule",
+  "passed": false,
+  "cost": 0.4110175999999999,
+  "recordCost": 0.41101760000000004,
+  "calls": 23,
+  "beforeEdit": 0.10267339999999998,
+  "history": 0.07895659999999999,
+  "editToCheck": 0.10800579999999999,
+  "checkToEnd": 0.20033840000000003,
+  "failingStretch": 0.16647240000000002,
+  "failures": [
+   {
+    "kinds": [
+     "coverage",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "readme",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "readme"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~3 | cat",
+    "kind": "commit",
+    "refs": [
+     8
+    ]
+   },
+   {
+    "command": "git show HEAD~3 -- . ':!test/*.md' ':!schema/*' ':!doc/*' | head -400",
+    "kind": "commit",
+    "refs": [
+     8
+    ]
+   },
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- lib helpers schema/markdownlint-config-schema.json README.md test/markdownlint-test-scenarios.mjs test/markdownlint-test-repos.mjs package.js",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- schema/build-config-schema.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml test/markdownlint-test-project.mjs test/markdownlint-test",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 1,
+  "task": "t01-heading-max-level",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.3273576,
+  "recordCost": 0.3273576,
+  "calls": 18,
+  "beforeEdit": 0.1223982,
+  "history": 0.0364514,
+  "editToCheck": 0.06033079999999999,
+  "checkToEnd": 0.1446286,
+  "failingStretch": 0.021660199999999998,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~0 | head -20",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git log --oneline -40 | grep -i -E \"MD060|MD059|new rule\"",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git show --stat HEAD~30..HEAD --oneline | grep -i \"md060\\|md059\" | head",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 2,
+  "task": "t02-code-block-max-lines",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.5324007999999999,
+  "recordCost": 0.5324007999999999,
+  "calls": 28,
+  "beforeEdit": 0.1111008,
+  "history": 0.0616636,
+  "editToCheck": 0.0812766,
+  "checkToEnd": 0.3400234,
+  "failingStretch": 0.22149439999999995,
+  "failures": [
+   {
+    "kinds": [
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": false
+   },
+   {
+    "kinds": [
+     "schema",
+     "project files"
+    ],
+    "memorySaw": false
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "coverage",
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage",
+     "lint",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 62a8fa72 -- CHANGELOG.md README.md doc-build/md061.md doc/md061.md schema/.markdownlint.jsonc schema/.markdownlint.yaml test/heading-max-level.md test/",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 62a8fa72 --stat | head -3",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.57,
+   "chars": 7940,
+   "hidden": []
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 3,
+  "task": "t03-md024-ignore-case",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.22362880000000002,
+  "recordCost": 0.22362880000000002,
+  "calls": 13,
+  "beforeEdit": 0.0952208,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0.12840800000000002,
+  "failingStretch": 0.1020214,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": {
+   "picked": 1,
+   "score": 0.423,
+   "chars": 9386,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 4,
+  "task": "t04-list-max-depth",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.22620600000000002,
+  "recordCost": 0.22620600000000005,
+  "calls": 10,
+  "beforeEdit": 0.0701992,
+  "history": 0.0701992,
+  "editToCheck": 0.0695026,
+  "checkToEnd": 0.0865042,
+  "failingStretch": 0.039318,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 62a8fa722f -- README.md doc-build doc/md061.md test/heading-max-level.md test/heading-max-level-setext.md schema/.markdownlint.jsonc schema/.markdownli",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 254af9c4 --stat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show 254af9c4 -- CHANGELOG.md README.md doc-build test/markdownlint-test.mjs test/markdownlint-test-project.mjs schema/build-config-schema.mjs schema/.markd",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.614,
+   "chars": 9386,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 5,
+  "task": "t05-get-rules",
+  "kind": "one-off",
+  "passed": false,
+  "cost": 0.17219079999999998,
+  "recordCost": 0.17219079999999998,
+  "calls": 9,
+  "beforeEdit": 0.0757282,
+  "history": 0.027552800000000002,
+  "editToCheck": 0.0341866,
+  "checkToEnd": 0.062276,
+  "failingStretch": 0.020597,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log -3 --stat | head -40",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 6,
+  "task": "t06-rename-doc-src",
+  "kind": "update",
+  "passed": false,
+  "cost": 0.0632344,
+  "recordCost": 0.0632344,
+  "calls": 5,
+  "beforeEdit": 0.0632344,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 7,
+  "task": "t07-link-url-scheme",
+  "kind": "new-rule",
+  "passed": false,
+  "cost": 0.4193404,
+  "recordCost": 0.4193404,
+  "calls": 19,
+  "beforeEdit": 0.117843,
+  "history": 0.061,
+  "editToCheck": 0.119608,
+  "checkToEnd": 0.18188939999999998,
+  "failingStretch": 0.128186,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 62a8fa722f --stat | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 254af9c4 --stat | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show 254af9c4 -- CHANGELOG.md README.md doc-build lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/mar",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show b372b1b5 --stat|cat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show b372b1b5 -- CHANGELOG.md README.md schema/build-config-schema.mjs test/markdownlint-test.mjs test/markdownlint-test-project.mjs | cat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.416,
+   "chars": 9418,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 8,
+  "task": "t08-todo-comments-example",
+  "kind": "look-alike",
+  "passed": false,
+  "cost": 0.2247582,
+  "recordCost": 0.22475820000000002,
+  "calls": 16,
+  "beforeEdit": 0.2247582,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0,
+  "failingStretch": 0.08930939999999998,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log --oneline -1",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 9,
+  "task": "t09-md014-prompts",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.20898259999999996,
+  "recordCost": 0.20898259999999996,
+  "calls": 10,
+  "beforeEdit": 0.0940888,
+  "history": 0,
+  "editToCheck": 0.022222,
+  "checkToEnd": 0.09267180000000001,
+  "failingStretch": 0.0389656,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": {
+   "picked": 3,
+   "score": 0.489,
+   "chars": 9430,
+   "hidden": [
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 10,
+  "task": "t10-ol-delimiter-style",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.3539374,
+  "recordCost": 0.3539374,
+  "calls": 17,
+  "beforeEdit": 0.1148044,
+  "history": 0.0578254,
+  "editToCheck": 0.0545804,
+  "checkToEnd": 0.1845526,
+  "failingStretch": 0.120183,
+  "failures": [
+   {
+    "kinds": [
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~2 | head -40",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- README.md CHANGELOG.md lib/rules.mjs schema/build-config-schema.mjs schema/.markdownlint.yaml schema/.markdownlint.jsonc test/markdownlint-te",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.471,
+   "chars": 9418,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 11,
+  "task": "t11-circular-extends",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.22625399999999998,
+  "recordCost": 0.22625399999999998,
+  "calls": 11,
+  "beforeEdit": 0.0316664,
+  "history": 0,
+  "editToCheck": 0.11340259999999999,
+  "checkToEnd": 0.081185,
+  "failingStretch": 0.0377258,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": {
+   "file": "lib/markdownlint.mjs",
+   "picked": 5
+  },
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 2,
+  "arm": "with",
+  "index": 12,
+  "task": "t12-no-empty-headings",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.30764199999999997,
+  "recordCost": 0.30764199999999997,
+  "calls": 17,
+  "beforeEdit": 0.1073176,
+  "history": 0.072183,
+  "editToCheck": 0.058011799999999995,
+  "checkToEnd": 0.1423126,
+  "failingStretch": 0.0945116,
+  "failures": [
+   {
+    "kinds": [
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 62a8fa722f --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git log --stat -3 --format=%h%n%s -- lib/md065.mjs | head -40",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git show 45647753 --stat --format=%s",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show 45647753 -- CHANGELOG.md README.md test/markdownlint-test.mjs test/markdownlint-test-project.mjs schema/build-config-schema.mjs lib/rules.mjs doc-src",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show 45647753 -w --ignore-cr-at-eol -- CHANGELOG.md README.md test/markdownlint-test.mjs test/markdownlint-test-project.mjs lib/rules.mjs lib/constants.mjs ",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.526,
+   "chars": 9418,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 1,
+  "task": "t01-heading-max-level",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.41060560000000007,
+  "recordCost": 0.41060560000000007,
+  "calls": 23,
+  "beforeEdit": 0.08635999999999999,
+  "history": 0.0676444,
+  "editToCheck": 0.11338539999999998,
+  "checkToEnd": 0.2108602,
+  "failingStretch": 0.133356,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log --oneline -3 -- lib/md060.mjs",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git show --stat HEAD~30..HEAD | head -0",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git log --oneline -3 -- lib/md059.mjs",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git show --stat --format=%s b8374ec5 571c2353 | cat",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 2,
+  "task": "t02-code-block-max-lines",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.5727074,
+  "recordCost": 0.5727074,
+  "calls": 31,
+  "beforeEdit": 0.0969594,
+  "history": 0.0333076,
+  "editToCheck": 0.1283174,
+  "checkToEnd": 0.3474306,
+  "failingStretch": 0.1956452,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "test markers",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "coverage",
+     "lint",
+     "types"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show --stat HEAD | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- README.md doc-build lib/md061.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/mark",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD | cat",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 3,
+  "task": "t03-md024-ignore-case",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.18297839999999999,
+  "recordCost": 0.1829784,
+  "calls": 11,
+  "beforeEdit": 0.0642754,
+  "history": 0,
+  "editToCheck": 0.0425956,
+  "checkToEnd": 0.0761074,
+  "failingStretch": 0.0412044,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 4,
+  "task": "t04-list-max-depth",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.2312072,
+  "recordCost": 0.2312072,
+  "calls": 12,
+  "beforeEdit": 0.09188199999999999,
+  "history": 0.07535259999999999,
+  "editToCheck": 0.0654612,
+  "checkToEnd": 0.073864,
+  "failingStretch": 0.0128314,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "types"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~1 HEAD~3 | cat",
+    "kind": "commit",
+    "refs": [
+     2,
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- README.md doc-build lib/md062.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/mark",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show HEAD~1 -- doc/Rules.md | head -60",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 5,
+  "task": "t05-get-rules",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.265673,
+  "recordCost": 0.265673,
+  "calls": 15,
+  "beforeEdit": 0.0877664,
+  "history": 0,
+  "editToCheck": 0.17790660000000003,
+  "checkToEnd": 0,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 6,
+  "task": "t06-rename-doc-src",
+  "kind": "update",
+  "passed": true,
+  "cost": 0.057051599999999994,
+  "recordCost": 0.057051599999999994,
+  "calls": 5,
+  "beforeEdit": 0.0226214,
+  "history": 0,
+  "editToCheck": 0.0089668,
+  "checkToEnd": 0.025463399999999997,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 7,
+  "task": "t07-link-url-scheme",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.3548804,
+  "recordCost": 0.3548804000000001,
+  "calls": 18,
+  "beforeEdit": 0.10900639999999999,
+  "history": 0.0363368,
+  "editToCheck": 0.07327579999999999,
+  "checkToEnd": 0.17259819999999998,
+  "failingStretch": 0.07888519999999999,
+  "failures": [
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": false
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "test markers"
+    ],
+    "memorySaw": false
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~2 | cat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show --stat HEAD~4 | cat",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- README.md doc-build doc/md063.md lib/md063.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show HEAD --stat | cat",
+    "kind": "commit",
+    "refs": [
+     6
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 8,
+  "task": "t08-todo-comments-example",
+  "kind": "look-alike",
+  "passed": true,
+  "cost": 0.2813648,
+  "recordCost": 0.2813648,
+  "calls": 16,
+  "beforeEdit": 0.0639554,
+  "history": 0,
+  "editToCheck": 0.0379212,
+  "checkToEnd": 0.1794882,
+  "failingStretch": 0.011833000000000002,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 9,
+  "task": "t09-md014-prompts",
+  "kind": "rule-option",
+  "passed": false,
+  "cost": 0.26162519999999995,
+  "recordCost": 0.26162519999999995,
+  "calls": 15,
+  "beforeEdit": 0.0877768,
+  "history": 0,
+  "editToCheck": 0.0742074,
+  "checkToEnd": 0.099641,
+  "failingStretch": 0.0512498,
+  "failures": [
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 10,
+  "task": "t10-ol-delimiter-style",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.4620106,
+  "recordCost": 0.4620106,
+  "calls": 24,
+  "beforeEdit": 0.1163412,
+  "history": 0.0760494,
+  "editToCheck": 0.0525084,
+  "checkToEnd": 0.293161,
+  "failingStretch": 0.22884899999999997,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "test markers",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "coverage",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "coverage"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat HEAD~2 | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show --stat HEAD | cat",
+    "kind": "commit",
+    "refs": [
+     9
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- README.md doc-src lib/md064.mjs lib/rules.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-schema.mjs test/markdo",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- doc/Rules.md | head -60",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 11,
+  "task": "t11-circular-extends",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.20312919999999995,
+  "recordCost": 0.2031292,
+  "calls": 11,
+  "beforeEdit": 0.0301086,
+  "history": 0,
+  "editToCheck": 0.0954382,
+  "checkToEnd": 0.07758240000000001,
+  "failingStretch": 0.0176524,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "without",
+  "index": 12,
+  "task": "t12-no-empty-headings",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.3324474,
+  "recordCost": 0.3324474,
+  "calls": 17,
+  "beforeEdit": 0.09762559999999998,
+  "history": 0.0345904,
+  "editToCheck": 0.044648,
+  "checkToEnd": 0.1901738,
+  "failingStretch": 0.12386259999999999,
+  "failures": [
+   {
+    "kinds": [
+     "readme",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers",
+     "readme",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "readme",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show --stat 20b16901 | cat",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show --stat ef2bae7b | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show 20b16901 -- README.md doc-src lib/md065.mjs lib/rules.mjs lib/constants.mjs schema/.markdownlint.jsonc schema/.markdownlint.yaml schema/build-config-sc",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 1,
+  "task": "t01-heading-max-level",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.31199319999999997,
+  "recordCost": 0.31199319999999997,
+  "calls": 17,
+  "beforeEdit": 0.1304526,
+  "history": 0.0672674,
+  "editToCheck": 0.0628968,
+  "checkToEnd": 0.11864380000000001,
+  "failingStretch": 0.0835362,
+  "failures": [
+   {
+    "kinds": [
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git log --stat -3 --format=%s -- doc/md060.md | head -40",
+    "kind": "path",
+    "refs": []
+   },
+   {
+    "command": "git log --all --oneline -i --grep=\"MD060\" | head",
+    "kind": "search",
+    "refs": []
+   },
+   {
+    "command": "git show 3532e311 --stat --format=%s",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git show 3532e311 -- README.md test/markdownlint-test.mjs test/markdownlint-test-project.mjs",
+    "kind": "commit",
+    "refs": []
+   },
+   {
+    "command": "git show 3532e311 -- test/break-all-the-rules.md | head -60",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 2,
+  "task": "t02-code-block-max-lines",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.4325306,
+  "recordCost": 0.4325306,
+  "calls": 26,
+  "beforeEdit": 0.06228419999999999,
+  "history": 0.03869159999999999,
+  "editToCheck": 0.1105878,
+  "checkToEnd": 0.2596586,
+  "failingStretch": 0.19836120000000002,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot",
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count",
+     "schema",
+     "project files"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 257a5243 -- README.md doc-build/md061.md schema/.markdownlint.jsonc schema/.markdownlint.yaml test/heading-max-level.md test/heading-max-level-default.",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.57,
+   "chars": 7967,
+   "hidden": []
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 3,
+  "task": "t03-md024-ignore-case",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.20893899999999996,
+  "recordCost": 0.20893899999999999,
+  "calls": 12,
+  "beforeEdit": 0.0687892,
+  "history": 0.011874799999999998,
+  "editToCheck": 0.019425200000000004,
+  "checkToEnd": 0.12072459999999999,
+  "failingStretch": 0.06265319999999999,
+  "failures": [
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 257a5243 --stat | head -5",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.423,
+   "chars": 9403,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 4,
+  "task": "t04-list-max-depth",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.27535780000000004,
+  "recordCost": 0.27535780000000004,
+  "calls": 14,
+  "beforeEdit": 0.0841064,
+  "history": 0.0645244,
+  "editToCheck": 0.07284099999999999,
+  "checkToEnd": 0.1184104,
+  "failingStretch": 0.0370428,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 257a524331 --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 67a3ff97 --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show 257a524331 -- README.md doc-build/md061.md schema/.markdownlint.jsonc schema/.markdownlint.yaml test/heading-max-level-setext.md test/heading-max-level",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show 67a3ff97 -- schema/build-config-schema.mjs test/markdownlint-test-project.mjs test/markdownlint-test.mjs README.md lib/rules.mjs",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.614,
+   "chars": 9403,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 5,
+  "task": "t05-get-rules",
+  "kind": "one-off",
+  "passed": false,
+  "cost": 0.1849242,
+  "recordCost": 0.1849242,
+  "calls": 10,
+  "beforeEdit": 0.093906,
+  "history": 0,
+  "editToCheck": 0.0345168,
+  "checkToEnd": 0.05650140000000001,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 6,
+  "task": "t06-rename-doc-src",
+  "kind": "update",
+  "passed": false,
+  "cost": 0.0675692,
+  "recordCost": 0.06756920000000001,
+  "calls": 5,
+  "beforeEdit": 0.0675692,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0,
+  "failingStretch": 0,
+  "failures": [],
+  "git": [
+   {
+    "command": "git log --oneline -1",
+    "kind": "commit",
+    "refs": []
+   }
+  ],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 7,
+  "task": "t07-link-url-scheme",
+  "kind": "new-rule",
+  "passed": false,
+  "cost": 0.2681042,
+  "recordCost": 0.2681042,
+  "calls": 11,
+  "beforeEdit": 0.1338568,
+  "history": 0.0902254,
+  "editToCheck": 0.06191100000000001,
+  "checkToEnd": 0.0723364,
+  "failingStretch": 0.017176,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 257a524331 --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD~4 --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show HEAD~4 -- README.md doc-src schema/build-config-schema.mjs schema/.markdownlint.yaml test/markdownlint-test-project.mjs test/markdownlint-test.mjs test",
+    "kind": "commit",
+    "refs": [
+     2
+    ]
+   },
+   {
+    "command": "git show 338daaa6 --stat",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   },
+   {
+    "command": "git show 338daaa6 -- README.md schema/build-config-schema.mjs test/markdownlint-test.mjs test/markdownlint-test-project.mjs",
+    "kind": "commit",
+    "refs": [
+     4
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.416,
+   "chars": 9204,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 8,
+  "task": "t08-todo-comments-example",
+  "kind": "look-alike",
+  "passed": false,
+  "cost": 0.38927160000000005,
+  "recordCost": 0.38927160000000005,
+  "calls": 23,
+  "beforeEdit": 0.11975580000000001,
+  "history": 0,
+  "editToCheck": 0,
+  "checkToEnd": 0.26951579999999997,
+  "failingStretch": 0.11841439999999999,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "snapshot"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 9,
+  "task": "t09-md014-prompts",
+  "kind": "rule-option",
+  "passed": true,
+  "cost": 0.3110377999999999,
+  "recordCost": 0.3110377999999999,
+  "calls": 19,
+  "beforeEdit": 0.07593939999999999,
+  "history": 0,
+  "editToCheck": 0.115012,
+  "checkToEnd": 0.12008639999999998,
+  "failingStretch": 0.0537874,
+  "failures": [
+   {
+    "kinds": [
+     "snapshot",
+     "lint",
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": {
+   "picked": 3,
+   "score": 0.489,
+   "chars": 9516,
+   "hidden": [
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 10,
+  "task": "t10-ol-delimiter-style",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.32740620000000004,
+  "recordCost": 0.32740620000000004,
+  "calls": 16,
+  "beforeEdit": 0.119286,
+  "history": 0.119286,
+  "editToCheck": 0.061275,
+  "checkToEnd": 0.14684519999999995,
+  "failingStretch": 0.11653719999999998,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "schema"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "assertion count"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 257a524331 --stat | head -30",
+    "kind": "commit",
+    "refs": [
+     1
+    ]
+   },
+   {
+    "command": "git show HEAD~2 --stat | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- test/markdownlint-test.mjs test/markdownlint-test-project.mjs test/link-url-scheme.md | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   },
+   {
+    "command": "git show HEAD~2 -- schema/.markdownlint.jsonc schema/.markdownlint.yaml README.md | cat",
+    "kind": "commit",
+    "refs": [
+     7
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.471,
+   "chars": 9204,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": true
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 11,
+  "task": "t11-circular-extends",
+  "kind": "one-off",
+  "passed": true,
+  "cost": 0.2270868,
+  "recordCost": 0.2270868,
+  "calls": 12,
+  "beforeEdit": 0.0293798,
+  "history": 0,
+  "editToCheck": 0.10503180000000001,
+  "checkToEnd": 0.0926752,
+  "failingStretch": 0.0551462,
+  "failures": [
+   {
+    "kinds": [
+     "lint"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   }
+  ],
+  "git": [],
+  "start": null,
+  "byFile": {
+   "file": "lib/markdownlint.mjs",
+   "picked": 5
+  },
+  "lookedUpPicked": false
+ },
+ {
+  "pass": 3,
+  "arm": "with",
+  "index": 12,
+  "task": "t12-no-empty-headings",
+  "kind": "new-rule",
+  "passed": true,
+  "cost": 0.2431258,
+  "recordCost": 0.2431258,
+  "calls": 14,
+  "beforeEdit": 0.0838074,
+  "history": 0.059058599999999996,
+  "editToCheck": 0.022161,
+  "checkToEnd": 0.13715739999999998,
+  "failingStretch": 0.0963594,
+  "failures": [
+   {
+    "kinds": [
+     "assertion count",
+     "test markers"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers",
+     "readme",
+     "project files"
+    ],
+    "memorySaw": true
+   },
+   {
+    "kinds": [],
+    "memorySaw": true
+   },
+   {
+    "kinds": [
+     "test markers"
+    ],
+    "memorySaw": true
+   }
+  ],
+  "git": [
+   {
+    "command": "git show 411513b3 --stat | cat",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   },
+   {
+    "command": "git show 411513b3 -- README.md lib/constants.mjs lib/rules.mjs test/markdownlint-test-project.mjs test/markdownlint-test.mjs doc-src/md065.md schema/build-confi",
+    "kind": "commit",
+    "refs": [
+     10
+    ]
+   }
+  ],
+  "start": {
+   "picked": 1,
+   "score": 0.526,
+   "chars": 9204,
+   "hidden": [
+    "test/markdownlint-test-project.mjs",
+    "test/markdownlint-test.mjs"
+   ]
+  },
+  "byFile": null,
+  "lookedUpPicked": false
+ }
+]

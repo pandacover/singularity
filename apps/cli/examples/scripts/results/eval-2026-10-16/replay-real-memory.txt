@@ -1,0 +1,148 @@
+# C:\Users\luvma\.singularity: 59 stored changes
+
+- task as stored asks for something: 30
+- the first prompt of its part of the log that asks: 49 (19 more than as stored)
+- none there, the last that asked before it, from the session's log: 8
+- no prompt that asks: 2; with a commit message: 59
+
+| change (commit message) | task as stored | new task |
+|---|---|---|
+| Add procedural graph storage interface with JSON backend | Please take a look at the [HANDOFF.md](HANDOFF.md) | why would we use a json file instead of a graph db even thou… |
+| Add handoff notes for the next session | commit and then start | (before it) let's abstract functions and defer graph dbs for… |
+| Add Claude Code trace parser and eval harness | commit and then start | (before it) let's abstract functions and defer graph dbs for… |
+| Add handoff notes for the next session | commit and then start | (before it) let's abstract functions and defer graph dbs for… |
+| Add the excalidraw eval suite and isolate workspaces from la… | please read @HANDOFF.md | 1. C:\Users\luvma\OneDrive\Desktop\singularity\experiment\ex… |
+| Scope excalidraw checks and replace easy task families | alright | we took a really large codebase, didn't we? I think for futu… |
+| Add saved-scripts memory baseline and memory comparison repo… | no, go on with the suggested order | it has started to lag again. are you using the full cpu once… |
+| Cap vitest workers and run eval processes below normal prior… | commit and let's move to graph setup. let's discus… | 1. please expand on this 2. I think the accuracy is worth so… |
+| Port the harness, trace parser and graph store to TypeScript… | 1. it does not better since I am really not the on… | 1. it does not better since I am really not the one building… |
+| Port the harness, trace parser and graph store to TypeScript… | 1. it does not better since I am really not the on… | 1. it does not better since I am really not the one building… |
+| Pre-register three new task kinds for the graph setup | I have read the reexplanation of your graph. so le… | (none: its commit message) |
+| Add the procedural graph memory setup and freeze its design | I have read the reexplanation of your graph. so le… | (none: its commit message) |
+| Record the redesign and its build order in the handoff notes | commit first, let us see whether we actually want … | the reason why I am shying away from scripts is because i wa… |
+| Don't save commands whose output reports a failure | commit first, let us see whether we actually want … | the reason why I am shying away from scripts is because i wa… |
+| Don't save commands whose output reports a failure | commit first, let us see whether we actually want … | the reason why I am shying away from scripts is because i wa… |
+| Add local memory: records, graph, search and hooks | can you read the [HANDOFF.md](HANDOFF.md) and tell… | I want us to build the local setup first 1. stores in ~/.sin… |
+| Pre-register local memory measurement | can you read the [HANDOFF.md](HANDOFF.md) and tell… | I want us to build the local setup first 1. stores in ~/.sin… |
+| Freeze memory v0: the code at the route's places, its test a… | I am not aligning with the approaches you and fabl… | I am not aligning with the approaches you and fable are sugg… |
+| Add memory v1 and pre-register its measurement | It matches with my limited understanding. you can … | (before it) wait before we proceed, what is v1 and how does … |
+| Record v1 measurement: goal not met | run the comparison | hm that should actually be tested I think? I am having dejav… |
+| Seal the local-first memory: v1 picks by cues, no model call… | while the other session is working I want to give … | while the other session is working I want to give you some c… |
+| Measure memory on long tasks; add the eighth session's next … | What's our benchmark numbers so far? | I think we should also work on for long horizon tasks. let's… |
+| Learn what bug fixes share, with the places runs read; pre-r… | The current phase of singularity is fine. I want y… | The current phase of singularity is fine. I want you to make… |
+| Install memory in any coding agent with one command | The current phase of singularity is fine. I want y… | The current phase of singularity is fine. I want you to make… |
+| Polish onboarding, find npm's Claude Code, document installi… | The current phase of singularity is fine. I want y… | The current phase of singularity is fine. I want you to make… |
+| Polish onboarding, find npm's Claude Code, document installi… | The current phase of singularity is fine. I want y… | The current phase of singularity is fine. I want you to make… |
+| Create the model's directory before learning, as a fresh mac… | The current phase of singularity is fine. I want y… | The current phase of singularity is fine. I want you to make… |
+| Install where Node.js is missing, and don't stall on an unre… | The current phase of singularity is fine. I want y… | The current phase of singularity is fine. I want you to make… |
+| In WSL, leave out Windows' agents; keep npm's update notice … | I tried this command in wsl and it won't start | I tried this command in wsl and it won't start |
+| Add a landing page | Can you create a beautiful, intuitive and interact… | Can you create a beautiful, intuitive and interactive landin… |
+| Turn the repo into a Turborepo monorepo, with the landing pa… | please turn this project to a monorepo using turbo… | please turn this project to a monorepo using turborepo. use … |
+| Add one memory layer for many agents, with a reader for web … | Can we use singularity to make agent play games it… | Can we use singularity to make agent play games it has never… |
+| Benchmark web memory on a new job, and fix what failed: stil… | commit and push for now. raise a PR and merge to m… | (before it) Watchdog for the second-version rerun of the "ne… |
+| Rewrite the landing page as a research article | The current landing page I would say is far from e… | The current landing page I would say is far from elegant or … |
+| Add a page for agents, with a grid transition, and the Produ… | okay replace the current landing page with the art… | okay replace the current landing page with the article page … |
+| Keep eval memory apart from our own, and run evals with sing… | we'll start using singularity ourselves in claudec… | we'll start using singularity ourselves in claudecode. move … |
+| Hand memory to Hermes Agent through a plugin of its own | make singularity installable and usable by hermes … | make singularity installable and usable by hermes agent as w… |
+| Learn from Codex and Hermes Agent sessions too | I want reading support for hermes and codex as wel… | I want reading support for hermes and codex as well |
+| Store each change when it is committed, not when the session… | do you think singularity's way of storing memory o… | Interesting, I had a hunch about this issue but did not run … |
+| Start a learning round on its own only when the day's limit … | yes, please. merge it once you open the PR | (before it) understood, but I think we can allow to set the … |
+| Learn what a repo's changes share, one round at a time | yes | right. I was thinking whether we could queue learning. So ba… |
+| Price a learning round from what the latest rounds cost | Right. Claude, I'll go sleep. you can continue wit… | (before it) right. I was thinking whether we could queue lea… |
+| Give the installed singularity command only the daily comman… | I am failing to understanding what each of these c… | I am failing to understanding what each of these command do,… |
+| Load only the parts of @effect/platform-node the CLI and hoo… | perfect, please do | one thing to note is that typing "singularity" in terminal i… |
+| Add the mark: three runs of the same bar, each shorter than … | I was thinking we can use as singularity's logo. b… | I was thinking we can use as singularity's logo. but we shal… |
+| Check the model memory learns with, and trust memory's hooks… | Do you think the current singularity is ready for … | Can we try codex and hermes? I think codex has a free plan? … |
+| Update with one command, keeping what setup set up; say when… | currently if the user wants to update singularity,… | currently if the user wants to update singularity, they can … |
+| Show the installers' steps one per line, with a spinner, and… | commit and open a PR | 1. these three are print in a single line when they should b… |
+| One layout for everything singularity prints, agents chosen … | commit what you have and open a pr | 1. the cli installation is not much better in terms of looks… |
+| Make memory's own parts work in daily use, and check the clo… | I want you perform a very long task with and witho… | I want you perform a very long task with and without singula… |
+| Learn for less: a second call on what was flagged only, memo… | create a PR for this and merge, then go to step 2 | (before it) > Small, sure fixes. The 38% learning regression… |
+| Judge failures by their error status, keep only the person's… | You're building phase 2 of the plan to make singul… | You're building phase 2 of the plan to make singularity's me… |
+| README and landing page: describe saved scripts, not memory … | We have done substantial amounts of changes to sin… | We have done substantial amounts of changes to singularity a… |
+| README and landing page: describe saved scripts, not memory … | We have done substantial amounts of changes to sin… | We have done substantial amounts of changes to singularity a… |
+| Build Electron chat app with OpenRouter, ElevenLabs STT and … | please create a chatbot app using electron with th… | please create a chatbot app using electron with the followin… |
+| Show what memory stored: singularity changes | currently there's no reliable way for the user or … | currently there's no reliable way for the user or agent to l… |
+| Add built-in browser agent, usage tracking and auto-updating… | before making the bottom changes commit and push t… | before making the bottom changes commit and push the current… |
+| Add audio file uploads with tempo and beat analysis | push and merge to main | cannot open chat-v2 due to unsigned. there's an xattr or xad… |
+| Add macOS microphone permissions and ad-hoc code signing | 1. The STT option is not working on Mac. When I pr… | 1. The STT option is not working on Mac. When I press ctrl +… |
+
+## Looking each change up among the ones made before it: 56 changes whose task asks
+- with an earlier change of a source or test file it changed: 43
+
+| search by | handed over | related (shares a file) | unrelated |
+|---|---|---|---|
+| as before: the task as stored | 2 | 2 | 0 |
+| new, taken: request and whole message | 4 | 4 | 0 |
+| new, not taken: request and message's first line | 3 | 3 | 0 |
+
+| change looked up | as before | new (first line) |
+|---|---|---|
+| Add handoff notes for the next session | - (0.00) | - (0.00) |
+| Add Claude Code trace parser and eval harness | - (0.00) | - (0.00) |
+| Add handoff notes for the next session | - (0.00) | - (0.00) |
+| Add the excalidraw eval suite and isolate workspac… | - (0.00) | - (0.11) |
+| Scope excalidraw checks and replace easy task fami… | - (0.00) | - (0.29) |
+| Add saved-scripts memory baseline and memory compa… | - (0.00) | - (0.03) |
+| Cap vitest workers and run eval processes below no… | - (0.10) | - (0.17) |
+| Port the harness, trace parser and graph store to … | - (0.00) | - (0.32) |
+| Port the harness, trace parser and graph store to … | - (0.00) | - (0.32) |
+| Record the redesign and its build order in the han… | - (0.24) | - (0.25) |
+| Don't save commands whose output reports a failure | - (0.24) | - (0.25) |
+| Don't save commands whose output reports a failure | - (0.24) | - (0.25) |
+| Add local memory: records, graph, search and hooks | - (0.33) | - (0.33) |
+| Pre-register local memory measurement | - (0.33) | - (0.33) |
+| Freeze memory v0: the code at the route's places, … | - (0.35) | - (0.35) |
+| Add memory v1 and pre-register its measurement | - (0.23) | - (0.23) |
+| Record v1 measurement: goal not met | - (0.17) | - (0.24) |
+| Seal the local-first memory: v1 picks by cues, no … | - (0.24) | related 0.46: Add memory v1 and pre-register its measuremen… |
+| Measure memory on long tasks; add the eighth sessi… | - (0.28) | - (0.28) |
+| Learn what bug fixes share, with the places runs r… | - (0.22) | - (0.22) |
+| Install memory in any coding agent with one comman… | - (0.22) | - (0.22) |
+| Polish onboarding, find npm's Claude Code, documen… | - (0.22) | - (0.22) |
+| Polish onboarding, find npm's Claude Code, documen… | - (0.22) | - (0.22) |
+| Create the model's directory before learning, as a… | - (0.22) | - (0.22) |
+| Install where Node.js is missing, and don't stall … | - (0.22) | - (0.22) |
+| In WSL, leave out Windows' agents; keep npm's upda… | - (0.27) | - (0.18) |
+| Add a landing page | - (0.28) | - (0.29) |
+| Turn the repo into a Turborepo monorepo, with the … | - (0.29) | - (0.29) |
+| Add one memory layer for many agents, with a reade… | - (0.15) | - (0.20) |
+| Benchmark web memory on a new job, and fix what fa… | - (0.27) | - (0.18) |
+| Rewrite the landing page as a research article | - (0.25) | - (0.29) |
+| Add a page for agents, with a grid transition, and… | - (0.35) | - (0.20) |
+| Keep eval memory apart from our own, and run evals… | - (0.27) | - (0.27) |
+| Hand memory to Hermes Agent through a plugin of it… | - (0.12) | - (0.12) |
+| Learn from Codex and Hermes Agent sessions too | - (0.32) | - (0.32) |
+| Store each change when it is committed, not when t… | - (0.36) | - (0.35) |
+| Start a learning round on its own only when the da… | - (0.16) | - (0.30) |
+| Learn what a repo's changes share, one round at a … | - (0.23) | - (0.32) |
+| Price a learning round from what the latest rounds… | - (0.23) | - (0.32) |
+| Give the installed singularity command only the da… | - (0.31) | - (0.26) |
+| Load only the parts of @effect/platform-node the C… | - (0.14) | - (0.14) |
+| Add the mark: three runs of the same bar, each sho… | - (0.31) | - (0.34) |
+| Check the model memory learns with, and trust memo… | related 0.38: Learn from Codex and Hermes Agent sessions to… | related 0.38: Learn from Codex and Hermes Agent sessions to… |
+| Update with one command, keeping what setup set up… | - (0.23) | - (0.26) |
+| Show the installers' steps one per line, with a sp… | - (0.27) | - (0.27) |
+| One layout for everything singularity prints, agen… | - (0.31) | - (0.34) |
+| Make memory's own parts work in daily use, and che… | - (0.35) | - (0.33) |
+| Learn for less: a second call on what was flagged … | related 0.42: Give the installed singularity command only t… | related 0.42: Give the installed singularity command only t… |
+| Judge failures by their error status, keep only th… | - (0.38) | related 0.49: Make memory's own parts work in daily use, an… |
+| README and landing page: describe saved scripts, n… | - (0.25) | - (0.26) |
+| README and landing page: describe saved scripts, n… | - (0.25) | - (0.26) |
+| Build Electron chat app with OpenRouter, ElevenLab… | - (0.00) | - (0.00) |
+| Show what memory stored: singularity changes | - (0.30) | - (0.28) |
+| Add built-in browser agent, usage tracking and aut… | - (0.00) | - (0.00) |
+| Add audio file uploads with tempo and beat analysi… | - (0.00) | - (0.00) |
+| Add macOS microphone permissions and ad-hoc code s… | - (0.08) | - (0.08) |
+
+## Prompts that ask for nothing
+
+- "please read @HANDOFF.md": as before 1.00 Add the excalidraw eval suite and isolate workspac…; new nothing (asks for nothing)
+- "can you read the HANDOFF.md and tell me what are the next series of steps?": as before 0.98 Add local memory: records, graph, search and hooks; new nothing (asks for nothing)
+- "commit and open a PR": as before 1.00 Show the installers' steps one per line, with a sp…; new nothing (asks for nothing)
+- "yes": as before 1.00 Learn what a repo's changes share, one round at a …; new nothing (asks for nothing)
+- "alright": as before 1.00 Scope excalidraw checks and replace easy task fami…; new nothing (asks for nothing)
+- "push and merge to main": as before 1.00 Add audio file uploads with tempo and beat analysi…; new nothing (asks for nothing)
+- "What's our benchmark numbers so far?": as before 1.00 Measure memory on long tasks; add the eighth sessi…; new nothing (asks for nothing)
+
+The home was read only: nothing in it changed

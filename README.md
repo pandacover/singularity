@@ -69,7 +69,10 @@ still skips them.
    first prompt. If no stored change is close enough, singularity waits. The
    first time the agent edits a file that a somewhat similar change touched,
    and few other changes did, singularity hands over that change. A task gets
-   one hand-over at most.
+   one hand-over at most. And when the agent reads a stored change in git,
+   with `git show` or `git log`, singularity adds what the commit doesn't
+   hold: what you asked for, the commands that ran, and what failed and what
+   fixed it.
 3. **Recall mid-task.** Setup adds a short note to your agents'
    instructions, between `<!-- singularity:start ... -->` and
    `<!-- singularity:end -->`. It tells the agent to run
@@ -109,9 +112,9 @@ singularity uninstall [--purge] # take memory out of every agent; --purge delete
 
 ## Good to know
 
-- A hand-over arrives with a session's first prompt. For a new task in a long
-  session, the agent can run `singularity recall`, or you can start a new
-  session.
+- A hand-over arrives with the first prompt that asks for something, and
+  again with the first one after each commit, so each new task in a long
+  session can get one. Prompts like "yes" or "commit it" get none.
 - singularity helps with tasks like ones earlier sessions committed in the
   same repository. Clones of a repository on one machine share its memory.
 - `singularity changes` lists the changes singularity stored in a repository,

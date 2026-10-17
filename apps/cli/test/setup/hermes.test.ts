@@ -1,4 +1,8 @@
 import { describe, expect, it } from "@effect/vitest"
+import { spawnSync } from "node:child_process"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { agents, hermesHome } from "../../src/setup/Agents.ts"
 import { enablesPlugin, pluginCode, withoutPlugin, withPluginEnabled } from "../../src/setup/HermesPlugin.ts"
 
@@ -12,6 +16,35 @@ const disabled = (text: string) => {
   if ("problem" in edit) throw new Error(edit.problem)
   return edit.text
 }
+
+/** A Python 3 to run the plugin with, if this machine has one. */
+const PYTHON = [["python"], ["python3"], ["py", "-3"]]
+  .map(([cmd, ...args]) => ({ cmd: cmd!, args }))
+  .find(({ cmd, args }) => {
+    const r = spawnSync(cmd, [...args, "-I", "-c", "import sys; print(sys.version_info >= (3, 8))"], { encoding: "utf8", timeout: 10_000 })
+    return r.status === 0 && r.stdout.trim() === "True"
+  })
+
+/** Loads the plugin from argv[1], stubs its hook script, and prints what each hook gave. */
+const DRIVE_PLUGIN = `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("singularity_plugin", sys.argv[1])
+plugin = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(plugin)
+calls = []
+def hook(event, payload, timeout):
+    calls.append([event, payload.get("prompt") or payload.get("tool_input", {}).get("command")])
+    return None if payload.get("prompt") == "hi" else "memory's text"
+plugin._hook = hook
+show = {"command": "git show HEAD~1"}
+print(json.dumps({
+    "hi": plugin.on_pre_llm_call(session_id="s1", user_message="hi"),
+    "task": plugin.on_pre_llm_call(session_id="s1", user_message="add a rule like MD062"),
+    "notStarted": plugin.on_transform_tool_result(tool_name="terminal", args=show, result="diff --git a/x b/x", session_id="s2"),
+    "started": plugin.on_transform_tool_result(tool_name="terminal", args=show, result="diff --git a/x b/x", session_id="s1"),
+    "calls": calls,
+}))
+`
 
 describe("Hermes Agent's home", () => {
   it("is HERMES_HOME, else its platform's default", () => {
@@ -110,5 +143,38 @@ describe("the plugin's code", () => {
     expect(code).toContain(`ctx.register_hook("on_session_finalize", on_session_finalize)`)
     // Python's escapes reach the file as written.
     expect(code).toContain(`return f"{result}\\n\\n{text}" if text else None`)
+  })
+
+  // The plugin run by Python, with the hook script stubbed: Hermes isn't needed, a Python 3 is.
+  it.skipIf(PYTHON === undefined)("hands each message in a repository to the hook script, which tells the ones that start a task", () => {
+    const dir = mkdtempSync(join(tmpdir(), "singularity-hermes-"))
+    try {
+      const home = join(dir, "home")
+      const repo = join(dir, "repo")
+      mkdirSync(join(repo, ".git"), { recursive: true })
+      mkdirSync(join(home, "tenants", "local", "scripts", "sessions"), { recursive: true })
+      writeFileSync(join(home, "config.json"), JSON.stringify({ tenant: "local" }))
+      // Session s1 had a task start under memory; s2 has had none.
+      writeFileSync(join(home, "tenants", "local", "scripts", "sessions", "s1"), "")
+      const plugin = join(dir, "plugin.py")
+      writeFileSync(plugin, pluginCode({ node: "C:\\nowhere\\node.exe", script: "C:\\nowhere\\hook.ts" }))
+      const run = spawnSync(PYTHON!.cmd, [...PYTHON!.args, "-I", "-c", DRIVE_PLUGIN, plugin], {
+        encoding: "utf8",
+        timeout: 30_000,
+        env: { ...process.env, SINGULARITY_HOME: home, TERMINAL_CWD: repo }
+      })
+      expect(run.stderr).toBe("")
+      expect(JSON.parse(run.stdout)).toEqual({
+        // A message that asks for nothing gets nothing, and the next one is still the hook script's to judge,
+        // as is every message after the session's first task.
+        hi: null,
+        task: { context: "memory's text" },
+        notStarted: null,
+        started: "diff --git a/x b/x\n\nmemory's text",
+        calls: [["user-prompt-submit", "hi"], ["user-prompt-submit", "add a rule like MD062"], ["post-tool-use", "git show HEAD~1"]]
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -74,3 +74,25 @@ export const fileAt = Effect.fn("fileAt")(function*(repo: string, commit: string
 /** Whether `commit` exists in the repo. */
 export const hasCommit = (repo: string, commit: string) =>
   git(repo, ["cat-file", "-e", `${commit}^{commit}`]).pipe(Effect.as(true), Effect.orElseSucceed(() => false))
+
+/**
+ * The messages of the commits (full hashes) the repo has, by hash, in two git
+ * calls however many there are: `cat-file --batch-check` says which exist,
+ * since `git log` stops at the first it lacks. Lacking ones have none.
+ */
+export const commitMessages = Effect.fn("commitMessages")(function*(repo: string, commits: ReadonlyArray<string>) {
+  const out = new Map<string, string>()
+  const wanted = [...new Set(commits)]
+  if (wanted.length === 0) return out
+  const run = (args: ReadonlyArray<string>, input: string) => runQuick("git", args, { cwd: repo, timeoutS: GIT_TIMEOUT_S, env: process.env, input })
+  const check = yield* run(["cat-file", "--batch-check"], wanted.join("\n") + "\n")
+  const present = check.stdout.split(/\r?\n/).map((l) => l.split(" ")).filter((p) => p[1] === "commit").map((p) => p[0])
+  if (check.exitCode !== 0 || present.length === 0) return out
+  const log = yield* run(["log", "--no-walk=unsorted", "--stdin", "--format=%H%x1f%B%x1e"], present.join("\n") + "\n")
+  if (log.exitCode !== 0) return out
+  for (const chunk of log.stdout.split("\x1e")) {
+    const at = chunk.indexOf("\x1f")
+    if (at > 0) out.set(chunk.slice(0, at).trim(), chunk.slice(at + 1))
+  }
+  return out
+})

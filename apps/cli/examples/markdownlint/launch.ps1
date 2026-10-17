@@ -6,22 +6,29 @@
 # <runs>\<arm>\driver.log.
 # -Tag names a later run's clones and memory home (arm-with-2, sg-home-2 for
 # -Tag "-2"); -App runs memory code that isn't installed (driver.mjs --app).
+# -Clones is the folder holding the clones and memory homes; -Claude and
+# -SettingSources go to driver.mjs as --claude and --setting-sources.
 param(
   [string]$Runs = "C:\singularity-workspaces\long\runs",
   [string]$From = "1",
   [string]$To = "99",
   [string[]]$Arms = @("without", "with"),
   [string]$Tag = "",
-  [string]$App = ""
+  [string]$App = "",
+  [string]$Clones = "C:/singularity-workspaces/long",
+  [string]$Claude = "",
+  [string]$SettingSources = ""
 )
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 New-Item -ItemType Directory -Force $Runs | Out-Null
 foreach ($arm in $Arms) {
-  $repo = "C:/singularity-workspaces/long/arm-$arm$Tag"
+  $repo = "$Clones/arm-$arm$Tag"
   $out = Join-Path $Runs $arm
-  $home_ = if ($arm -eq "with") { " --home C:/singularity-workspaces/long/sg-home$Tag" } else { "" }
+  $home_ = if ($arm -eq "with") { " --home $Clones/sg-home$Tag" } else { "" }
   $app_ = if ($arm -eq "with" -and $App -ne "") { " --app $App" } else { "" }
-  $cmd = "cmd /c `"node driver.mjs --arm $arm --repo $repo --out $out --from $From --to $To$home_$app_ >> $Runs\$arm.out 2>&1`""
+  $claude_ = if ($Claude -ne "") { " --claude $Claude" } else { "" }
+  $sources_ = if ($SettingSources -ne "") { " --setting-sources $SettingSources" } else { "" }
+  $cmd = "cmd /c `"node driver.mjs --arm $arm --repo $repo --out $out --from $From --to $To$home_$app_$claude_$sources_ >> $Runs\$arm.out 2>&1`""
   $hidden = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
   $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $cmd; CurrentDirectory = $here; ProcessStartupInformation = $hidden }
   "$arm started: return $($r.ReturnValue), pid $($r.ProcessId)"

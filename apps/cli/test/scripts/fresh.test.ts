@@ -66,6 +66,10 @@ describe("what counts as still there", () => {
     expect(jaccard(["a", "b", "c", "d", "e"], ["a", "b", "c", "d"])).toBe(0.8)
     expect(sameChange({ files: ["lib/md061.mjs", "README.md"], prompt: RULE_AGAIN }, { files: ["lib/md061.mjs", "README.md"], prompt: RULE })).toBe(true)
     expect(sameChange({ files: ["lib/md062.mjs", "README.md"], prompt: OTHER_RULE }, { files: ["lib/md061.mjs", "README.md"], prompt: RULE })).toBe(false)
+    // Two changes of the same files, filed under the same "commit and then start", are two changes: their messages say what each did.
+    const notes = (message: string) => ({ files: ["HANDOFF.md"], prompt: "commit and then start", message })
+    expect(sameChange(notes("Add handoff notes for the next session"), notes("Update handoff status now that everything is committed"))).toBe(false)
+    expect(sameChange(notes("Record the redesign and its build order in the handoff notes"), notes("Record the redesign and its build order in the handoff notes"))).toBe(true)
     expect(scriptsOf(`{"scripts":{"test":"vitest","build-docs":"x"}}`)).toEqual(["test", "build-docs"])
     expect(scriptsOf("not json")).toEqual([])
     const before = new Set(["test", "build-docs"])

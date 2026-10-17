@@ -9,7 +9,8 @@
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
  * Memory is saved scripts (src/scripts/): the changes sessions committed,
- * one picked at task start, and any time an agent runs `recall` (the recall
+ * one picked at task start (or at a file's first edit, or a commit read in
+ * git: src/scripts/Hook.ts), and any time an agent runs `recall` (the recall
  * note setup writes tells it so, src/setup/Instructions.ts). There is no
  * learning step and no model call.
  */
@@ -19,6 +20,7 @@ import { homedir } from "node:os"
 import { identifyRepo } from "../local/Git.ts"
 import { loadHome } from "../local/Home.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
+import { addGiven, givenPath } from "../scripts/History.ts"
 import { startScripts } from "../scripts/Start.ts"
 import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
@@ -29,6 +31,7 @@ import { runRefresh, runUpdate } from "../setup/Update.ts"
 import { confirm, makeStyle, plural, tilde, wantsColor, withSpinner } from "../setup/Ui.ts"
 import { unwireAll } from "../setup/Wiring.ts"
 import { storePast } from "../workflows/Commits.ts"
+import { safeId } from "../workflows/Session.ts"
 import { homeFlag } from "./Common.ts"
 
 /** A recall asked for in a folder that isn't there. */
@@ -113,6 +116,10 @@ const recall = Command.make(
       { sessionId: "recall", prompt: args.task.join(" "), cwd },
       { tenantDir: home.tenantDir, persist: false, query: true }
     ).pipe(Effect.provide(JsonRecordStore.layer(home.tenantDir, home.tenant)))
+    // An agent's session (Claude Code tells its commands which) now has this change: reading its commit in git
+    // next (`recall "…"; git show HEAD~1`) brings nothing more (scripts/History.ts).
+    const session = process.env.CLAUDE_CODE_SESSION_ID
+    if (result.picked !== null && session !== undefined && session !== "") addGiven(givenPath(home.tenantDir, safeId(session)), result.picked.commit)
     const repo = yield* identifyRepo(cwd)
     if (args.json) {
       return yield* Console.log(JSON.stringify(

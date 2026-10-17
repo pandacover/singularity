@@ -1,0 +1,77 @@
+{
+  "about": "The 12 markdownlint tasks as a person asks for them in a day of work (day-driver.mjs): the same specs, without the list of what every change of the kind needs (documentation, README, config schema, tests and snapshots, the way other rules or parameters are done) and without the instruction to commit, which comes as its own prompt. plan_first: the request ends by asking for a plan, approved before the change is made.",
+  "tasks": [
+    {
+      "id": "t01-heading-max-level",
+      "kind": "new-rule",
+      "prompt": "Add a new built-in rule:\n\n- MD061, alias `heading-max-level`, description \"Heading level should not exceed the maximum\", tag `headings`.\n- One parameter, `maximum`: an integer from 1 to 6, default 6. With the default the rule never reports anything.\n- Report every heading (ATX or setext) whose level is greater than `maximum`, on the heading's first line, with the detail \"Expected: h<maximum>; Actual: h<level>\" (for example \"Expected: h3; Actual: h5\").\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t02-code-block-max-lines",
+      "kind": "new-rule",
+      "prompt": "Add a new built-in rule:\n\n- MD062, alias `code-block-max-lines`, description \"Code blocks should not exceed the maximum number of lines\", tag `code`.\n- Parameters:\n  - `maximum`: an integer, 0 or more, default 0. 0 means no limit, so by default the rule never reports anything.\n  - `ignore_languages`: an array of strings, default empty. Fenced code blocks whose language (the first word of the info string) equals one of them, ignoring case, are not checked.\n- A code block's length is its number of content lines: for a fenced block, the lines between the opening and the closing fence, blank lines included (if the block is never closed, up to where it ends); for an indented block, all of its lines, blank lines between them included.\n- Report every code block longer than `maximum` on its first line (the opening fence for a fenced block), with the detail \"Expected: <maximum>; Actual: <length>\" (for example \"Expected: 20; Actual: 25\").\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": true
+    },
+    {
+      "id": "t03-md024-ignore-case",
+      "kind": "rule-option",
+      "prompt": "Rule MD024 (`no-duplicate-heading`) treats `# Install` and `## install` as different headings, but they get the same anchor on GitHub. Add a boolean parameter `ignore_case` to MD024, default `false`: when it is `true`, headings whose text differs only in letter case count as duplicates. It must work together with `siblings_only`. Errors are reported as they are today (on the duplicate heading's line, with its text as the context).\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t04-list-max-depth",
+      "kind": "new-rule",
+      "prompt": "Add a new built-in rule:\n\n- MD063, alias `list-max-depth`, description \"Lists should not be nested deeper than the maximum\", tags `bullet`, `ol` and `ul`.\n- One parameter, `maximum`: an integer, 0 or more, default 0. 0 means no limit, so by default the rule never reports anything.\n- A list's depth is the number of lists it is in, counting itself: a top-level list has depth 1, a list inside an item of a depth-2 list has depth 3. Ordered and unordered lists count alike. Other containers (block quotes) neither add to the depth nor reset it.\n- Report every list deeper than `maximum` once, on the line of its first item, with the detail \"Expected: <maximum>; Actual: <depth>\".\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t05-get-rules",
+      "kind": "one-off",
+      "prompt": "Editor integrations want to show the built-in rules. Add a function `getRules()` to the public API, exported from the main `markdownlint` entry point next to `getVersion`.\n\nIt returns a new array on every call, with one plain object per built-in rule, in rule order: `{ names, description, tags, information, fixable }`. `names` and `tags` are arrays of strings, `information` is the rule's documentation URL as a string, and `fixable` says whether the rule can fix what it reports. Changing the returned arrays or objects must not affect markdownlint or later calls.\n\nDocument it in the README's API section, keep the type declarations up to date, and add tests. Make sure `npm test` and `npm run lint` pass.",
+      "plan_first": true
+    },
+    {
+      "id": "t06-rename-doc-src",
+      "kind": "update",
+      "prompt": "The `doc-build` folder holds the sources the rule documentation in `doc` is generated from, and its name keeps confusing people. Rename it to `doc-src` and update everything that refers to it. Generating the docs (`npm run build-docs`) must produce exactly the same files as before. Make sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t07-link-url-scheme",
+      "kind": "new-rule",
+      "prompt": "Add a new built-in rule:\n\n- MD064, alias `link-url-scheme`, description \"Link URL scheme should be allowed\", tags `links` and `url`.\n- One parameter, `allowed_schemes`: an array of strings, default empty. Empty means every scheme is allowed, so by default the rule never reports anything.\n- The rule checks the destinations of inline links and images (`[text](dest)`, `![alt](dest)`), of link reference definitions (`[label]: dest`) and of autolinks (`<https://example.com>`). Bare URLs in text are not checked. A destination has a scheme when it starts with a letter followed by letters, digits, `+`, `-` or `.`, and then a `:` (for example `https:`, `mailto:`, `ftp:`). The scheme is the part before the colon, and `allowed_schemes` lists schemes that way, for example `[\"https\", \"mailto\"]`. Destinations without a scheme (relative paths, `#fragment`) are never reported. Schemes are compared ignoring case.\n- Report every destination whose scheme isn't in `allowed_schemes`, on the line where the destination is, with the destination (as written; for an autolink, the URL between the angle brackets) as the context.\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t08-todo-comments-example",
+      "kind": "look-alike",
+      "prompt": "Add another example custom rule to `test/rules`, next to `any-blockquote` and `every-n-lines`: `todo-comments`, in `test/rules/todo-comments.cjs`, with description \"Rule that reports TODO and FIXME notes\" and tag `test`. It reports every line (not only comments) that contains `TODO` or `FIXME` as a whole word (uppercase only, not next to a letter, digit or underscore), once per line, with the error range covering the first of those words on the line.\n\nExport it from `test/rules/rules.cjs` (by name, as `todoComments`, and in `all`), and add tests for it to the custom rules tests. Make sure `npm test` and `npm run lint` pass.",
+      "plan_first": true
+    },
+    {
+      "id": "t09-md014-prompts",
+      "kind": "rule-option",
+      "prompt": "Rule MD014 (`commands-show-output`) only recognizes `$` as a shell prompt, but our docs also use `%` (zsh) and `>` (cmd). Add a parameter `prompts` to MD014: an array of strings, default `[\"$\"]`. Today a code block is reported when all of its lines start (after any indentation) with `$` followed by whitespace; with `prompts`, each line may start with any of the prompts instead, and lines may use different prompts. As today, each of those lines gets an error whose range covers the prompt and the whitespace after it, and whose fix removes them.\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t10-ol-delimiter-style",
+      "kind": "new-rule",
+      "prompt": "Add a new built-in rule:\n\n- MD065, alias `ol-delimiter-style`, description \"Ordered list delimiter style\", tag `ol`.\n- One parameter, `style`: `\"consistent\"` (the default), `\"period\"` (`1.`) or `\"parenthesis\"` (`1)`). With `\"consistent\"`, the first ordered list item in the document sets the style.\n- Report every ordered list item whose delimiter doesn't match the style, with the detail \"Expected: <style>; Actual: <style>\" using the names `period` and `parenthesis`, the error range covering the delimiter character, and a fix that replaces the delimiter with the expected one.\n- The rule can fix what it reports, so it must be listed with the other fixable rules.\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    },
+    {
+      "id": "t11-circular-extends",
+      "kind": "one-off",
+      "prompt": "Reading a configuration whose `extends` chain comes back to a file already in it (for example `a.json` extends `b.json`, which extends `a.json`, or a file that extends itself) overflows the stack in `readConfig` from `markdownlint/sync`, and never finishes with `markdownlint/async` or `markdownlint/promise`. Make all three fail cleanly instead, with an error whose message contains the word \"circular\" and the path of the file that was reached a second time. Add tests. Make sure `npm test` and `npm run lint` pass.",
+      "plan_first": true
+    },
+    {
+      "id": "t12-no-empty-headings",
+      "kind": "new-rule",
+      "prompt": "Add a new built-in rule:\n\n- MD066, alias `no-empty-headings`, description \"Headings should not be empty\", tag `headings`.\n- No parameters.\n- Report every ATX heading that has no text, such as `#`, `## ` or a closed `# #`, on its line.\n\nMake sure `npm test` and `npm run lint` pass.",
+      "plan_first": false
+    }
+  ]
+}

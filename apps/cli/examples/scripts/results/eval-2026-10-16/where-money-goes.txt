@@ -1,0 +1,46 @@
+# Where a markdownlint task's money goes (2026-10-16, three passes)
+
+- without: transcripts $10.86, records $10.86
+- with: transcripts $10.19, records $10.19
+
+## Tasks 2-12, shares of the arm's dollars
+
+| arm | before the first edit | of it, reading past commits | first edit to first check | first check to the end | of it, first failing check to the last |
+|---|---|---|---|---|---|
+| without | 28% | 9% | 26% | 45% | 24% |
+| with | 33% | 12% | 20% | 47% | 28% |
+
+## Past commits before the first edit, tasks 2-12
+
+- without memory: 20 of 33 sessions read past commits; 19 of those looked at one of the last three tasks' commits; commands by kind {"commit":60}
+- with a start hand-over: 16 of 21 still read past commits; 12 looked up the very commit handed over
+- with memory, no start hand-over: 3 of 12 read past commits
+
+## What the start hand-overs hid as changed since
+
+- 21 start hand-overs; files whose change wasn't shown: test/markdownlint-test-project.mjs 15, test/markdownlint-test.mjs 18
+- mistakes stored in the three passes: 65; left out of any hand-over because the failed command spans lines: 42 (by kind {"types":1,"assertion count":10,"lint":12,"snapshot":4,"test markers":1})
+
+## Failing check runs
+
+- without: 31 of 36 sessions had a failing check run (102 runs, memory's judge saw 99); 28 hit a kind an earlier task of the pass had hit. Sessions by kind: {"assertion count":20,"snapshot":19,"readme":14,"schema":20,"project files":15,"test markers":12,"lint":11,"coverage":6,"types":4}
+  on the 7 tasks with a start hand-over: 21 of 21 sessions had one, median 4 failing runs
+- with: 32 of 36 sessions had a failing check run (108 runs, memory's judge saw 106); 29 hit a kind an earlier task of the pass had hit. Sessions by kind: {"assertion count":21,"snapshot":20,"test markers":16,"readme":8,"schema":17,"project files":11,"coverage":3,"lint":14,"types":1}
+  on the 7 tasks with a start hand-over: 21 of 21 sessions had one, median 4 failing runs
+
+## Per task, medians of three passes, without -> with
+
+| task | dollars | before the first edit | first check to the end | failing check runs | handed over |
+|---|---|---|---|---|---|
+| t01-heading-max-level | $0.39 -> $0.32 | $0.15 -> $0.13 | $0.16 -> $0.12 | 3 -> 3 | none |
+| t02-code-block-max-lines | $0.57 -> $0.53 | $0.07 -> $0.09 | $0.27 -> $0.32 | 8 -> 6 | t01 |
+| t03-md024-ignore-case | $0.18 -> $0.22 | $0.06 -> $0.08 | $0.07 -> $0.13 | 1 -> 3 | t01 |
+| t04-list-max-depth | $0.24 -> $0.23 | $0.09 -> $0.08 | $0.08 -> $0.09 | 1 -> 2 | t01 |
+| t05-get-rules | $0.22 -> $0.18 | $0.09 -> $0.09 | $0.00 -> $0.06 | 1 -> 1 | none |
+| t06-rename-doc-src | $0.07 -> $0.07 | $0.03 -> $0.07 | $0.03 -> $0.00 | 0 -> 0 | none |
+| t07-link-url-scheme | $0.40 -> $0.33 | $0.11 -> $0.12 | $0.21 -> $0.11 | 3 -> 3 | t01 |
+| t08-todo-comments-example | $0.32 -> $0.34 | $0.06 -> $0.12 | $0.18 -> $0.25 | 1 -> 6 | none |
+| t09-md014-prompts | $0.28 -> $0.31 | $0.09 -> $0.09 | $0.12 -> $0.12 | 3 -> 2 | t03 |
+| t10-ol-delimiter-style | $0.37 -> $0.35 | $0.12 -> $0.12 | $0.19 -> $0.18 | 4 -> 4 | t01 |
+| t11-circular-extends | $0.18 -> $0.23 | $0.03 -> $0.03 | $0.06 -> $0.09 | 1 -> 2 | t05 by file |
+| t12-no-empty-headings | $0.38 -> $0.31 | $0.10 -> $0.10 | $0.20 -> $0.14 | 4 -> 4 | t01 |

@@ -1,0 +1,92 @@
+# markdownlint, daily use
+
+Passes with both arms complete: 1, 2, 3
+
+## Harm first: passed without memory, failed with it (same pass)
+- pass 2 t05-get-rules: {"hidden":true,"test":true,"lint":true,"regenerate":false} (first failure of its run)
+- pass 2 t06-rename-doc-src: {"hidden":true,"test":true,"lint":true,"regenerate":false} (after an earlier failure)
+- pass 2 t07-link-url-scheme: {"hidden":true,"test":true,"lint":true,"regenerate":false} (after an earlier failure)
+- pass 2 t08-todo-comments-example: {"hidden":true,"test":true,"lint":true,"regenerate":false} (after an earlier failure)
+- pass 3 t05-get-rules: {"hidden":true,"test":true,"lint":true,"regenerate":false} (first failure of its run)
+- pass 3 t06-rename-doc-src: {"hidden":true,"test":true,"lint":true,"regenerate":false} (after an earlier failure)
+- pass 3 t07-link-url-scheme: {"hidden":true,"test":true,"lint":true,"regenerate":false} (after an earlier failure)
+- pass 3 t08-todo-comments-example: {"hidden":true,"test":true,"lint":true,"regenerate":false} (after an earlier failure)
+
+## Per pass
+| pass | arm | passed | first failures | cost | tokens | turns |
+|---|---|---|---|---|---|---|
+| 1 | without | 6 of 12 | 1 | $3.74 | 8.50M | 232 |
+| 1 | with | 12 of 12 | 0 | $3.66 | 8.04M | 215 |
+| 2 | without | 8 of 12 | 1 | $3.51 | 7.57M | 212 |
+| 2 | with | 8 of 12 | 1 | $3.29 | 6.85M | 186 |
+| 3 | without | 11 of 12 | 1 | $3.62 | 7.83M | 240 |
+| 3 | with | 8 of 12 | 1 | $3.25 | 6.80M | 174 |
+
+## With the type declarations compared in both arms (check-declarations.mjs; not pre-registered)
+The driver compares the committed declarations with a fresh build only when the build type-checks; here they are compared for every task, type errors or not.
+
+| pass | arm | passed | first failures | tasks with stale declarations |
+|---|---|---|---|---|
+| 1 | without | 4 of 12 | 1 | t11 t12 |
+| 1 | with | 4 of 12 | 1 | t05 t06 t07 t08 t09 t10 t11 t12 |
+| 2 | without | 8 of 12 | 1 | none |
+| 2 | with | 4 of 12 | 1 | t09 t10 t11 t12 |
+| 3 | without | 4 of 12 | 1 | t05 t06 t07 t08 t09 t10 t11 t12 |
+| 3 | with | 4 of 12 | 1 | t09 t10 t11 t12 |
+
+Harm, compared this way: pass 2 t05-get-rules (first); pass 2 t06-rename-doc-src; pass 2 t07-link-url-scheme; pass 2 t08-todo-comments-example
+
+## Bars (complete passes 1, 2, 3)
+(a) first failures: without 3, with 2: holds
+(b) tasks 3-12: tokens 17.16M -> 15.75M (-8%, bar -20%), dollars $8.12 -> $7.65 (-6%, bar -10%): fails
+(c) all tasks: dollars $10.86 -> $10.19 (-6%): holds
+passed: without 25 of 36, with 28 of 36; tokens 23.90M -> 21.69M (-9%); turns 684 -> 575
+
+## Tasks with a start hand-over and without one (same pass, same task in both arms)
+- start hand-over: 21 task runs; cost $7.24 -> $6.83 (-6%), tokens 16.31M -> 14.80M (-9%), passed 14 -> 19
+- none at start: 15 task runs; cost $3.63 -> $3.36 (-8%), tokens 7.59M -> 6.89M (-9%), passed 11 -> 9
+
+## Per task (medians over complete passes)
+| # | task | without $ | with $ | Δ$ | without tokens | with tokens | Δtokens | passed w/o | passed with | hand-overs (pass: picked score chars) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | t01-heading-max-level | $0.39 | $0.32 | -18% | 933k | 724k | -22% | 3/3 | 3/3 | p1: none; p2: none; p3: none |
+| 2 | t02-code-block-max-lines | $0.57 | $0.53 | -7% | 1,438k | 1,266k | -12% | 3/3 | 3/3 | p1: t01-heading-max-level 0.57 7998; p2: t01-heading-max-level 0.57 7940; p3: t01-heading-max-level 0.57 7967 |
+| 3 | t03-md024-ignore-case | $0.18 | $0.22 | +25% | 339k | 465k | +37% | 3/3 | 3/3 | p1: t01-heading-max-level 0.423 9395; p2: t01-heading-max-level 0.423 9386; p3: t01-heading-max-level 0.423 9403 |
+| 4 | t04-list-max-depth | $0.24 | $0.23 | -6% | 474k | 402k | -15% | 3/3 | 3/3 | p1: t01-heading-max-level 0.614 9395; p2: t01-heading-max-level 0.614 9386; p3: t01-heading-max-level 0.614 9403 |
+| 5 | t05-get-rules | $0.22 | $0.18 | -16% | 353k | 316k | -11% | 2/3 | 1/3 | p1: none; p2: none; p3: none |
+| 6 | t06-rename-doc-src | $0.07 | $0.07 | +1% | 141k | 124k | -12% | 2/3 | 1/3 | p1: none; p2: none; p3: none |
+| 7 | t07-link-url-scheme | $0.40 | $0.33 | -18% | 864k | 652k | -24% | 2/3 | 1/3 | p1: t01-heading-max-level 0.416 9070; p2: t01-heading-max-level 0.416 9418; p3: t01-heading-max-level 0.416 9204 |
+| 8 | t08-todo-comments-example | $0.32 | $0.34 | +8% | 681k | 837k | +23% | 2/3 | 1/3 | p1: none; p2: none; p3: none |
+| 9 | t09-md014-prompts | $0.28 | $0.31 | +12% | 532k | 718k | +35% | 0/3 | 3/3 | p1: t03-md024-ignore-case 0.489 9326; p2: t03-md024-ignore-case 0.489 9430; p3: t03-md024-ignore-case 0.489 9516 |
+| 10 | t10-ol-delimiter-style | $0.37 | $0.35 | -5% | 839k | 755k | -10% | 1/3 | 3/3 | p1: t01-heading-max-level 0.471 9070; p2: t01-heading-max-level 0.471 9418; p3: t01-heading-max-level 0.471 9204 |
+| 11 | t11-circular-extends | $0.18 | $0.23 | +24% | 311k | 413k | +33% | 2/3 | 3/3 | p1: none; file lib/markdownlint.mjs -> t05-get-rules; p2: none; file lib/markdownlint.mjs -> t05-get-rules; p3: none; file lib/markdownlint.mjs -> t05-get-rules |
+| 12 | t12-no-empty-headings | $0.38 | $0.31 | -19% | 973k | 670k | -31% | 2/3 | 3/3 | p1: t01-heading-max-level 0.526 9070; p2: t01-heading-max-level 0.526 9418; p3: t01-heading-max-level 0.526 9204 |
+
+## Failures
+- pass 1 without t05-get-rules: regenerate (first)
+- pass 1 without t06-rename-doc-src: regenerate
+- pass 1 without t07-link-url-scheme: regenerate
+- pass 1 without t08-todo-comments-example: regenerate
+- pass 1 without t09-md014-prompts: regenerate
+- pass 1 without t10-ol-delimiter-style: regenerate
+- pass 2 without t09-md014-prompts: test (first)
+- pass 2 without t10-ol-delimiter-style: test
+- pass 2 without t11-circular-extends: test
+- pass 2 without t12-no-empty-headings: test
+- pass 2 with t05-get-rules: regenerate (first)
+- pass 2 with t06-rename-doc-src: regenerate
+- pass 2 with t07-link-url-scheme: regenerate
+- pass 2 with t08-todo-comments-example: regenerate
+- pass 3 without t09-md014-prompts: test (first)
+- pass 3 with t05-get-rules: regenerate (first)
+- pass 3 with t06-rename-doc-src: regenerate
+- pass 3 with t07-link-url-scheme: regenerate
+- pass 3 with t08-todo-comments-example: regenerate
+
+## Read out
+- recall calls: with 0 in 36 sessions; without 0
+- file hand-overs: 3 (p1 t11-circular-extends: lib/markdownlint.mjs -> t05-get-rules; p2 t11-circular-extends: lib/markdownlint.mjs -> t05-get-rules; p3 t11-circular-extends: lib/markdownlint.mjs -> t05-get-rules)
+- ran build-declaration (t05 aside): without 3, with 0; with arm sessions whose start hand-over named it: 0, of which ran it 0
+- committed dts/: without 0, with 0
+- types (declaration build, not counted) ok: without 20, with 17
+

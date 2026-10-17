@@ -30,7 +30,9 @@ singularity keeps the changes coding sessions commit in a repository, with
 their checks passing: the task, the files, the commands that worked and the
 mistakes made on the way. When a similar task starts, it hands over the one
 most like it, read from git as it is now, as a message headed "A past change
-in this repository like your task".
+in this repository like your task". When you read a stored commit with
+\`git show\` or \`git log\`, it adds what git doesn't show about it, headed
+"What git doesn't show about <commit>".
 
 Run these in the repository:
 

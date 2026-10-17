@@ -256,7 +256,9 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <p>
               When no stored change is close enough at task start, memory waits. The first time the agent edits a file
               that a similar change touched, and few other changes did, memory hands that change over, with its edit of
-              that file first. A task gets one hand-over at most. Setup also adds a note to the agent's instructions
+              that file first. A task gets one hand-over at most. When the agent reads a stored change in git, with{" "}
+              <code>git show</code> or <code>git log</code>, memory adds what the commit doesn't hold: the task, the
+              commands that ran, and what failed and what fixed it. Setup also adds a note to the agent's instructions
               saying it can run <code>singularity recall</code> before work it may have done before.
             </p>
           </section>

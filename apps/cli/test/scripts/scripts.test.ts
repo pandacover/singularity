@@ -31,6 +31,13 @@ describe("search", () => {
     const ranked = rank(OTHER_RULE, [{ id: "rename", prompt: RENAME }, { id: "rule", prompt: RULE }])
     expect(ranked.map((r) => r.doc.id)).toEqual(["rule", "rename"])
   })
+
+  it("finds a change filed under a prompt that asks for nothing by its commit message, never by that prompt", () => {
+    const docs = [{ id: "spinner", prompt: "commit and open a PR", message: "Show the installer's steps one per line, with a spinner for the step running" }]
+    expect(pick("Make the installer show each step on its own line, with a spinner for the step running", docs)?.doc.id).toBe("spinner")
+    expect(pick("commit and open a PR", docs)).toBeUndefined()
+    expect(pick("commit and open a PR", [{ id: "old", prompt: "commit and open a PR" }])?.doc.id).toBe("old")
+  })
 })
 
 describe("recall mid-task", () => {
@@ -91,6 +98,13 @@ describe("render", () => {
     // A file only one change touched is enough to watch, but can't link two.
     expect(tellingFiles(stored)("lib/md061.mjs")).toBe(false)
     expect(tellingFiles(stored)("lib/md062.mjs")).toBe(true)
+  })
+
+  it("shows the commit message as the task when the prompt asked for nothing", () => {
+    const view = { commit: "0123456789abcdef", score: 0.6, files: [], commands: [], mistakes: [], nearby: [], diff: [] }
+    const text = renderScript({ ...view, prompt: "yes", message: "Show the installer's steps one per line" })
+    expect(text).toContain("## Its task, as its commit message says\n\nShow the installer's steps one per line")
+    expect(renderScript({ ...view, prompt: RULE, message: "Add MD061" })).toContain(`## Its task\n\n${RULE}`)
   })
 
   it("gives every file of the change a share of the room", () => {

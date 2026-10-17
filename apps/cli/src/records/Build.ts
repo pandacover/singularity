@@ -7,20 +7,29 @@
  * and where, isn't evidence of how the task gets done.
  *
  * Its task is what the person wrote (traces/Prompts.ts), never the notices
- * and other text the tools around them sent.
+ * and other text the tools around them sent, and of that, the prompt that
+ * asked for something (Task.ts), with the commit message when there is one.
  */
+import { isRequest } from "../traces/Requests.ts"
 import { personPrompts, personTask, type Trace } from "../traces/index.ts"
 import { extractMechanical } from "./Extract.ts"
 import type { Check, MemoryUse, RunInfo, WorkflowRecord } from "./Models.ts"
 import { RECORD_FORMAT } from "./Models.ts"
 import { spotsOfDiff } from "./Spots.ts"
+import { taskOf } from "./Task.ts"
 
 /**
- * A record as its task's person wrote it: records stored before the filter
- * kept the notices and other text tools sent (Prompts.ts). Applied wherever
- * stored records are read; the stored files stay as they were.
+ * A record as its task's person wrote it, led by the prompt that asked:
+ * records stored before the filters kept the notices and other text tools
+ * sent (Prompts.ts), and took the first prompt for the task even when it was
+ * "yes" (Task.ts). Applied wherever stored records are read; the stored
+ * files stay as they were.
  */
-export const withPersonTask = (r: WorkflowRecord): WorkflowRecord => ({ ...r, task: personTask([r.task.prompt, ...r.task.followups]) })
+export const withPersonTask = (r: WorkflowRecord): WorkflowRecord => {
+  const person = personTask([r.task.prompt, ...r.task.followups])
+  const task = taskOf([person.prompt, ...person.followups].filter((p) => p !== ""))
+  return { ...r, task: r.task.message === undefined ? task : { ...task, message: r.task.message } }
+}
 
 /** One record per session: the subject, then the start of the session id. */
 export const recordId = (subject: string, sessionId: string): string => `${subject}-${sessionId.slice(0, 8)}`
@@ -42,13 +51,19 @@ export interface BuildInput {
   readonly createdAt: string
   /** The record's id, when it isn't the session's (a commit's: commitRecordId). */
   readonly id?: string | undefined
+  /** The change's commit message (Task.ts `changeMessage`), for a committed change. */
+  readonly message?: string | undefined
+  /** What was asked when no prompt of `trace` asks for anything: the session's last prompt that did, before it. */
+  readonly asked?: string | undefined
 }
 
 export const buildRecord = (input: BuildInput): WorkflowRecord => {
   const success = input.outcome === "success"
   const m = extractMechanical(input.trace, input.diff, { succeeded: success })
   // What the person wrote: notices and other text the tools sent are no part of the task (Prompts.ts).
-  const [first, ...rest] = personPrompts(input.trace.prompts).map((p) => p.text)
+  const prompts = personPrompts(input.trace.prompts).map((p) => p.text)
+  const chosen = taskOf(prompts)
+  const task = !isRequest(chosen.prompt) && input.asked !== undefined ? { prompt: input.asked, followups: prompts } : chosen
   return {
     format: RECORD_FORMAT,
     id: input.id ?? recordId(input.subject, input.trace.sessionId),
@@ -63,7 +78,7 @@ export const buildRecord = (input: BuildInput): WorkflowRecord => {
       tool_calls: m.toolCalls,
       models: m.models
     },
-    task: { prompt: first ?? "", followups: rest },
+    task: input.message === undefined || input.message === "" ? task : { ...task, message: input.message },
     files: success ? m.files : [],
     spots: success ? spotsOfDiff(input.diff) : [],
     files_read: success ? m.filesRead : [],
