@@ -64,15 +64,13 @@ still skips them.
    changed, the commands that ran, and what failed and what fixed it.
 2. **Hand over.** At the start of a task, singularity finds the stored change
    whose task is most like the new one by matching the text of the two
-   tasks. It reads that change from git as the code is now,
-   leaves out files that changed since, and adds the change to the agent's
-   first prompt. If no stored change is close enough, singularity waits. The
-   first time the agent edits a file that a somewhat similar change touched,
-   and few other changes did, singularity hands over that change. A task gets
-   one hand-over at most. And when the agent reads a stored change in git,
-   with `git show` or `git log`, singularity adds what the commit doesn't
-   hold: what you asked for, the commands that ran, and what failed and what
-   fixed it.
+   tasks. It tells the agent that change's commit, what it was for, and its
+   files as they are called today, without the diff: git has it. Then it
+   lists the check scripts earlier sessions ran before committing (a
+   screenshot or end-to-end script, say) that are still on disk, once a
+   session. When the agent reads a stored change in git, with `git show` or
+   `git log`, singularity adds what the commit doesn't hold: what you asked
+   for, the commands that ran, and what failed and what fixed it.
 3. **Recall mid-task.** Setup adds a short note to your agents'
    instructions, between `<!-- singularity:start ... -->` and
    `<!-- singularity:end -->`. It tells the agent to run
@@ -81,7 +79,8 @@ still skips them.
    prints the most similar past change, or says there is none.
 
 singularity never calls a model. Run `singularity recall "<task>"` yourself
-to see what a task would get in the current repository.
+to see, in full, the stored change a task would be pointed to in the current
+repository.
 
 ## Commands
 

@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest"
 import {
   classifyKey,
   commandKeys,
+  compactCommand,
   isReadOnlyCommand,
   positionalArgs,
   segmentFor,
@@ -10,6 +11,26 @@ import {
   wordChange,
   words
 } from "../../src/records/Shell.ts"
+
+describe("compactCommand", () => {
+  const code = Array.from({ length: 20 }, (_, i) => `const line${i} = "${"x".repeat(20)}"`).join("\n")
+
+  it("cuts the code fed through a line, and keeps what it runs after", () => {
+    const line = `cd "$TEMP/cv2-header" && cat > shots.mjs <<'EOF'\n${code}\nEOF\nbun run build && node "$TEMP/cv2-header/shots.mjs" out`
+    const short = compactCommand(line)
+    assert.strictEqual(short, `cd "$TEMP/cv2-header" && cat > shots.mjs <<'EOF'\n…\nEOF\nbun run build && node "$TEMP/cv2-header/shots.mjs" out`)
+    assert.deepStrictEqual(commandKeys(short), commandKeys(line))
+    // Quoted code over lines, and a PowerShell here-string.
+    assert.strictEqual(compactCommand(`node -e "${code.replace(/"/g, "'")}" && node check.mjs`), `node -e "…" && node check.mjs`)
+    assert.strictEqual(compactCommand(`$s = @'\n${code}\n'@; node check.mjs`), `$s = @'\n…\n'@; node check.mjs`)
+  })
+
+  it("leaves short code and one-line quotes as they are", () => {
+    for (const line of [`python - <<'EOF'\nprint(1)\nEOF\nnode a.mjs`, `node -e "${"x".repeat(300)}"`, `echo "it's \\"fine\\"" && npm test`]) {
+      assert.strictEqual(compactCommand(line), line)
+    }
+  })
+})
 
 describe("splitCommand", () => {
   it("splits chains and pipes outside quotes", () => {

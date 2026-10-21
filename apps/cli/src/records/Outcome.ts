@@ -20,7 +20,8 @@
  *   whose output names only reading programs as what failed (`tail: cannot
  *   open …`), made no mistake: it starts no detour and fires no warning.
  */
-import { READ_TOOLS, SEARCH_TOOLS, SHELL_TOOLS, stripAnsi } from "../traces/index.ts"
+import { stripAnsi } from "../traces/Failure.ts"
+import { READ_TOOLS, SEARCH_TOOLS, SHELL_TOOLS } from "../traces/Tools.ts"
 import {
   classifyKey,
   commandKeys,

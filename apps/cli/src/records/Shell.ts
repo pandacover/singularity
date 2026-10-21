@@ -118,6 +118,51 @@ const heredocEnd = (line: string, i: number): number | undefined => {
  */
 const ESCAPABLE = new Set(["\"", "\\", "$", "`"])
 
+/**
+ * A command line as a record keeps it (records/Extract.ts): the bodies of
+ * heredocs and PowerShell here-strings, and quoted text over several lines,
+ * cut to `…` when longer than `longest`. They are code the agent fed a
+ * program (an edit, a script it wrote), often thousands of characters, and a
+ * record keeps 500 of a line: what ran after them (`cat > shots.mjs <<'EOF'
+ * … EOF && node shots.mjs`) was cut off with them. What the line runs, and
+ * where, stays; `splitCommand` reads it the same.
+ */
+export const compactCommand = (line: string, longest = 120): string => {
+  let out = ""
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (c === "'" || c === "\"") {
+      let j = i + 1
+      while (j < line.length && line[j] !== c) j += c === "\"" && line[j] === "\\" && ESCAPABLE.has(line[j + 1] ?? "") ? 2 : 1
+      const body = line.slice(i + 1, j)
+      out += body.includes("\n") && body.length > longest ? `${c}…${c}` : line.slice(i, j + 1)
+      i = j
+      continue
+    }
+    if (c === "\\" && i + 1 < line.length) {
+      out += c + line[i + 1]
+      i++
+      continue
+    }
+    const end = heredocEnd(line, i)
+    if (end !== undefined) {
+      const first = line.indexOf("\n", i)
+      if (first < 0) {
+        out += line.slice(i)
+        break
+      }
+      // The body: from the line after the start to the end marker's line.
+      const marker = line.lastIndexOf("\n", end - 1) + 1
+      const body = line.slice(first + 1, marker)
+      out += body.length > longest ? `${line.slice(i, first + 1)}…\n${line.slice(marker, end)}` : line.slice(i, end)
+      i = end - 1
+      continue
+    }
+    out += c
+  }
+  return out
+}
+
 const REDIRECT = /^(\d*|&)(>>?|<)(&\d+)?$/
 const REDIRECT_WITH_TARGET = /^(\d*|&)(>>?|<)(?!&?\d*$)/
 

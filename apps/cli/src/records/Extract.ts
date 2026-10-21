@@ -4,7 +4,9 @@
  *
  * - Files changed, from the diff, and files read, from the log.
  * - Every shell command, what it runs, and whether it worked, by its error
- *   status and what its output can't hide (Outcome.ts).
+ *   status and what its output can't hide (Outcome.ts). A command is kept
+ *   to 500 characters once the code fed through it (heredocs, long quoted
+ *   scripts) is cut (Shell.ts `compactCommand`), so what it ran last stays.
  * - Detours: a mistake (a call that failed doing something, Outcome.ts), the
  *   later call that worked, and what the run spent in between. What closes
  *   one depends on what failed. A check (failing tests, type errors) only
@@ -28,6 +30,7 @@ import { callFailed, checksRun, failedSegments, mistakeMade, TYPE_ERRORS } from 
 import {
   classifyKey,
   commandKeys,
+  compactCommand,
   fileTarget,
   filtersTestNames,
   folderKey,
@@ -322,7 +325,7 @@ export const extractMechanical = (trace: Trace, diff: string, options: ExtractOp
     call: v.index,
     turn: v.turn,
     tool: v.call.name,
-    command: v.command === undefined ? null : clip(clean(v.command), MAX_COMMAND_CHARS),
+    command: v.command === undefined ? null : clip(clean(compactCommand(v.command)), MAX_COMMAND_CHARS),
     file: v.file ?? null
   })
 
@@ -521,7 +524,7 @@ export const extractMechanical = (trace: Trace, diff: string, options: ExtractOp
   const commands: Array<CommandRun> = views
     .filter((v) => v.shell && v.command !== undefined)
     .map((v) => ({
-      command: clip(clean(v.command!), MAX_COMMAND_CHARS),
+      command: clip(clean(compactCommand(v.command!)), MAX_COMMAND_CHARS),
       keys: [...v.keys],
       ok: !v.failed,
       error: v.failed ? symptomOf(v.output, clean) : null,

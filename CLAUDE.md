@@ -38,15 +38,17 @@ installs: the seven daily commands only, so nothing user-facing may point users
 or agents at another one), `src/local/` (the memory home in `~/.singularity`,
 and git), `src/records/` (records of committed changes: extraction, where
 edits went, the store; whether a call failed: `Outcome.ts`), `src/commands/`
-(CLI commands). Memory is saved scripts, `src/scripts/`: at a prompt that
+(CLI commands), `src/facts/` (facts: traps and checks from the records, one index
+per repo written at store time; the hook hands over only its card of check
+scripts). Memory is saved scripts, `src/scripts/`: at a prompt that
 starts a task (one that asks for something, `src/traces/Requests.ts`: the
 session's first such, then the first after each commit, `src/scripts/Cycle.ts`)
 the hook (`src/workflows/hook.ts`, which calls `src/scripts/Hook.ts`)
-hands over the stored commit most like the task, found by the prompt that
-asked for it and by its commit message (`src/records/Task.ts`), read from
-git, with no model call and no learning step; when it hands over nothing,
-the first file the agent edits that a stored commit touched brings that
-commit (`src/scripts/Watch.ts`, from the tool-call hook); and when the agent
+points to the stored commit most like the task (its hash, what it was for,
+its files; no diff), found by the prompt that asked for it and by its commit
+message (`src/records/Task.ts`), read from git, with no model call and no
+learning step, then adds the repo's card of check scripts earlier sessions
+ran, still on disk, once a session (`src/facts/Lookup.ts`); and when the agent
 reads a stored commit with `git show` or `git log`, the tool-call hook adds
 what git doesn't show about it, once a session: the request, the project
 commands its session ran, its mistakes (`src/scripts/History.ts`). On this branch everything else was
@@ -168,8 +170,8 @@ records use those keys.
   names). They must never break a session (errors go to
   `~/.singularity/hook-errors.log`, exit 0), and the tool-call hook runs
   after every call, so `src/workflows/hook.ts` loads modules only for the
-  event at hand and only when the call may have committed, edited a
-  watched file or read a commit. Keep it fast (about 0.1 s a call). Tests use a temporary `SINGULARITY_HOME`, never the
+  event at hand and only when the call may have committed or read a
+  commit. Keep it fast (about 0.1 s a call). Tests use a temporary `SINGULARITY_HOME`, never the
   real one.
 - Two memory homes. `~/.singularity` is our own: the memory of the sessions
   we work in, with singularity set up in our Claude Code. Evals and
@@ -181,9 +183,10 @@ records use those keys.
   installed: the harness sets `SINGULARITY_HOOKS=off`, which silences the
   installed hooks (a hook started with `--eval-run` would fire anyway).
 - Claude Code cuts a hook's text at 10,000 characters and hands the agent a
-  file path instead. The hand-over at task start stays under
-  `MAX_HANDOVER_CHARS` (`src/scripts/Render.ts`); anything added to it
-  takes room from the diff it shows.
+  file path instead. The task-start hand-over is a pointer and a card
+  of at most 700 characters of facts; a change shown in full (`recall`,
+  `changes`) stays under `MAX_HANDOVER_CHARS` (`src/scripts/Render.ts`), and
+  anything added to it takes room from the diff it shows.
 - Tests never run setup against the real
   home or the real agents' settings: they pass a temporary home and an
   environment without agents on PATH.

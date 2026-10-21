@@ -1,10 +1,13 @@
 /**
- * A saved script as the agent reads it at task start: the past task, what it
- * changed (each file as it is called today), the commands that worked, the
- * mistakes it made with what worked instead, and its change, file by file,
- * hand-written source first, until the hand-over's room runs out; the rest
- * is named with the command that shows it. A file rewritten since says so
- * instead of showing its change. Pure: Start.ts reads the record and git.
+ * A stored change as the agent reads it. At a task's start, a pointer
+ * (`renderPointer`): its commit, what it was for in a line, and its files as
+ * they are called today, no diff; git has the diff, and the agent reads the
+ * files as they are now anyway. In full (`renderScript`, for `singularity
+ * changes` and `recall`): the past task, its files, the commands that worked,
+ * the mistakes it made with what worked instead, and its change, file by
+ * file, hand-written source first, until the room runs out; the rest is named
+ * with the command that shows it. A file rewritten since says so instead of
+ * showing its change. Pure: Start.ts reads the record and git.
  */
 import type { CommandRun, Detour, FileChange } from "../records/Models.ts"
 import { taskShown } from "../records/Task.ts"
@@ -79,8 +82,6 @@ export interface ScriptView {
   readonly nearby: ReadonlyArray<string>
   /** The change, one chunk per file (`diff --git` onwards), snapshots left out. */
   readonly diff: ReadonlyArray<{ readonly path: string; readonly text: string }>
-  /** Handed over mid-task because the agent edited this file (Watch.ts): said so, and its change shown first. */
-  readonly touched?: string | undefined
 }
 
 /** Commands that only look (read, list, search, git's views) teach nothing to repeat. */
@@ -215,21 +216,11 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   const snapshots = s.files.filter((f) => f.snapshot)
   const committed = sha === undefined ? "" : `, and its change was committed as ${sha}`
   const head = [
-    ...(s.touched === undefined
-      ? [
-        "# A past change in this repository like your task",
-        "",
-        `An earlier task here asked for something like yours${committed}. ` +
-        "Use it as a worked example where it applies: names, values and details of your task differ, " +
-        "and your task may need more or less than it did."
-      ]
-      : [
-        "# A past change to a file you're editing",
-        "",
-        `You just edited ${s.touched}. An earlier task here changed it too${committed}. ` +
-        "That task asked for something else: use it for how this part of the code works and what had to " +
-        "change along with it (tests, types, generated files, docs), not as a model of your change."
-      ]),
+    "# A past change in this repository like your task",
+    "",
+    `An earlier task here asked for something like yours${committed}. ` +
+    "Use it as a worked example where it applies: names, values and details of your task differ, " +
+    "and your task may need more or less than it did.",
     "",
     asked === s.prompt ? "## Its task" : "## Its task, as its commit message says",
     "",
@@ -251,8 +242,7 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   // examples and config (`fileKind`). A file left too little shows only its
   // file line; the change is a git command away. Files rewritten or deleted
   // since (Fresh.ts), their code nowhere else, aren't shown at all: their
-  // change would mislead. A hand-over for a file the agent edited shows that
-  // file's change before all others.
+  // change would mislead.
   const open = "\n\n## Its change\n\n```diff\n"
   const close = "```\n"
   let room = budget - intro.length - open.length - close.length - 300
@@ -265,10 +255,7 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
   const cut: Array<string> = []
   const left: Array<string> = []
   const shown: Array<string> = []
-  const groups = [
-    ...(s.touched === undefined ? [] : [chunks.filter((c) => c.path === s.touched)]),
-    ...KINDS.map((kind) => chunks.filter((c) => c.kind === kind && c.path !== s.touched))
-  ]
+  const groups = KINDS.map((kind) => chunks.filter((c) => c.kind === kind))
   for (const these of groups) {
     const cap = shareOf(these.map((c) => c.text.length), Math.max(0, room))
     for (const c of these) {
@@ -296,6 +283,61 @@ export const renderScript = (s: ScriptView, budget = MAX_HANDOVER_CHARS): string
     if (cut.length > 0) out += `\nThe whole change: \`git show ${sha}\` (add \`-- <file>\` for one file).\n`
   }
   return out.length <= budget ? out : out.slice(0, budget - 40) + "\n… (cut for room)\n"
+}
+
+/** A stored change as a task's start points to it: what it was for, its commit, its files as they are today. */
+export interface PointerView {
+  readonly prompt: string
+  readonly message?: string | undefined
+  readonly commit: string
+  readonly files: ReadonlyArray<FileNow>
+}
+
+/** Files named in a pointer; a change of sixty translation files names the rest by count. */
+const MAX_POINTER_FILES = 12
+const MAX_LINE_CHARS = 200
+
+/** A file as a pointer names it: no word of a change shown or not, since none is. */
+const pointerFileLine = (f: FileNow): string => {
+  const counts = `+${f.added} -${f.removed}`
+  if (f.fate?.kind === "moved") return `- ${f.path} (${counts}; its code is in ${f.fate.to} now)`
+  if (f.fate?.kind === "stale") {
+    const last = f.fate.last === null ? "" : `, last in ${f.fate.last.hash} "${f.fate.last.title}"`
+    return `- ${f.now ?? f.path} (${counts}; it has changed since${last})`
+  }
+  if (f.now === null) return `- ${f.path} (${counts}; no longer exists)`
+  if (f.now !== f.path) return `- ${f.now} (${counts}; was ${f.path} then)`
+  return `- ${f.path} (${counts})`
+}
+
+/**
+ * A stored change as a task's start hands it over: its commit, the first
+ * line of what it was for (its task, or its commit message when the prompt
+ * asked for nothing), and the files it changed as they are called today.
+ * No diff: `git show` has it, and reading that commit brings what git
+ * doesn't show about it (History.ts).
+ */
+export const renderPointer = (p: PointerView): string => {
+  const sha = p.commit.slice(0, 10)
+  const first = taskShown(p).trim().split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? ""
+  const line = first.length > MAX_LINE_CHARS ? first.slice(0, MAX_LINE_CHARS - 1) + "…" : first
+  const sources = p.files.filter((f) => !f.snapshot)
+  const snapshots = p.files.length - sources.length
+  const out = [
+    "# A past change in this repository like your task",
+    "",
+    `An earlier task here asked for something like yours, committed as ${sha}: "${line}". ` +
+    "Names, values and details of your task differ, and it may need more or less than that one did.",
+    "",
+    `\`git show ${sha}\` shows its change (add \`-- <file>\` for one file); memory then adds what git doesn't show about it.`,
+    "",
+    "Files it changed:",
+    "",
+    ...sources.slice(0, MAX_POINTER_FILES).map(pointerFileLine)
+  ]
+  if (sources.length > MAX_POINTER_FILES) out.push(`- and ${sources.length - MAX_POINTER_FILES} more`)
+  if (snapshots > 0) out.push(`- ${snapshots === 1 ? "1 snapshot" : `${snapshots} snapshots`} it regenerated`)
+  return out.join("\n") + "\n"
 }
 
 /** A stored change as the agent reads it beside its commit, which it just read in git (History.ts). */

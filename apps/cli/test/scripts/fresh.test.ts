@@ -318,6 +318,7 @@ describe("task start, with what changed since", () => {
       const there = yield* startScripts({ sessionId: "s", prompt: OTHER_RULE, cwd: clone }, { tenantDir, persist: false })
       expect(there.picked?.commit).toBe(head)
     }).pipe(Effect.provide(JsonRecordStore.layer(tenantDir, "local"))))
-    expect(readFileSync(join(clone, "lib/md061.mjs"), "utf-8")).toBe(RULE_CODE)
+    // A clone checks files out with this machine's line endings (core.autocrlf).
+    expect(readFileSync(join(clone, "lib/md061.mjs"), "utf-8").replace(/\r\n/g, "\n")).toBe(RULE_CODE)
   }, 30_000)
 })

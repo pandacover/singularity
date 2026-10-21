@@ -32,6 +32,8 @@
  * record).
  */
 import { DateTime, Effect, FileSystem, Option, Path, Predicate, Schema } from "effect"
+import { writeFacts } from "../facts/Index.ts"
+import { indexPath, readIndex } from "../facts/Lookup.ts"
 import { git, identifyRepo } from "../local/Git.ts"
 import { buildRecord, commitRecordId, recordId } from "../records/Build.ts"
 import { extractMechanical, relativizer } from "../records/Extract.ts"
@@ -289,8 +291,28 @@ interface Change {
   readonly found: Exclude<Found, { readonly kind: "none" }>
 }
 
-/** Store the commits on a repo's branches that memory hasn't looked at yet, each with the session it came from. */
+/**
+ * Store the commits on a repo's branches that memory hasn't looked at yet,
+ * each with the session it came from; then, when one was stored or the repo
+ * has no fact index of this format yet, write its fact index
+ * (facts/Index.ts). The index is best effort: storing never fails for it.
+ */
 export const storeCommits = Effect.fn("storeCommits")(function*(cwd: string, homes: AgentHomes, tenantDir: string, options: StoreOptions = {}) {
+  const result = yield* storeChanges(cwd, homes, tenantDir, options)
+  const subject = result.subject
+  if (subject !== undefined) {
+    yield* Effect.gen(function*() {
+      // None, or one of an older format: built again.
+      const missing = readIndex(indexPath(tenantDir, subject)) === undefined
+      if (result.stored.length === 0 && !missing) return
+      const repo = yield* identifyRepo(cwd)
+      if (repo !== undefined) yield* writeFacts(tenantDir, subject, repo.root)
+    }).pipe(Effect.ignoreCause({ log: true, message: "writing the fact index" }))
+  }
+  return result
+})
+
+const storeChanges = Effect.fnUntraced(function*(cwd: string, homes: AgentHomes, tenantDir: string, options: StoreOptions = {}) {
   const store = yield* RecordStore
   const path = yield* Path.Path
   const nothing = (subject?: string, sessions = 0): StoreResult => ({ subject, sessions, examined: 0, stored: [], existing: [], skipped: new Map() })

@@ -7,7 +7,7 @@ import { buildRecord } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import type { CommandRun, Detour } from "../../src/records/Models.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { commandsToShow, mistakesNearby, mistakesToShow, renderScript } from "../../src/scripts/Render.ts"
+import { commandsToShow, mistakesNearby, mistakesToShow, renderPointer, renderScript } from "../../src/scripts/Render.ts"
 import { MIN_SCORE, pick, rank, rankRecall, score, tellingFiles } from "../../src/scripts/Search.ts"
 import { startScripts } from "../../src/scripts/Start.ts"
 import { bash, session } from "../records/fixtures.ts"
@@ -95,9 +95,33 @@ describe("render", () => {
     expect(["README.md", "test/rules.test.mjs", "lib/md061.mjs", "lib/md062.mjs"].map(links)).toEqual([false, false, true, true])
     const [first, ...others] = stored
     expect(mistakesNearby(first.files.filter(links), others, first.mistakes)).toEqual(["- `npm test` failed: MD061 expected 2 errors"])
-    // A file only one change touched is enough to watch, but can't link two.
+    // A file only one change touched tells something, but can't link two.
     expect(tellingFiles(stored)("lib/md061.mjs")).toBe(false)
     expect(tellingFiles(stored)("lib/md062.mjs")).toBe(true)
+  })
+
+  it("points to a change by its commit, the first line of its task and its files, with no diff", () => {
+    const file = (path: string, more: object = {}) => ({ path, status: "modified" as const, added: 2, removed: 1, snapshot: false, now: path, ...more })
+    const text = renderPointer({
+      prompt: "yes",
+      message: "Show the installer's steps one per line\n\nEach step on its own line.",
+      commit: "0123456789abcdef",
+      files: [
+        file("install.sh"),
+        file("lib/old.mjs", { now: "lib/new.mjs" }),
+        file("README.md", { fate: { kind: "stale", last: { hash: "fedcba9876", title: "Rewrite the README" } } }),
+        file("test/__snapshots__/a.snap", { snapshot: true })
+      ]
+    })
+    expect(text).toContain("committed as 0123456789: \"Show the installer's steps one per line\".")
+    expect(text).toContain("`git show 0123456789`")
+    expect(text).toContain(
+      "- install.sh (+2 -1)\n- lib/new.mjs (+2 -1; was lib/old.mjs then)\n" +
+        "- README.md (+2 -1; it has changed since, last in fedcba9876 \"Rewrite the README\")\n- 1 snapshot it regenerated"
+    )
+    expect(text).not.toContain("Each step on its own line")
+    const many = renderPointer({ prompt: RULE, commit: "0123456789abcdef", files: Array.from({ length: 15 }, (_, i) => file(`locales/${i}.json`)) })
+    expect(many).toContain("- locales/11.json (+2 -1)\n- and 3 more")
   })
 
   it("shows the commit message as the task when the prompt asked for nothing", () => {

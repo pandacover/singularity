@@ -2,10 +2,9 @@
  * The recall note: a short block in an agent's user-level instruction file
  * (Claude Code's CLAUDE.md, Codex's and OpenCode's AGENTS.md; Agents.ts says
  * which file each reads) telling the agent it can run `singularity recall`
- * mid-task. Memory hands over at most once a task, at its start or, after
- * nothing then, at the first edit of a file a stored change touched
- * (src/scripts/Watch.ts), and adds what git doesn't show about a stored
- * commit the agent reads (src/scripts/History.ts); the note is how an agent
+ * mid-task. Memory hands over at a task's start (src/scripts/Start.ts), and
+ * adds what git doesn't show about a stored commit the agent reads
+ * (src/scripts/History.ts); the note is how an agent
  * knows to look again when the task turns to something done before.
  *
  * The block sits between two marker comments, so setup adds it once and

@@ -56,8 +56,8 @@ export const changeMessage = (messages: ReadonlyArray<string>): string =>
  * must (`MIN_WORDS` words of its own). A task with no message at all (an
  * eval's saved run, never committed; a commit git no longer has) is found by
  * its prompt, as before messages were kept; one filed under "yes" whose
- * message says too little ("wip") isn't found by its words at all, only by
- * its files (scripts/Watch.ts). The whole message, not only its first line:
+ * message says too little ("wip") isn't found by its words at all. The
+ * whole message, not only its first line:
  * looking up each change of the real memory replayed (examples/scripts/
  * replay-real-memory.ts), the first line handed over 5, 2 of them unrelated,
  * the whole message 4, all related; the markdownlint runs' picks stay the same.

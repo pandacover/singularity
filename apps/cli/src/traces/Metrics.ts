@@ -6,10 +6,9 @@ import { posix, win32 } from "node:path"
 import type { Trace, Usage } from "./Models.ts"
 import { traceAgentIds, traceUsage, traceWallTime, usageToJson } from "./Models.ts"
 
-export const READ_TOOLS = new Set(["Read"])
-export const EDIT_TOOLS = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"])
-export const SHELL_TOOLS = new Set(["Bash", "PowerShell"])
-export const SEARCH_TOOLS = new Set(["Glob", "Grep"])
+import { EDIT_TOOLS, READ_TOOLS, SEARCH_TOOLS, SHELL_TOOLS } from "./Tools.ts"
+
+export { EDIT_TOOLS, READ_TOOLS, SEARCH_TOOLS, SHELL_TOOLS }
 
 /**
  * Shell commands that probably write files: in-place sed/perl, redirection
