@@ -385,9 +385,27 @@ export const commitHandover = Effect.fn("scripts.commitHandover")(function*(
     const hash = yield* git(s.root, ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`]).pipe(Effect.map((h) => h.trim()), Effect.orElseSucceed(() => ""))
     if (hash !== "") resolved.push(hash)
   }
-  const record = [...input.hashes, ...resolved]
+  const usable = (r: Stored) => r.run.session_id !== input.sessionId && !input.given.includes(r.run.head_commit)
+  const read = [...input.hashes, ...resolved]
+  let record = read
     .flatMap((h) => s.stored.filter((r) => r.run.head_commit.toLowerCase().startsWith(h.toLowerCase())).slice(0, 1))
-    .find((r) => r.run.session_id !== input.sessionId && !input.given.includes(r.run.head_commit))
+    .find(usable)
+  // A commit inside a stored change of several (one command made them): the
+  // first stored change after it, on the way to HEAD, whose base is before it.
+  for (const h of record === undefined ? read.slice(0, 3) : []) {
+    const full = yield* git(s.root, ["rev-parse", "--verify", "--quiet", `${h}^{commit}`]).pipe(Effect.map((x) => x.trim()), Effect.orElseSucceed(() => ""))
+    if (full === "") continue
+    const after = yield* git(s.root, ["rev-list", "--reverse", "--ancestry-path", `${full}..HEAD`]).pipe(Effect.orElseSucceed(() => ""))
+    const heads = new Map(s.stored.map((r) => [r.run.head_commit.toLowerCase(), r] as const))
+    const next = after.split("\n").map((x) => heads.get(x.trim().toLowerCase())).find((r) => r !== undefined)
+    const base = next?.run.base_commit
+    if (next === undefined || base === null || base === undefined || base.toLowerCase() === full.toLowerCase()) continue
+    const holds = yield* git(s.root, ["merge-base", "--is-ancestor", base, full]).pipe(Effect.as(true), Effect.orElseSucceed(() => false))
+    if (holds && usable(next)) {
+      record = next
+      break
+    }
+  }
   if (record === undefined) return nothing
   const text = renderBehind({ commit: record.run.head_commit, prompt: record.task.prompt, ...(yield* extrasOf(s, record)) })
   const result: ScriptsStart = {

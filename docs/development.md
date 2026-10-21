@@ -177,7 +177,10 @@ call reads commits when it runs `git show`, or `git log` printing a diff or
 a stat. They're the commits its output heads with `commit <hash>`, else the
 lines it starts with a hash, else the hashes and `HEAD~n` or `@~n`
 revisions its command names (resolved in the repo; not `<commit>:<path>`,
-`HEAD@{1}` or `@{u}`), a command continued over lines read as one. More
+`HEAD@{1}` or `@{u}`), a command continued over lines read as one. A
+commit inside a stored change of several (one command made them, so the
+record is the last one's) brings that change: the first stored change after
+it on the way to HEAD whose base is before it. More
 than two commits listed is a survey: nothing. A reading never gives a session
 its own commits. Every hand-over notes its commit for the session (task
 start, a reading, or `singularity recall`, which Claude Code's

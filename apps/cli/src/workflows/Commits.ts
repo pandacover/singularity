@@ -122,10 +122,6 @@ const MIN_LINE = 10
 const REWRITTEN_MS = 60_000
 /** What counts as a check of a change. */
 const CHECKS = new Set(["test", "typecheck", "lint", "build"])
-/** Documentation: a change to these alone needs no check. */
-const DOCS = /(^|\/)(readme|license|licence|changelog|notice|authors|contributing|copying)$|\.(md|mdx|markdown|txt|rst|adoc)$/i
-
-export const isDocs = (file: string): boolean => DOCS.test(file)
 
 // --- the log of commits left out ---
 
@@ -513,12 +509,11 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
     const scripted = part.toolCalls.some((call) => SHELL_TOOLS.has(call.name) && SHELL_WRITE.test(str(call.input.command) ?? ""))
     if (!edited && !scripted) return skip("its session's steps changed none of its files")
   }
+  // A change is stored whether or not a check ran before it, or passed: what
+  // git lacks about it (the request, the commands, the mistakes) is there either
+  // way, and the record says which check it had.
   const m = extractMechanical(part, "", { succeeded: true })
   const last = m.commands.filter((x) => x.keys.some((k) => CHECKS.has(classifyKey(k)))).at(-1)
-  if (!change.commits.every((c) => c.files.length > 0 && c.files.every(isDocs))) {
-    if (last === undefined) return skip("no check was run before it")
-    if (!last.ok) return skip("the last check before it failed")
-  }
 
   // A follow-up of the session's previous stored change, on top of it, with no
   // new prompt and only its files (a lint fix after the commit): one script,
@@ -548,7 +543,7 @@ const recordOf = Effect.fnUntraced(function*(change: Change, ctx: RecordContext)
     trace: whole,
     diff,
     outcome: "success",
-    checks: last === undefined || !last.ok ? [] : [{ command: last.command, ok: true, exit_code: 0 }],
+    checks: last === undefined ? [] : [{ command: last.command, ok: last.ok, exit_code: last.ok ? 0 : null }],
     memory: null,
     run: {
       source: "session",

@@ -6,7 +6,7 @@ const LAYERS = [
   { name: "Your agent", note: ["Gets one past change.", "Still writes every line itself."], side: "r" },
   { name: "Hooks", note: ["Never break a session.", "Errors go to a log; about 0.1 s a call."], side: "l" },
   { name: "Memory", note: ["Keeps records of commits,", "and reads the code from git."], side: "r" },
-  { name: "Your sessions", note: ["Stored only when the last", "check before a commit passed."], side: "l" },
+  { name: "Your sessions", note: ["Stored at each commit,", "with whether its check passed."], side: "l" },
   { name: "Your machine", note: ["Search runs here,", "with no model call."], side: "r", base: true }
 ] as const
 

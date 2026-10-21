@@ -231,4 +231,40 @@ describe("reading a stored commit, through the hooks", () => {
     expect(log.filter((l) => l.moment === "git").map((l) => [l.session_id, l.picked?.commit ?? null]))
       .toEqual([[s, head], ["cccccccc-0000-0000-0000-000000000003", head], [continued, head]])
   }, 60_000)
+
+  it("adds it for a commit inside a stored change of several, and not for one before or after it", async () => {
+    const root = tempDir()
+    const repo = join(root, "repo")
+    const home = join(root, "home")
+    mkdirSync(repo, { recursive: true })
+    git(repo, "init", "-q")
+    write(repo, "lib/rules.mjs", "export const rules = []\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    const base = git(repo, "rev-parse", "HEAD")
+    write(repo, "lib/md061.mjs", "export const md061 = () => {}\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "Add MD061")
+    const inside = git(repo, "rev-parse", "HEAD")
+    write(repo, "test/md061.test.mjs", "test('md061', () => {})\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "Test MD061")
+    const head = git(repo, "rev-parse", "HEAD")
+    write(repo, "lib/later.mjs", "export const later = 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "Later")
+    const later = git(repo, "rev-parse", "HEAD")
+    const RULE = "Add a new built-in rule MD061 with its test"
+    await storeChange(repo, join(home, "tenants", "local"), RULE, base, head)
+
+    const read = (session_id: string, hash: string) => {
+      const stdout = spawnSync("git", ["-C", repo, "-c", "color.ui=never", "show", "--stat", hash], { encoding: "utf-8" }).stdout
+      return hook(home, "post-tool-use", { session_id, cwd: repo, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: `git show --stat ${hash.slice(0, 10)}` }, tool_response: { stdout, stderr: "" } })
+    }
+    const out = read("dddddddd-0000-0000-0000-000000000001", inside)
+    expect(out).toContain(`# What git doesn't show about ${head.slice(0, 10)}`)
+    expect(out).toContain(RULE)
+    expect(read("dddddddd-0000-0000-0000-000000000002", later)).toBe("")
+    expect(read("dddddddd-0000-0000-0000-000000000003", base)).toBe("")
+  }, 60_000)
 })
