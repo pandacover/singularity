@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect"
 import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { readIndex } from "../../src/facts/Lookup.ts"
 import { loadHome } from "../../src/local/Home.ts"
 import { commitRecordId, recordId } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
@@ -170,6 +171,9 @@ describe("storing commits", () => {
     expect(two.run.segment).toEqual({ from: at(5), to: at(15) })
     expect([two.run.base_commit, two.run.head_commit]).toEqual([first, second])
     expect(two.commands.map((c) => c.command)).toEqual(["timeout 600 npx turbo run test", "git add -A && git commit -m 'Add green'"])
+    // What memory knows about checking a change here, kept apart for the hooks (facts/Index.ts).
+    const facts = readIndex(join(t.homeDir, "tenants", "local", "facts", "app.json"))
+    expect(facts?.facts.map((f) => f.id).sort()).toEqual(["check:npm test", "check:npx turbo test"])
 
     // Whichever moment looks again, nothing is stored twice.
     expect((await store(t)).stored).toEqual([])

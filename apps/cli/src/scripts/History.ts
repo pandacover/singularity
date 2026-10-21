@@ -9,7 +9,7 @@
  * earlier rule's commit, under either recall note. The diff they read is
  * git's; the rest is memory's.
  *
- * Plain node, like Watch.ts: the hook runs after every call. A call reads a
+ * Plain node: the hook runs after every call. A call reads a
  * change when it runs `git show`, or `git log` printing a diff or a stat (a
  * list of subjects only is a look around). Which commits it read: the ones
  * its output heads with `commit <hash>`, else the lines it starts with a hash
@@ -21,7 +21,7 @@
  * commits listed is a survey (`git log -5 --stat`), not a reading: nothing.
  *
  * Mid-task, a session is given a commit once, whichever moment gave it first
- * (a task's start, a watched file, a reading, `recall`):
+ * (a task's start, a reading, `recall`):
  * `<tenant>/scripts/sessions/<id>.given`, one commit per line, next to the
  * session's marker (Cycle.ts). Its own commits it isn't given by a reading
  * at all (Start.ts).

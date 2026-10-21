@@ -48,7 +48,8 @@ Under `apps/cli/src`:
 | Directory | What it holds |
 |---|---|
 | `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the recall note in agents' instruction files (`Instructions.ts`), the `singularity` command, Codex hook trust (`CodexHooks.ts`), updating to the latest code with what setup put in place kept current (`Update.ts`) |
-| `scripts/` | memory: at task start (a session's first prompt that asks for something, and the first after each commit: `Cycle.ts`), the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`); after nothing at the start, a stored commit to the first watched file the agent edits (`Watch.ts`); and what git doesn't show about a stored commit the agent reads with `git show` or `git log` (`History.ts`) |
+| `scripts/` | memory: at task start (a session's first prompt that asks for something, and the first after each commit: `Cycle.ts`), a pointer to the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`), then the repo's card of check scripts (`facts/`); and what git doesn't show about a stored commit the agent reads with `git show` or `git log` (`History.ts`) |
+| `facts/` | facts: what records teach about checking a change here and the traps on the way (`Facts.ts`), kept as one index per repo at store time (`Index.ts`) and read in plain node (`Lookup.ts`, `Reads.ts`); a task's start hands over its card of check scripts (see Facts below) |
 | `workflows/` | the hook script (`hook.ts`) and storing commits (`Commits.ts`, `StoreTrigger.ts`, `Transcripts.ts`); the hand-over log (`Session.ts`) |
 | `records/` | records: what a committed change shows, read from its session and its diff; what it was asked and what its commit says, which it is found by (`Task.ts`) |
 | `traces/` | reading session logs: Claude Code's, and Codex's and Hermes Agent's as Claude Code's; whether a prompt asks for a change (`Requests.ts`) |
@@ -64,10 +65,10 @@ hand-over (the rest of `workflows/`), the learning step (`setup/AutoLearn.ts`,
 `src/hook.ts`), the graph setup, `layer/` and `web/` were removed; tags
 `memory-v0` and `memory-local-first` keep them.
 
-Memory reaches an agent four ways: the task-start hook hands over the
-stored commit most like the task; the tool-call hook, mid-task, hands over
-a stored commit by the file the agent edits, and adds what git doesn't show
-about a stored commit the agent reads in git; the recall note (`setup/Instructions.ts`,
+Memory reaches an agent four ways: the task-start hook points to the
+stored commit most like the task and adds the repo's card of check scripts;
+the tool-call hook, mid-task, adds what git doesn't show about a stored
+commit the agent reads in git; the recall note (`setup/Instructions.ts`,
 a marked block in Claude Code's `CLAUDE.md`, Codex's and OpenCode's
 `AGENTS.md`) tells the agent it can run `singularity recall` mid-task; and
 the skill (`setup/Skill.ts`) says the same to agents that read skills.
@@ -135,39 +136,31 @@ Commands: `npm|yarn|pnpm|bun <x>` is dropped when `x` was a script in a
 `package.json` (the repo's, or one in a folder of a changed file) at the
 commit and is in none of them today; builtins and tools are kept.
 
-`Render.ts` gives hand-written source the room first (whole when it fits,
+The hook hands over a pointer (`Render.renderPointer`): the commit, the
+first line of its task (its commit message's when the prompt asked for
+nothing), and up to twelve of its files as they are called today, with
+what became of them (moved, renamed, changed since, gone). No diff: git has
+it, `git show <sha>` shows it, and reading it brings what git doesn't show
+(below). A session is never pointed to a change it made. After it comes
+the repo's card (Facts, below). `singularity recall` and `singularity
+changes <commit>` show a change in full (`Render.renderScript`), diff
+included, for which `Render.ts` gives hand-written source the room first (whole when it fits,
 else each source file an equal share), then tests, then docs, examples,
 fixtures, snapshots and config (`fileKind`); a file left under 200
 characters is only named, with `git show <sha> -- <file>`.
+
+On real prompts of 2026-10-21 (a copy of `~/.singularity`), two chat-v2
+tasks went from the 9,583 characters of the diff hand-over to 1,514, pointer
+and card; a singularity task that matched nothing got a 393-character card.
+The task-start hook takes about 0.9 s, as before (most of it git, judging
+the change's files); the tool-call hook about 75 ms a call, a little less
+than before, with no watch to look for.
 
 Mistakes other stored changes made come along only when the two changes
 share a code or test file few stored changes touched (`Search.tellingFiles`,
 with two at least). Linked through any shared file (most changes edit
 `README.md`), one session's failed `npm run build-declaration` reached every
 later hand-over in two markdownlint passes, and agents ran it.
-
-### A hand-over by file
-
-A task start that hands over nothing writes the files to watch instead
-(`Search.watchFiles`, `<home>/watch/<session>.json`): the non-docs,
-non-snapshot files of stored changes whose task scores at least
-`FILE_MIN_SCORE` (0.2) against the new one, each changed by at most
-`MAX_FILE_SHARE` (20%, one at least) of the stored changes
-(`Search.tellingFiles`), with up to
-three changes per file, best first. The tool-call hook (`Watch.ts`, plain
-node) checks each call of a watching session: an edit tool's file, a
-patch's files, or a watched file a shell command names that `git status`
-shows changed (agents also edit with sed and scripts). The first match
-takes the watch and hands over the first of its changes still worth it,
-examined as at task start (`Start.fileHandover`), with its own intro and
-the edited file's change shown first; the log line has `moment: "file"`.
-A change the session was given already (a commit it read, below) is
-skipped.
-One hand-over a task; the watch ends at the session's next task start and at
-session end, and a watch older than a day is swept at the next task start. The common call costs
-one look at the watch folder (timed at about 0.1 s a call either way).
-`node apps/cli/examples/scripts/check-file-handover.ts` shows what it would
-hand over on the markdownlint and excalidraw tasks.
 
 ### A hand-over by commit
 
@@ -187,10 +180,10 @@ revisions its command names (resolved in the repo; not `<commit>:<path>`,
 `HEAD@{1}` or `@{u}`), a command continued over lines read as one. More
 than two commits listed is a survey: nothing. A reading never gives a session
 its own commits. Every hand-over notes its commit for the session (task
-start, file, a reading, or `singularity recall`, which Claude Code's
+start, a reading, or `singularity recall`, which Claude Code's
 `CLAUDE_CODE_SESSION_ID` ties to the session):
-`<tenant>/scripts/sessions/<id>.given`. A reading or a watched file skips a
-commit noted there; a task's start doesn't, since a new task may need the
+`<tenant>/scripts/sessions/<id>.given`. A reading skips a commit noted
+there; a task's start doesn't, since a new task may need the
 same change again. The log line has `moment: "git"`.
 A call ends at the raw check (`git` then `show` or `log` in the input) or at
 the plain one before the hand-over's modules load, in about 0.1 s; a
@@ -209,6 +202,75 @@ the process open ends a hook that something else would.
 staleness rules over a repo's history (read-only: files are read at each
 revision with git) and writes a sample of verdicts to check by hand to
 `apps/cli/examples/scripts/results/staleness-sample.tsv`.
+
+## Facts
+
+Each time memory stores a change (and once for a repo stored before facts
+were kept), `storeCommits` writes `<tenant>/facts/<subject>.json` from the
+repo's records (`facts/Index.ts`). Two kinds only (`facts/Facts.ts`):
+
+- a trap: a detour whose fix was another command, or the same one run
+  otherwise (`bun run build` first, `--ignoreConfig`), with the failing
+  command, the line of its failure that tells it apart (`signal`), and what
+  worked. Detours closed by editing the repo's code, by an edit tool, of the
+  agent's own inline scripts, of failing tests, or of a shell's quoting
+  error are left out (`trapOf` says which);
+- a check: the project's own checks a change ran before its commit (a test,
+  typecheck, build or lint command of its package, in the repo), and
+  scripts run to check (named so: `smoke`, `e2e`, `shots`, `ui`, …), with
+  what their line set up first (`bun run build; unset ELECTRON_RUN_AS_NODE`),
+  each known by the file it runs (`check:<path>`): sessions name theirs
+  alike (`shots.mjs` in three folders of `%TEMP%`).
+
+A record keeps each command to 500 characters once the code fed through it
+(heredoc bodies, long quoted scripts) is cut (`Shell.compactCommand`). Records
+stored before kept the first 500, and lost what ran after a heredoc: all
+three of the header session's screenshot runs (2c65307, `cat > shots.mjs
+<<'EOF' … EOF … node "$TEMP/cv2-header/shots.mjs"`). Their commands and
+detours are read again from their logs by today's rules, once, and kept in
+`<tenant>/facts/commands/<record id>.json` (`Index.commandsNow`); the record
+stays as stored. The index has a format (`Lookup.INDEX_FORMAT`, 2 since
+then): a store builds an index of another format again.
+
+The same fact from several records is one, with its `recurrence`, the
+newest record's text and all their commits. A trap retires when a later
+record ran its failing command as it was and it worked; a fact whose script
+is gone from disk or whose package script is gone from package.json is left
+out (`Lookup.isLive`, at store time and again at use). Facts are looked up
+by what they run (`by_key`) and by the source files of their changes
+(`by_file`).
+
+The task-start hook reads the index (never builds it) and hands over its
+card (`Lookup.cardFacts`, `renderCard`): up to four check scripts in 700
+characters of lines, each on disk: first the scripts of the change the
+pointer names, whatever their recurrence (the harness written for a task
+like this one), then the repo's, strongest first, run for two changes or
+more (`CARD_MIN_RECURRENCE`: one run once is a scratch script as often as a
+harness), with its folder when its command names it only by its name, and
+the change it last checked. Not the project's own checks (agents run `bun test` anyway), not
+traps (they helped once in 37 replayed sessions). Each fact comes once a
+session (`<tenant>/scripts/sessions/<id>.facts`), so a later task's start
+brings only facts the session wasn't given, and never one only that
+session taught. `Lookup.factsAt` picks for the other moments the replay
+measured (a first read, a failed command); the hooks don't use them.
+
+The replay's card table (past only, a session left out at a time) counts
+the task starts whose card's first line names a script the session then
+read or ran. On 2026-10-21, over 81 records: as stored, 2 of 34 cards;
+with commands read again, 3 of 43; with the pointed-to change's scripts
+first, 2 of 45 (the pointer names a change in few past-only task starts:
+3). Few could be more: of 71 check scripts in those sessions, 3 were ever
+run by a second session. Agents adapt a harness more than they rerun it
+(the header session read `cv2-ui/ui.mjs`, then wrote `cv2-header/shots.mjs`).
+Ranking the repo's scripts by the files their changes share with the
+pointed-to one changed no card; leading with the best match below the
+pointer's bar gained one card in chat-v2 and lost one in singularity.
+
+`node apps/cli/examples/scripts/replay-facts.ts [--home <memory home>]`
+replays it over a home's real records, a session left out at a time, its
+facts from the other sessions or only from changes before it, and scores
+each fact that would have fired against what the session did next; it set
+`MIN_RECURRENCE`, `MAX_FACTS_CHARS` and `MAX_FACTS` in `Lookup.ts`.
 
 ## Records, by hand
 
