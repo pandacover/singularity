@@ -11,7 +11,7 @@ import { RecordStore } from "../../src/records/RecordStore.ts"
 import { readRetired } from "../../src/scripts/Retired.ts"
 import { leftOut } from "../../src/setup/Status.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
-import { A_COPY, chainsOf, isDocs, MADE_TOGETHER, NOT_FROM_A_SESSION, readSkips, storeCommits, storePast } from "../../src/workflows/Commits.ts"
+import { A_COPY, chainsOf, MADE_TOGETHER, NOT_FROM_A_SESSION, readSkips, storeCommits, storePast } from "../../src/workflows/Commits.ts"
 import { commandOf, ranCommit } from "../../src/workflows/StoreTrigger.ts"
 import { projectDirName } from "../../src/workflows/Transcripts.ts"
 import { run, tempDir } from "../eval/helpers.ts"
@@ -266,7 +266,7 @@ describe("storing commits", () => {
     expect(r.run.segment).toEqual({ from: null, to: new Date(T0 + 70_000 - 1).toISOString() })
   }, 60_000)
 
-  it("leaves out what isn't a tested change of a session's, once, and says why", async () => {
+  it("stores a change with no check or a failing one, says which check it had, and leaves out what no session made", async () => {
     const t = setup()
     const untested = commitColors(t.repo, 5, ["red", "blue"])
     writeTranscript(t.claudeHome, t.repo, "ccccccc1-0000-0000-0000-000000000001", [
@@ -287,27 +287,20 @@ describe("storing commits", () => {
     commitColors(t.repo, 5100, ["white"], { email: "teammate@example.com" })
 
     const result = await store(t)
-    expect(result.stored).toEqual([])
-    expect(Object.fromEntries(result.skipped)).toEqual({
-      "no check was run before it": 1,
-      "the last check before it failed": 1,
-      [NOT_FROM_A_SESSION]: 1
-    })
+    expect(result.stored).toEqual([commitRecordId("app", untested), commitRecordId("app", failing)])
+    const [blue, green] = await records(t)
+    expect(blue.checks).toEqual([])
+    expect(green.checks).toEqual([{ command: "npm test", ok: false, exit_code: null }])
+    expect(Object.fromEntries(result.skipped)).toEqual({ [NOT_FROM_A_SESSION]: 1 })
     const logged = await skips(t)
-    expect(new Map(logged.map((s) => [s.commit, s.reason]))).toEqual(new Map([
-      [untested, "no check was run before it"],
-      [failing, "the last check before it failed"],
-      [own, NOT_FROM_A_SESSION]
-    ]))
-    expect(logged.find((s) => s.commit === untested)?.session).toBe("ccccccc1-0000-0000-0000-000000000001")
+    expect(new Map(logged.map((s) => [s.commit, s.reason]))).toEqual(new Map([[own, NOT_FROM_A_SESSION]]))
 
-    // A sweep doesn't look at them again; reading the past again does, without logging a reason twice.
+    // A sweep doesn't look at them again; reading the past again doesn't log a reason twice.
     expect((await store(t)).examined).toBe(0)
-    const again = await run(Effect.gen(function*() {
+    await run(Effect.gen(function*() {
       return yield* storePast(t.repo, { claude: t.claudeHome }, (yield* loadHome(t.homeDir)).tenantDir)
     }).pipe(Effect.provide(storesFor(t.homeDir))))
-    expect(again.examined).toBe(3)
-    expect((await skips(t)).length).toBe(3)
+    expect((await skips(t)).length).toBe(1)
   }, 60_000)
 
   it("leaves out a commit two sessions could have made or written, and one a rebase wrote again", async () => {
@@ -437,7 +430,7 @@ describe("storing commits", () => {
     expect(hashes(chainsOf([{ hash: "b", parent: "a" }, { hash: "c", parent: "a" }, { hash: "d", parent: "c" }]))).toEqual([["b"], ["c", "d"]])
   }, 60_000)
 
-  it("takes any passing check before a change to code, and none before a change to docs alone", async () => {
+  it("takes any passing check before a change to code, and stores a change to docs with none", async () => {
     const t = setup()
     // A typecheck is the code's only check.
     const typed = commitColors(t.repo, 5, ["red", "blue"])
@@ -462,7 +455,6 @@ describe("storing commits", () => {
     const [code, docs] = await records(t)
     expect(code.checks.map((c) => c.command)).toEqual(["timeout 300 npx tsc --noEmit"])
     expect(docs.checks).toEqual([])
-    expect([isDocs("HANDOFF.md"), isDocs("docs/guide.mdx"), isDocs("LICENSE"), isDocs("src/readme.ts"), isDocs("app.ts")]).toEqual([true, true, true, false, false])
   }, 60_000)
 
   it("keeps a session recorded whole before commits were stored one by one", async () => {

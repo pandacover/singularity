@@ -189,7 +189,7 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
     if (x.left_out.length > 0) say(`    ${" ".repeat(w)}${s.dim(`left out: ${x.left_out.map((m) => `${m.count} ${m.reason}`).join("; ")}`)}`)
   }
   if (r.here !== null && !r.here.stored) say(`    ${s.dim(`${r.here.name} (here): no changes stored yet`)}`)
-  if (r.repos.length === 0 && (r.here === null || r.here.stored)) say(`    ${s.dim("none yet: memory starts when a session commits a change with passing checks")}`)
+  if (r.repos.length === 0 && (r.here === null || r.here.stored)) say(`    ${s.dim("none yet: memory starts when a session commits a change")}`)
   if (r.repos.some((x) => x.changes_stored > 0)) {
     say(`    ${s.dim("see them with")} ${s.cyan(r.here?.stored === true ? "singularity changes" : "singularity changes --repo NAME")}`)
   }

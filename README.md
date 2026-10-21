@@ -58,10 +58,10 @@ still skips them.
 
 ## How it works
 
-1. **Store.** When a session commits a change, singularity records it if the
-   last test, typecheck, build or lint before the commit passed. A change to
-   docs alone needs no check. The record holds what you asked for, the files
-   changed, the commands that ran, and what failed and what fixed it.
+1. **Store.** When a session commits a change, singularity records it. The
+   record holds what you asked for, the files changed, the commands that
+   ran, what failed and what fixed it, and whether the last test, typecheck,
+   build or lint before the commit passed.
 2. **Hand over.** At the start of a task, singularity finds the stored change
    whose task is most like the new one by matching the text of the two
    tasks. It tells the agent that change's commit, what it was for, and its

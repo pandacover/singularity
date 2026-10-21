@@ -156,7 +156,7 @@ export const findChange = (changes: ReadonlyArray<Change>, arg: string): Array<C
 
 const TITLE_WIDTH = 60
 
-const EMPTY = "none yet: memory stores a change when a session commits it with passing checks; singularity store adds earlier sessions'"
+const EMPTY = "none yet: memory stores a change when a session commits it; singularity store adds earlier sessions'"
 
 const cut = (s: string, width: number) => (s.length > width ? s.slice(0, width - 1) + "…" : s)
 

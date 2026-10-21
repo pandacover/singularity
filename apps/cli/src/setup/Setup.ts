@@ -173,10 +173,10 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   }
   const n = read.success.stored.length + read.success.existing.length
   if (n === 0) {
-    yield* T.item(M.skip(`its ${pastCount(past.map((p) => p.agent))} committed no change with passing checks; memory stores changes as you work`))
+    yield* T.item(M.skip(`its ${pastCount(past.map((p) => p.agent))} committed no change; memory stores changes as you work`))
     return yield* end()
   }
-  yield* T.item(M.ok(`${n === 1 ? "one change" : `${n} changes`} committed with passing checks`, `from ${pastCount(past.map((p) => p.agent))}`))
+  yield* T.item(M.ok(`${n === 1 ? "one change" : `${n} changes`} committed`, `from ${pastCount(past.map((p) => p.agent))}`))
   return yield* end()
 })
 

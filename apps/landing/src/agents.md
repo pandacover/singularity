@@ -6,7 +6,7 @@ Source: https://github.com/pandacover/singularity (MIT license)
 
 ## What it does
 
-1. Store. When a session commits a change and the last test, typecheck, build or lint before the commit passed, memory records it. A change to docs alone needs no check. The record holds the task as the person wrote it, the files changed, the commands that ran, and what failed and what fixed it. Records stay on the machine.
+1. Store. When a session commits a change, memory records it. The record holds the task as the person wrote it, the files changed, the commands that ran, what failed and what fixed it, and whether the last test, typecheck, build or lint before the commit passed. Records stay on the machine.
 2. Hand over. At task start, memory scores every stored task against the new one by plain text matching and picks the best one above a fixed bar. It adds to the agent's first prompt that change's commit, the first line of its task, and its files as they are called today, without the diff: `git show` has it. Then the check scripts earlier sessions ran before committing (a screenshot or end-to-end script) that are still on disk, each with the change it last checked, once a session. The agent still writes every line itself. A task starts at the first message that asks for something, and again at the first one after each commit, so each new task in a long session can get one. Messages like "yes" or "commit it" start none.
 3. What git doesn't show. When the agent reads a stored change with `git show` or `git log`, memory adds what the commit doesn't hold: the task that asked for it, the commands its session ran, and its mistakes. It adds each change once a session, and never the session's own.
 4. Recall. Setup adds a short note to the user-level instructions of Claude Code, Codex and OpenCode. It tells the agent it can run `singularity recall "<what it is about to do>"` before work likely done before in the repository.
@@ -118,7 +118,7 @@ To delete memory too, every record and the installed code, ask the user first, t
 
 ## When something is off
 
-- Memory knows nothing in a repository. It stores changes as sessions commit them with a passing check. `singularity status` shows what it kept and left out, and `singularity store` looks through earlier sessions.
+- Memory knows nothing in a repository. It stores changes as sessions commit them. `singularity status` shows what it kept and left out, and `singularity store` looks through earlier sessions.
 - A task got nothing. No stored task was close enough, or its message asked for nothing ("yes", "commit it"). `singularity recall "<task>"` shows the closest one, or says there is none.
 - Codex hands nothing over. Its hooks aren't trusted yet, so the user opens Codex and types `/hooks`.
 - Hooks are failing. See `~/.singularity/hook-errors.log`. `singularity status` counts the errors too.
