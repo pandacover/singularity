@@ -33,7 +33,7 @@
  * get theirs from git here.
  */
 import { DateTime, Effect } from "effect"
-import { cardFacts, indexPath, isLive, packageScripts, readIndex, renderCard } from "../facts/Lookup.ts"
+import { cardFacts, indexPath, isLive, packageScripts, readIndex, rehome, renderCard } from "../facts/Lookup.ts"
 import { commitMessages, git, hasCommit, identifyRepo } from "../local/Git.ts"
 import type { WorkflowRecord } from "../records/Models.ts"
 import { RecordStore } from "../records/RecordStore.ts"
@@ -281,7 +281,8 @@ const cardOf = (s: Store, sessionId: string, tenantDir: string, given: ReadonlyS
   const scripts = packageScripts(s.root)
   const facts = cardFacts(index, { sessionId, given, live: (f) => isLive(f, s.root, scripts) }, lead?.run.head_commit)
   const titles = new Map(s.stored.map((r) => [r.run.head_commit, titleOf(r)] as const))
-  const card = renderCard(facts, (commit) => titles.get(commit))
+  const here = rehome(tenantDir, s.subject, s.root)
+  const card = renderCard(facts.map((f) => ({ ...f, text: here(f.text) })), (commit) => titles.get(commit))
   return { text: card.text, ids: card.facts.map((f) => f.id) }
 }
 
@@ -407,7 +408,8 @@ export const commitHandover = Effect.fn("scripts.commitHandover")(function*(
     }
   }
   if (record === undefined) return nothing
-  const text = renderBehind({ commit: record.run.head_commit, prompt: record.task.prompt, ...(yield* extrasOf(s, record)) })
+  const behind = renderBehind({ commit: record.run.head_commit, prompt: record.task.prompt, ...(yield* extrasOf(s, record)) })
+  const text = behind === undefined ? undefined : rehome(options.tenantDir, s.subject, s.root)(behind)
   const result: ScriptsStart = {
     text,
     picked: text === undefined ? null : { id: record.id, commit: record.run.head_commit },

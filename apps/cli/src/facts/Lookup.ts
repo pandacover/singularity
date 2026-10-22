@@ -92,6 +92,31 @@ export const repoOf = (tenantDir: string, cwd: string): { readonly subject: stri
   return best
 }
 
+/**
+ * A fact's command as it reads in the checkout at `root`: the other
+ * checkouts of the subject that `subjects.json` knows, named in it as
+ * `C:/x`, `C:\x` or `/c/x` (an earlier session ran it there), become `root`
+ * in the same form, so the agent runs it on its own checkout.
+ */
+export const rehome = (tenantDir: string, subject: string, root: string): ((text: string) => string) => {
+  const v = readJson(join(tenantDir, "subjects.json")) as { subjects?: ReadonlyArray<{ id?: unknown; paths?: unknown }> } | undefined
+  const here = slashes(root)
+  const others = (v?.subjects ?? []).filter((s) => s.id === subject && Array.isArray(s.paths)).flatMap((s) => s.paths as Array<unknown>)
+    .filter((p): p is string => typeof p === "string").map(slashes).filter((p) => p.toLowerCase() !== here.toLowerCase())
+    .sort((a, b) => b.length - a.length)
+  const forms = (p: string) => {
+    const m = /^([a-zA-Z]):\/(.*)$/.exec(p)
+    return m === null ? [{ from: p, to: (h: string) => h }] : [
+      { from: p, to: (h: string) => h },
+      { from: p.replace(/\//g, "\\"), to: (h: string) => h.replace(/\//g, "\\") },
+      { from: `/${m[1].toLowerCase()}/${m[2]}`, to: (h: string) => h.replace(/^([a-zA-Z]):\//, (_, d: string) => `/${d.toLowerCase()}/`) }
+    ]
+  }
+  const swaps = others.flatMap(forms)
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return (text) => swaps.reduce((t, s) => t.replace(new RegExp(`${escape(s.from)}(?=$|[\\\\/"'\\s;)&|])`, "gi"), () => s.to(here)), text)
+}
+
 /** The scripts of the package.json at a repo's root; undefined when it has none to read. */
 export const packageScripts = (root: string): ReadonlySet<string> | undefined => {
   const v = readJson(join(root, "package.json")) as { scripts?: unknown } | undefined
