@@ -81,16 +81,16 @@ export const Collapse = () => {
           <div className="wf-h"><i />Hand-over · from memory</div>
           <h4>A past change like your task</h4>
           <ol>
+            <li>Its commit, for git show</li>
             <li>Its task, as the person wrote it</li>
-            <li>The files it changed</li>
-            <li>The commands it ran, in order</li>
-            <li>The mistakes it made</li>
-            <li>Its diff, read from today's code</li>
+            <li>Its files, as they are named today</li>
+            <li>Check scripts earlier sessions ran</li>
+            <li>On git show: its commands and mistakes</li>
           </ol>
           <div className="wf-f">picked by the words of the two tasks</div>
         </div>
       </div>
-      <figcaption>Four real runs of one <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> task without memory. They took {turns} turns between them, most spent reading and searching. Memory keeps a change like theirs once it is committed, and hands it to the next run of a similar task.</figcaption>
+      <figcaption>Four real runs of one <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> task without memory. They took {turns} turns between them, most spent reading and searching. Memory keeps a change like theirs once it is committed, and points the next run of a similar task to it.</figcaption>
     </figure>
   )
 }

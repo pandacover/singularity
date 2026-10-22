@@ -3,6 +3,8 @@
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]   set memory up in this machine's coding agents
  *     singularity status [--json]                              what memory knows, and where it is set up
+ *     singularity changes [COMMIT] [--json]                    what memory stored in this repo, or one change in full
+ *     singularity visualise [--repo NAME] [--json]             what memory stored, drawn: calendar, latest changes, folders, checks
  *     singularity recall TASK... [--json]                      the past change most like a task here (mid-task too)
  *     singularity store [--repo DIR]                           store what this repo's past sessions committed
  *     singularity update [--no-fetch]                          the latest code, and setup brought up to date with it
@@ -26,6 +28,7 @@ import { AGENT_IDS, type AgentDirs, sessionHomes } from "../setup/Agents.ts"
 import { binDir, removeFromPath, removeLaunchers } from "../setup/Launcher.ts"
 import { runSetup } from "../setup/Setup.ts"
 import { runChanges } from "../setup/Changes.ts"
+import { runVisualise } from "../setup/Visualise.ts"
 import { runStatus } from "../setup/Status.ts"
 import { runRefresh, runUpdate } from "../setup/Update.ts"
 import { confirm, makeStyle, plural, tilde, wantsColor, withSpinner } from "../setup/Ui.ts"
@@ -94,6 +97,25 @@ const changes = Command.make(
     })
   })
 ).pipe(Command.withDescription("list the changes memory stored in this repo, newest first, or print one as an agent would read it"))
+
+const visualise = Command.make(
+  "visualise",
+  {
+    repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo: a name status shows, or a folder in it (default: here; every repo when memory knows none here)")),
+    home: homeFlag,
+    json: jsonFlag
+  },
+  Effect.fn(function*(args) {
+    yield* runVisualise({
+      cwd: process.cwd(),
+      repo: Option.getOrUndefined(args.repo),
+      memoryHome: Option.getOrUndefined(args.home),
+      color: wantsColor(),
+      json: args.json,
+      width: process.stdout.columns ?? (Number(process.env.COLUMNS) || 80)
+    })
+  })
+).pipe(Command.withDescription("draw what memory stored in this repo: when changes were committed, the latest, the folders it knows, checks, hand-overs"))
 
 const recall = Command.make(
   "recall",
@@ -209,4 +231,4 @@ const uninstall = Command.make(
   })
 ).pipe(Command.withDescription("take memory out of every agent and remove the singularity command (memory stays unless --purge)"))
 
-export const setupCommands = [setup, status, changes, recall, store, update, uninstall] as const
+export const setupCommands = [setup, status, changes, visualise, recall, store, update, uninstall] as const

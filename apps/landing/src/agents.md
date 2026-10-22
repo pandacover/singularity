@@ -71,6 +71,7 @@ On Windows, Hermes Agent's folder is `%LOCALAPPDATA%\hermes`. Setup never touche
 ```
 singularity status [--json]         # which agents have memory, how many changes it stored per repo
 singularity changes [<commit>] [--json] # the changes stored here, newest first, or one as it would be handed over; --repo <name> for another
+singularity visualise [--json]      # the same memory drawn for a person at a terminal; --repo <name> for another
 singularity recall "<task>" [--json] # the past change here most like a task; --cwd <repo> for another repo
 singularity store                   # store what this repo's earlier sessions committed; --repo <path> for another
 singularity setup                   # set up again, to change the answers; takes the same flags as at install

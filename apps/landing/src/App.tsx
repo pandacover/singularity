@@ -190,7 +190,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           <header className="ar-head">
             <div className="kicker"><span>Research note</span><span>October 2026</span></div>
             <h1>Memory for coding agents</h1>
-            <p className="dek">Coding agents forget a repository between sessions. singularity keeps the changes they commit, and hands the closest one to the next session that starts a similar task.</p>
+            <p className="dek">Coding agents forget a repository between sessions. singularity keeps the changes they commit, and points the next session that starts a similar task to the closest one.</p>
             <div className="byline">
               <span><a href="https://github.com/pandacover/singularity">pandacover/singularity</a></span>
               <span>Code on GitHub · runs on your machine</span>
@@ -202,11 +202,13 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <p>
               An agent asked for the same kind of change twice starts from zero both times, and most of its turns go to
               finding places it has found before. singularity stores each change a Claude Code, Codex or Hermes Agent
-              session commits once its checks pass. When a new task starts, it picks the stored change whose task is most
-              like it by plain text matching, with no model call. It reads that change from git as the code is now and
-              adds it to the agent's first prompt. On 12 tasks in the markdownlint repository, the 7 that got a hand-over
-              cost 16% less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a
-              build command that had failed before, agents ran it in 8 of 10 tasks.
+              session commits, with whether its last check passed. When a new task starts, it picks the stored change
+              whose task is most like it by plain text matching, with no model call. It points the agent to that change's
+              commit and files, since git holds the diff, and lists the check scripts earlier sessions ran that are still
+              on disk. When the agent reads a stored commit in git, memory adds what the commit doesn't hold. In runs of
+              an earlier version, whose hand-over included the diff, the 7 of 12 markdownlint tasks that got one cost 16%
+              less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a build
+              command that had failed before, agents ran it in 8 of 10 tasks.
             </p>
             <dl className="glance">
               <div><dt>−16%</dt><dd>cost, tasks with a hand-over</dd></div>
@@ -242,23 +244,24 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           <section>
             <H2 id="method">What memory keeps</H2>
             <p>
-              When a session commits a change and the last test, typecheck, build or lint before the commit passed,
-              memory records it. The record holds the task as the person wrote it, the files changed, the commands that
-              ran, and what failed and what fixed it. It holds no code. At hand-over, memory reads the change from git,
-              so the diff the agent sees matches the code as it is that day. It leaves out files changed past recognition
-              since, and stops handing over a change that was reverted or replaced.
+              When a session commits a change, memory records it. The record holds the task as the person wrote it, the
+              files changed, the commands that ran, what failed and what fixed it, and whether the last test, typecheck,
+              build or lint before the commit passed. It holds no code: git has that. Memory stops handing over a change
+              that was reverted or replaced.
             </p>
             <div className="wide"><Steps /></div>
             <p>
-              The agent still writes every line itself. The hand-over calls the past change a worked example, and says
-              that the names, values and details of the new task differ.
+              At task start the agent gets a pointer, not a diff: the past change's commit, the first line of the task
+              that asked for it, and its files as they are named today. It can read the change with{" "}
+              <code>git show</code>, and it still writes every line itself. The pointer says that the names, values and
+              details of the new task differ. Then, once a session, comes a short card of the check scripts earlier
+              sessions ran before committing that are still on disk, a screenshot or end-to-end script say, the pointed-to
+              change's own first.
             </p>
             <p>
-              When no stored change is close enough at task start, memory waits. The first time the agent edits a file
-              that a similar change touched, and few other changes did, memory hands that change over, with its edit of
-              that file first. A task gets one hand-over at most. When the agent reads a stored change in git, with{" "}
-              <code>git show</code> or <code>git log</code>, memory adds what the commit doesn't hold: the task, the
-              commands that ran, and what failed and what fixed it. Setup also adds a note to the agent's instructions
+              When the agent reads a stored change in git, with <code>git show</code> or <code>git log</code>, memory
+              adds what the commit doesn't hold: the task, the commands its session ran, and its mistakes. Each change
+              comes once a session, and never the session's own. Setup also adds a note to the agent's instructions
               saying it can run <code>singularity recall</code> before work it may have done before.
             </p>
           </section>
@@ -268,8 +271,9 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <p>
               Picking happens before the agent's first turn, so it has to be fast and cost nothing. Memory scores each
               stored task against the new one. The score combines how much of the stored task's words the new task holds
-              with how alike the two are overall. Below 0.38 memory hands over nothing, because a wrong example is worse
-              than none.
+              with how alike the two are overall. Each stored change is matched by its task and by its commit message,
+              since many sessions commit after a reply like "yes". Below 0.38 memory hands over nothing, because a wrong
+              example is worse than none.
             </p>
             <p>
               Figure 3 shows the first pass of this memory over 12 tasks in the markdownlint repository. Each task ran
@@ -283,7 +287,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <p>
               We ran the 12 markdownlint tasks five times with memory and three times without, on one Claude Code
               version. We also ran two long excalidraw tasks, with memory built from six earlier runs. Figure 4 shows the
-              cost of each with memory as a share of its cost without.
+              cost of each with memory as a share of its cost without. These runs used an earlier hand-over that included
+              the change's diff. The pointer and card that replaced it have no published run yet.
             </p>
             <div className="wide"><Results /></div>
             <p>
@@ -295,8 +300,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               With memory, 4 of 60 tasks started such a run of failures; without it, 2 of 36 did. Two of memory's came
               after a hand-over that listed a failing build command among past mistakes. Across all our markdownlint
               runs, agents ran that command in 8 of the 10 tasks whose hand-over named it, and in none of the other 78.
-              Memory now shows other changes' mistakes only through files few changes touch. That fix is not yet
-              measured in runs.
+              The pointer at task start lists no commands now. Past commands and mistakes come only when the agent reads
+              a stored commit in git.
             </p>
           </section>
 
@@ -304,7 +309,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <H2 id="limits">Limitations</H2>
             <ul className="limits">
               <li><b>It helps with what it has seen.</b> The savings come from tasks like ones already committed in the same repository. With no close past change, a task costs what it costs without memory.</li>
-              <li><b>A hand-over can carry a mistake.</b> Agents run the commands a past change lists, including ones that failed.</li>
+              <li><b>Past commands can carry a mistake.</b> Agents run the commands a past change lists, including ones that failed. Memory shows them only when the agent reads a stored commit in git.</li>
+              <li><b>Measured on an older hand-over.</b> The results above come from a hand-over that included the diff, not the pointer and card memory gives now.</li>
               <li><b>Agents rarely ask.</b> Agents ran <code>singularity recall</code> on their own once in 60 runs that had the note.</li>
               <li><b>Small samples.</b> Three to five passes of 12 tasks on markdownlint, and four to eight runs per task on excalidraw.</li>
               <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. Runs are only compared within one version.</li>
@@ -343,6 +349,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
                 <span className="label">Then, if you're curious</span>
                 <dl className="cmds">
                   <dt>singularity status</dt><dd>What memory stored, per repo.</dd>
+                  <dt>singularity changes</dt><dd>The changes stored here, or one in full.</dd>
+                  <dt>singularity visualise</dt><dd>The same, drawn in your terminal.</dd>
                   <dt>singularity recall "…"</dt><dd>What a task would be handed.</dd>
                   <dt>singularity store</dt><dd>Store what earlier sessions here committed.</dd>
                   <dt>singularity update</dt><dd>Get the latest version.</dd>

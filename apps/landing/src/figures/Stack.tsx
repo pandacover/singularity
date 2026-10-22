@@ -3,9 +3,9 @@ import { reduced, useOnceVisible } from "../lib.ts"
 
 // top to bottom
 const LAYERS = [
-  { name: "Your agent", note: ["Gets one past change.", "Still writes every line itself."], side: "r" },
+  { name: "Your agent", note: ["Gets a pointer, not a diff.", "Still writes every line itself."], side: "r" },
   { name: "Hooks", note: ["Never break a session.", "Errors go to a log; about 0.1 s a call."], side: "l" },
-  { name: "Memory", note: ["Keeps records of commits,", "and reads the code from git."], side: "r" },
+  { name: "Memory", note: ["Keeps records of commits;", "the code stays in git."], side: "r" },
   { name: "Your sessions", note: ["Stored at each commit,", "with whether its check passed."], side: "l" },
   { name: "Your machine", note: ["Search runs here,", "with no model call."], side: "r", base: true }
 ] as const
