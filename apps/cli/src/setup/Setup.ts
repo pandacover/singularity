@@ -234,6 +234,7 @@ const done = Effect.fnUntraced(function*(
   yield* T.section("Commands")
   const commands: ReadonlyArray<readonly [string, string]> = [
     ["singularity status", "what memory knows, repo by repo"],
+    ["singularity visualise", "what it stored here, drawn"],
     ["singularity recall \"<what>\"", "the past change most like it"],
     ["singularity store", "store what past sessions here committed"],
     ["singularity update", "get the latest version"],

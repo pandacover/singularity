@@ -88,8 +88,9 @@ repository.
 singularity status              # which agents have memory, how many changes it stored per repo
 singularity changes             # the changes stored for this repo, newest first, with their commits
 singularity changes <commit>    # one of them, as an agent would be handed it now
+singularity visualise           # the same memory drawn: when changes were committed, the latest, the folders it knows
 singularity recall "<task>"     # the past change here most like a task
-singularity status --json       # the same as JSON, for agents and scripts (changes and recall too)
+singularity status --json       # the same as JSON, for agents and scripts (changes, visualise and recall too)
 singularity store               # store what this repo's earlier sessions committed
 singularity setup               # set up again, or change your answers
 singularity update              # get the latest version, keeping your answers
@@ -116,6 +117,10 @@ singularity uninstall [--purge] # take memory out of every agent; --purge delete
   session can get one. Prompts like "yes" or "commit it" get none.
 - singularity helps with tasks like ones earlier sessions committed in the
   same repository. Clones of a repository on one machine share its memory.
+- `singularity visualise` draws a repository's memory in the terminal: the
+  days changes were committed, the latest ones with their size and check,
+  the folders memory knows most, and the changes it handed over most.
+  Outside a repository it knows, it shows every repository side by side.
 - `singularity changes` lists the changes singularity stored in a repository,
   and the ones it no longer hands over and why, such as a revert or a newer
   change of the same files.

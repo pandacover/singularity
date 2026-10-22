@@ -26,9 +26,9 @@ npm run cli -- <args>  # the whole command line, same as node apps/cli/src/cli.t
 
 Commands here run from the repo root, where eval runs go (`runs/`). There
 are two entry points: `apps/cli/src/singularity.ts` is the `singularity`
-command setup installs, with the seven daily commands only, so nothing
+command setup installs, with the eight daily commands only, so nothing
 user-facing points anywhere else; `apps/cli/src/cli.ts` is the whole command
-line, with those seven too, and runs memory's background work. To set memory
+line, with those eight too, and runs memory's background work. To set memory
 up from a clone instead of the installer's copy:
 `node apps/cli/src/singularity.ts setup`.
 
@@ -148,6 +148,13 @@ included, for which `Render.ts` gives hand-written source the room first (whole 
 else each source file an equal share), then tests, then docs, examples,
 fixtures, snapshots and config (`fileKind`); a file left under 200
 characters is only named, with `git show <sha> -- <file>`.
+`singularity visualise` (`src/setup/Visualise.ts`) draws what `changes`
+lists (`gatherChanges`), with the sessions each commit was handed to
+(`scripts/sessions/*.given`): a calendar of the days changes were
+committed, the latest changes, the folders they touched most, their checks
+and the changes handed over most; where memory knows no repo, every repo
+with a sparkline of its weeks. Reading is the only Effect; `summarise` and
+the renderers are plain functions, and `--json` prints `summarise`'s data.
 
 On real prompts of 2026-10-21 (a copy of `~/.singularity`), two chat-v2
 tasks went from the 9,583 characters of the diff hand-over to 1,514, pointer
