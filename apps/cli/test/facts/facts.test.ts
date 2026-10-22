@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildFacts, type Fact, resolvePath, signalOf, trapOf } from "../../src/facts/Facts.ts"
 import { writeFacts } from "../../src/facts/Index.ts"
-import { cardFacts, factsAt, isLive, readIndex, renderCard, repoOf } from "../../src/facts/Lookup.ts"
+import { cardFacts, factsAt, isLive, readIndex, rehome, renderCard, repoOf } from "../../src/facts/Lookup.ts"
 import { filesReadBy } from "../../src/facts/Reads.ts"
 import { buildRecord } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
@@ -229,6 +229,19 @@ describe("looking facts up from a hook", () => {
     assert.deepStrictEqual(repoOf(dir, "c:\\work\\repo\\src"), { subject: "app", root: "C:/work/repo" })
     assert.deepStrictEqual(repoOf(dir, "C:/work/repo/.wt/x/src"), { subject: "wt", root: "C:/work/repo/.wt/x" })
     assert.strictEqual(repoOf(dir, "C:/work/repository"), undefined)
+  })
+
+  it("names the checkout it is shown in, where a command named another checkout", () => {
+    const dir = tempDir()
+    writeFileSync(join(dir, "subjects.json"), JSON.stringify({ subjects: [{ id: "app", paths: ["C:/work/repo", "C:/work/repo-wt"] }, { id: "other", paths: ["C:/work/lib"] }] }))
+    const here = rehome(dir, "app", "D:/clone")
+    assert.strictEqual(here("cd C:/work/repo && bun test"), "cd D:/clone && bun test")
+    assert.strictEqual(here("node e2e.mjs \"C:\\work\\repo-wt\\out\""), "node e2e.mjs \"D:\\clone\\out\"")
+    assert.strictEqual(here("ls /c/work/repo/src"), "ls /d/clone/src")
+    // Another subject's checkout, and a path that only starts like one, stay.
+    assert.strictEqual(here("cat C:/work/lib/a.ts C:/work/repository/b.ts"), "cat C:/work/lib/a.ts C:/work/repository/b.ts")
+    assert.strictEqual(rehome(dir, "app", "C:/work/repo")("cd C:/work/repo"), "cd C:/work/repo")
+    assert.strictEqual(rehome(dir, "app", "C:/a$&b")("cd C:/work/repo"), "cd C:/a$&b")
   })
 
   it("reads the files a shell command prints", () => {
