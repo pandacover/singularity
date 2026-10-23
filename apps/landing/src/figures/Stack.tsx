@@ -7,7 +7,7 @@ const LAYERS = [
   { name: "Hooks", note: ["Never break a session.", "Errors go to a log; about 0.1 s a call."], side: "l" },
   { name: "Memory", note: ["Keeps records of commits;", "the code stays in git."], side: "r" },
   { name: "Your sessions", note: ["Stored at each commit,", "with whether its check passed."], side: "l" },
-  { name: "Your machine", note: ["Search runs here,", "with no model call."], side: "r", base: true }
+  { name: "Your machine", note: ["Records stay here; a model picks", "in Claude Code unless you say no."], side: "r", base: true }
 ] as const
 
 const CX = 550, W = 200, H = 108, GAP = 64, TOP = 120, T = 26
