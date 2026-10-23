@@ -15,7 +15,7 @@
  */
 import { Console, Effect, FileSystem, Path } from "effect"
 import { identifyRepo } from "../local/Git.ts"
-import { type Home, loadHome, type Picks, savePicks } from "../local/Home.ts"
+import { type Home, loadHome, type Picks, savePath, savePicks } from "../local/Home.ts"
 import { CLAUDE_MODELS, DEFAULT_MODEL } from "../scripts/Pick.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { storePast } from "../workflows/Commits.ts"
@@ -164,6 +164,8 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
   const onPath: PathChange | undefined = o.path
     ? yield* addToPath(bin, { home: o.home, shell: o.env.SHELL, platform: process.platform, pathValue: o.env.PATH ?? o.env.Path })
     : undefined
+  // Update keeps the command on PATH only where setup put it there (never a --no-path sandbox's).
+  yield* savePath(home, o.path)
   const end = () => done(s, T, o, chosen, bin, onPath)
 
   // 4. This repo's past sessions.

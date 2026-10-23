@@ -107,7 +107,7 @@ To delete memory too, every record and the installed code, ask the user first, t
 
 | Path | What it is |
 |---|---|
-| `config.json` | the user's answers kept between runs of setup: `picks`, the model that picks in Claude Code, or `null` for word search |
+| `config.json` | the user's answers kept between runs of setup: `picks`, the model that picks in Claude Code, or `null` for word search; `path`, whether setup put the command on PATH, which `update` then keeps |
 | `app/` | the code, a git clone that `singularity update` updates |
 | `node/` | the Node.js the installer fetched, only when the machine had none new enough |
 | `bin/` | the `singularity` command |
@@ -125,6 +125,7 @@ To delete memory too, every record and the installed code, ask the user first, t
 - Memory knows nothing in a repository. It stores changes as sessions commit them. `singularity status` shows what it kept and left out, and `singularity store` looks through earlier sessions.
 - A task got nothing. No stored change was close enough, the model picked none, or the message asked for nothing ("yes", "commit it"). When the model can't be asked, word search picks instead. `singularity recall "<task>"` shows the closest one by word search, or says there is none.
 - Codex hands nothing over. Its hooks aren't trusted yet, so the user opens Codex and types `/hooks`.
+- `singularity` isn't found in a new terminal. Run `singularity setup` once by its full path (`~\.singularity\bin\singularity.cmd setup` on Windows): it puts the command back on PATH, and `singularity update` keeps it there from then on.
 - Hooks are failing. See `~/.singularity/hook-errors.log`. `singularity status` counts the errors too.
 
 ## Results

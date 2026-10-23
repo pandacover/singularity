@@ -9,6 +9,7 @@ import { CLI } from "../../src/setup/Background.ts"
 import { agents, hookEvents, isMemoryHookCommand, type Launch, slashes } from "../../src/setup/Agents.ts"
 import { HookFileError, installHooks, memoryHookEvents, removeHooks, withMemoryHooks, withoutMemoryHooks } from "../../src/setup/HookFiles.ts"
 import { cmdLauncher, COMMAND, onPath, rcFile, rcLine, RC_MARKER, shLauncher, withRcLine } from "../../src/setup/Launcher.ts"
+import { loadHome, savePath, savePicks } from "../../src/local/Home.ts"
 import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { NOTE_BLOCK } from "../../src/setup/Instructions.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
@@ -197,6 +198,17 @@ describe("the singularity command", () => {
     expect(JSON.parse(empty.stdout)).toEqual({ repo: null, handed_over: false, text: null, picked: null, score: 0 })
   })
 
+  it("keeps whether setup put the command on PATH in config.json, beside the other choices", async () => {
+    const root = tempDir()
+    // Not said yet, as in a home set up before setup kept it: update leaves PATH alone.
+    expect((await run(loadHome(root))).path).toBe(null)
+    await run(savePicks(await run(loadHome(root)), { agent: "claude", model: "haiku" }))
+    await run(savePath(await run(loadHome(root)), true))
+    expect(json(join(root, "config.json"))).toEqual({ tenant: "local", picks: { agent: "claude", model: "haiku" }, path: true })
+    const home = await run(loadHome(root))
+    expect([home.picks, home.path]).toEqual([{ agent: "claude", model: "haiku" }, true])
+  })
+
   it("knows whether a directory is on PATH, and puts one line in the shell's startup file", () => {
     expect(onPath("C:\\Users\\a\\.singularity\\bin", "C:\\Windows;c:/users/a/.singularity/bin/", "win32")).toBe(true)
     expect(onPath("/home/a/.singularity/bin", "/usr/bin:/bin", "linux")).toBe(false)
@@ -286,6 +298,9 @@ describe("setup", () => {
     expect(existsSync(join(home, ".gemini", "GEMINI.md"))).toBe(false)
     // The command on PATH is the one for daily use, not the whole command line.
     expect(readFileSync(join(memory, "bin", "singularity"), "utf-8")).toContain(`"${slashes(COMMAND)}" "$@"`)
+    // Setup said whether it put the command on PATH (here --no-path), so update leaves PATH alone.
+    expect(json(join(memory, "config.json")).path).toBe(false)
+    expect((await run(loadHome(memory))).path).toBe(false)
 
     // Run again: nothing doubles.
     const before = readFileSync(join(home, ".claude", "settings.json"), "utf-8")

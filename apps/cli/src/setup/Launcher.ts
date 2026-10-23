@@ -145,13 +145,20 @@ export interface PathChange {
   readonly file?: string
 }
 
-/** Put `bin` on the user's PATH for new terminals. */
+/**
+ * Put `bin` on the user's PATH for new terminals. On Windows the registry
+ * says whether it is there, not this process's PATH: the installer puts `bin`
+ * on its own window's PATH, so a setup run from that window, or from a program
+ * started in it, would find it "already" there while new terminals don't have
+ * it. Elsewhere a PATH that has it is enough (the person may have put it in
+ * their own startup file).
+ */
 export const addToPath = Effect.fn("addToPath")(function*(bin: string, options: { readonly home: string; readonly shell: string | undefined; readonly platform: NodeJS.Platform; readonly pathValue: string | undefined }) {
-  if (onPath(bin, options.pathValue, options.platform)) return { state: "already" } satisfies PathChange
   if (options.platform === "win32") {
     const changed = yield* windowsPath(bin, true)
     return { state: changed === undefined ? "failed" : changed ? "added" : "already" } satisfies PathChange
   }
+  if (onPath(bin, options.pathValue, options.platform)) return { state: "already" } satisfies PathChange
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const file = rcFile(options.home, options.shell, options.platform)
