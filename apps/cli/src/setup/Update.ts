@@ -10,8 +10,8 @@
  *      agents that have them, Hermes Agent's plugin, the skill where it is,
  *      the recall note in the instruction file of each agent with memory
  *      (added there too when an older version didn't write it), the
- *      `singularity` command, put back on PATH if it fell off where setup
- *      put it there (config.json `path`). Hook commands (the retired second task-start
+ *      `singularity` command, put back on PATH if it fell off (unless setup
+ *      was told --no-path: config.json `path`). Hook commands (the retired second task-start
  *      hook taken out), the skill's text, the note's text and the launchers
  *      change with the code; agents left out stay out, and the
  *      choices in config.json stay as they are. The installer, run again
@@ -27,7 +27,7 @@ import { runProcess } from "../eval/Proc.ts"
 import { loadHome } from "../local/Home.ts"
 import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
-import { addToPath, binDir, COMMAND, writeLaunchers } from "./Launcher.ts"
+import { addToPath, binDir, COMMAND, pathOffLimits, writeLaunchers } from "./Launcher.ts"
 import { codexTrust, noteLines, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
 import { listWords, makeStyle, makeTree, marks, tilde, title, TITLED_ENV, withSpinner } from "./Ui.ts"
@@ -230,8 +230,9 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
   for (const d of yield* wireSkills(placed)) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
   yield* noteLines(s, T, withMemory.map((st) => st.agent), o.home)
   const bin = yield* writeLaunchers(memory.root, process.execPath, COMMAND, process.platform)
-  // Back on PATH if it fell off, where setup put it there (`path` in config.json; never set by a --no-path setup).
-  if (memory.path === true) {
+  // Back on PATH if it fell off, unless setup was told --no-path (`path` in config.json; homes from
+  // before setup kept it get it too) or PATH is off limits here (try-install's sandbox, tests).
+  if (memory.path !== false && !pathOffLimits(o.env)) {
     const onPath = yield* addToPath(bin, { home: o.home, shell: o.env.SHELL, platform: process.platform, pathValue: o.env.PATH ?? o.env.Path })
     if (onPath.state === "added") yield* T.item(M.ok("singularity command", "back on your PATH: open a new terminal for it"))
     else if (onPath.state === "failed") yield* T.item(M.warn(`add ${tilde(bin, o.home)} to your PATH to run singularity anywhere`))

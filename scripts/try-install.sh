@@ -62,7 +62,7 @@ if command -v cygpath >/dev/null 2>&1; then url="file:///$(cygpath -m "$served")
 sandboxed() {
   env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HERMES_HOME -u XDG_CONFIG_HOME \
     HOME="$home" USERPROFILE="$home" LOCALAPPDATA="$home/AppData/Local" APPDATA="$home/AppData/Roaming" \
-    SINGULARITY_HOME="$memory" SINGULARITY_REPO="$url" SINGULARITY_REF=main \
+    SINGULARITY_HOME="$memory" SINGULARITY_REPO="$url" SINGULARITY_REF=main SINGULARITY_NO_PATH=1 \
     ${own:+SINGULARITY_OWN_NODE=1} "$@"
 }
 
