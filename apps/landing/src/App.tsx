@@ -288,7 +288,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             </p>
             <p>
               Figure 3 shows both on 62 real task starts. Finding changes by their commit message instead of also by
-              their request cut wrong pointers from 6 to 1. Haiku handed over none wrong, and 11 right.
+              their request cut wrong pointers from 6 to 1. Haiku handed over none wrong, and 10 right.
             </p>
             <div className="wide"><Picks /></div>
           </section>

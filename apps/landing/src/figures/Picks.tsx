@@ -4,7 +4,7 @@ const STARTS = 62
 const WAYS: ReadonlyArray<readonly [way: string, how: string, wrong: number, right: number | null]> = [
   ["Words: request and commit message", "the earlier word search", 6, null],
   ["Words: commit message", "word search today", 1, null],
-  ["Haiku", "a model, in the background", 0, 11]
+  ["Haiku", "a model, in the background", 0, 10]
 ]
 
 // (b) The first saved-scripts pass over the markdownlint daily driver (2026-10-14,

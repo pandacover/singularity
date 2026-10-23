@@ -114,8 +114,9 @@ of its request, has the task's goal, then hands the pointer over through
 `Start.ts` as word search's pick would be. Claude Code gives a background
 hook's output to the agent at its next step. Each hook keeps its own marker of
 task starts (`Hook.ts` `startsTask`). The call takes about 5 s, most of it
-the command starting; on those 62 starts Haiku handed over 0 wrong and 11
-right ($0.0013 a start). When the model can't be asked, word search picks,
+the command starting; on those 62 starts Haiku handed over 0 wrong and 10
+right ($0.0013 a start; one start counted right before isn't a task start
+under `isRequest`, so no pick runs for it). When the model can't be asked, word search picks,
 and the hand-over log says why (`moment: "pick"`, `by`, `error`). Other
 agents' hooks, which can't run in the background, use word search.
 
