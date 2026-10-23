@@ -1,7 +1,7 @@
 /**
  * Where local memory lives: `~/.singularity`, or `$SINGULARITY_HOME`.
  *
- *     <home>/config.json                                 { "tenant": "local", "picks": { "agent": "claude", "model": "haiku" } }
+ *     <home>/config.json                                 { "tenant": "local", "picks": { "agent": "claude", "model": "haiku" }, "path": true }
  *     <home>/tenants/<tenant>/subjects.json              the repos memory is about
  *     <home>/tenants/<tenant>/records/<subject>/<id>.json one workflow record per run
  *     <home>/tenants/<tenant>/memory/                    the graph built from the records
@@ -46,7 +46,11 @@ export const Picks = Schema.Struct({
 })
 export type Picks = typeof Picks.Type
 
-const ConfigFile = Schema.Struct({ tenant: Schema.String, picks: Schema.optionalKey(Schema.NullOr(Picks)) })
+const ConfigFile = Schema.Struct({
+  tenant: Schema.String,
+  picks: Schema.optionalKey(Schema.NullOr(Picks)),
+  path: Schema.optionalKey(Schema.Boolean)
+})
 
 export interface Home {
   readonly root: string
@@ -54,6 +58,11 @@ export interface Home {
   readonly tenantDir: string
   /** Who picks at a task's start: a model, or null for the word search (also when setup never asked). */
   readonly picks: Picks | null
+  /**
+   * Whether setup put the `singularity` command on PATH (it wasn't given
+   * --no-path), so update keeps it there; null when no setup has said yet.
+   */
+  readonly path: boolean | null
 }
 
 /** `$SINGULARITY_HOME`, or `~/.singularity`. */
@@ -74,6 +83,7 @@ export const loadHome = Effect.fn("loadHome")(function*(root?: string) {
   const fail = (message: string) => new HomeError({ message: `${file}: ${message}` })
   let tenant = DEFAULT_TENANT
   let picks: Picks | null = null
+  let onPath: boolean | null = null
   if (yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false))) {
     const text = yield* fs.readFileString(file).pipe(Effect.mapError((e) => fail(e.message)))
     const config = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ConfigFile))(text).pipe(
@@ -81,16 +91,28 @@ export const loadHome = Effect.fn("loadHome")(function*(root?: string) {
     )
     tenant = config.tenant
     picks = config.picks ?? null
+    onPath = config.path ?? null
   } else {
     yield* fs.makeDirectory(dir, { recursive: true }).pipe(Effect.mapError((e) => fail(e.message)))
     yield* fs.writeFileString(file, JSON.stringify({ tenant }, null, 2) + "\n").pipe(Effect.mapError((e) => fail(e.message)))
   }
   if (!ID.test(tenant)) return yield* fail(`invalid tenant id ${JSON.stringify(tenant)}`)
-  return { root: dir, tenant, tenantDir: path.join(dir, "tenants", tenant), picks } satisfies Home
+  return { root: dir, tenant, tenantDir: path.join(dir, "tenants", tenant), picks, path: onPath } satisfies Home
 })
 
 /** Save who picks at a task's start in the home's config.json, the rest of it as it was. */
 export const savePicks = Effect.fn("savePicks")(function*(home: Home, picks: Picks | null) {
+  yield* saveConfig(home, { picks })
+  return { ...home, picks } satisfies Home
+})
+
+/** Save whether setup put the command on PATH in the home's config.json, the rest of it as it was. */
+export const savePath = Effect.fn("savePath")(function*(home: Home, onPath: boolean) {
+  yield* saveConfig(home, { path: onPath })
+  return { ...home, path: onPath } satisfies Home
+})
+
+const saveConfig = Effect.fnUntraced(function*(home: Home, values: Readonly<Record<string, unknown>>) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const file = path.join(home.root, "config.json")
@@ -99,6 +121,5 @@ export const savePicks = Effect.fn("savePicks")(function*(home: Home, picks: Pic
   const json = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(text).pipe(
     Effect.orElseSucceed((): Record<string, unknown> => ({ tenant: home.tenant }))
   )
-  yield* fs.writeFileString(file, JSON.stringify({ ...json, tenant: home.tenant, picks }, null, 2) + "\n").pipe(Effect.mapError((e) => fail(e.message)))
-  return { ...home, picks } satisfies Home
+  yield* fs.writeFileString(file, JSON.stringify({ ...json, tenant: home.tenant, ...values }, null, 2) + "\n").pipe(Effect.mapError((e) => fail(e.message)))
 })
