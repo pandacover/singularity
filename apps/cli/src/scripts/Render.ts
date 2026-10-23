@@ -10,7 +10,7 @@
  * showing its change. Pure: Start.ts reads the record and git.
  */
 import type { CommandRun, Detour, FileChange } from "../records/Models.ts"
-import { taskShown } from "../records/Task.ts"
+import { changeTitle, taskShown } from "../records/Task.ts"
 import { isRequest } from "../traces/Requests.ts"
 
 /** Claude Code cuts a hook's text at 10,000 characters; the hand-over stays under that. */
@@ -312,14 +312,15 @@ const pointerFileLine = (f: FileNow): string => {
 
 /**
  * A stored change as a task's start hands it over: its commit, the first
- * line of what it was for (its task, or its commit message when the prompt
- * asked for nothing), and the files it changed as they are called today.
+ * line of its name (its commit message, or its task when the message says
+ * too little: records/Task.ts `changeTitle`), and the files it changed as
+ * they are called today.
  * No diff: `git show` has it, and reading that commit brings what git
  * doesn't show about it (History.ts).
  */
 export const renderPointer = (p: PointerView): string => {
   const sha = p.commit.slice(0, 10)
-  const first = taskShown(p).trim().split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? ""
+  const first = changeTitle(p).trim().split(/\r?\n/).find((l) => l.trim() !== "")?.trim() ?? ""
   const line = first.length > MAX_LINE_CHARS ? first.slice(0, MAX_LINE_CHARS - 1) + "…" : first
   const sources = p.files.filter((f) => !f.snapshot)
   const snapshots = p.files.length - sources.length

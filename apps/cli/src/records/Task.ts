@@ -8,9 +8,10 @@
  * (`task.message`); records stored before it get it from git when read
  * (scripts/Start.ts).
  *
- * A change is found by its task when the task asks for something, and by its
- * message (`taskKeys`): "commit and open a PR" never matches the next
- * session's "commit and open a PR".
+ * A change is found by its commit message, and by its task only when the
+ * message says too little and the task asks for something (`taskKeys`):
+ * "commit and open a PR" never matches the next session's "commit and open a
+ * PR".
  */
 import { isRequest, MIN_WORDS, ownTerms } from "../traces/Requests.ts"
 
@@ -51,24 +52,44 @@ export const changeMessage = (messages: ReadonlyArray<string>): string =>
   [...new Set(messages.map(messageText).filter((m) => m !== ""))].join("\n\n")
 
 /**
- * The texts a stored change is found by: its task when the task asks for
- * something, and its commit message when that says as much as a request
- * must (`MIN_WORDS` words of its own). A task with no message at all (an
- * eval's saved run, never committed; a commit git no longer has) is found by
- * its prompt, as before messages were kept; one filed under "yes" whose
- * message says too little ("wip") isn't found by its words at all. The
- * whole message, not only its first line:
- * looking up each change of the real memory replayed (examples/scripts/
- * replay-real-memory.ts), the first line handed over 5, 2 of them unrelated,
- * the whole message 4, all related; the markdownlint runs' picks stay the same.
+ * Whether a commit message says as much as a request must (`MIN_WORDS` words
+ * of its own): one of a word or two ("MD061", "wip") is held by every prompt
+ * that names it, and tells nothing apart.
+ */
+const telling = (message: string): boolean => ownTerms(message).size >= MIN_WORDS
+
+/**
+ * The texts a stored change is found by: its commit message when that says
+ * enough (`telling`), else its task when the task asks for something. A task
+ * with no message at all (an eval's saved run, never committed; a commit git
+ * no longer has) is found by its prompt, as before messages were kept; one
+ * filed under "yes" whose message says too little ("wip") isn't found by its
+ * words at all. The whole message, not only its first line: looking up each
+ * change of the real memory replayed (examples/scripts/replay-real-memory.ts),
+ * the first line handed over 5, 2 of them unrelated, the whole message 4, all
+ * related.
+ *
+ * Not the task beside the message: the prompt a change is filed under is a
+ * reply as often as a request in a conversation ("I have a hypothetical
+ * question…" passes as one), and a long brief an agent wrote shares its
+ * boilerplate with every other brief. Replaying the 62 real task starts of
+ * 2026-10-23 against a judge's reading of which past change fits each, the
+ * message alone handed over 1 wrong change where the prompt and message
+ * handed over 6, and 8 right ones where they handed over 9.
  */
 export const taskKeys = (task: { readonly prompt: string; readonly message?: string | undefined }): Array<string> => {
   const message = task.message?.trim() ?? ""
-  // A message of a word or two ("MD061", "wip") is held by every prompt that names it: it tells nothing apart.
-  const telling = ownTerms(message).size >= MIN_WORDS
-  const byPrompt = task.prompt.trim() !== "" && (isRequest(task.prompt) || message === "")
-  return [...(byPrompt ? [task.prompt] : []), ...(telling ? [message] : [])]
+  if (telling(message)) return [message]
+  return task.prompt.trim() !== "" && (isRequest(task.prompt) || message === "") ? [task.prompt] : []
 }
+
+/**
+ * A stored change's name, in a line or a paragraph: its commit message when
+ * that says enough (`telling`), else what it was for (`taskShown`). What a
+ * task's start points to and a model picks from (scripts/Pick.ts).
+ */
+export const changeTitle = (task: { readonly prompt: string; readonly message?: string | undefined }): string =>
+  task.message !== undefined && telling(task.message) ? task.message : taskShown(task)
 
 /** What the change was for, in a line or a paragraph: its task when that asks for something, else its commit message. */
 export const taskShown = (task: { readonly prompt: string; readonly message?: string | undefined }): string =>

@@ -48,7 +48,7 @@ Under `apps/cli/src`:
 | Directory | What it holds |
 |---|---|
 | `setup/` | daily use: setup, status, the agents memory knows and what each gets, hook files, the skill, the recall note in agents' instruction files (`Instructions.ts`), the `singularity` command, Codex hook trust (`CodexHooks.ts`), updating to the latest code with what setup put in place kept current (`Update.ts`) |
-| `scripts/` | memory: at task start (a session's first prompt that asks for something, and the first after each commit: `Cycle.ts`), a pointer to the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`), then the repo's card of check scripts (`facts/`); and what git doesn't show about a stored commit the agent reads with `git show` or `git log` (`History.ts`) |
+| `scripts/` | memory: at task start (a session's first prompt that asks for something, and the first after each commit: `Cycle.ts`), a pointer to the stored commit most like the task, read from git (`Hook.ts`, `Start.ts`, `Search.ts`, `Render.ts`; picked by a model when the person chose one, `Pick.ts`), checked against the code as it is now (`Fresh.ts`), and the scripts the search passes over for good (`Retired.ts`), then the repo's card of check scripts (`facts/`); and what git doesn't show about a stored commit the agent reads with `git show` or `git log` (`History.ts`) |
 | `facts/` | facts: what records teach about checking a change here and the traps on the way (`Facts.ts`), kept as one index per repo at store time (`Index.ts`) and read in plain node (`Lookup.ts`, `Reads.ts`); a task's start hands over its card of check scripts (see Facts below) |
 | `workflows/` | the hook script (`hook.ts`) and storing commits (`Commits.ts`, `StoreTrigger.ts`, `Transcripts.ts`); the hand-over log (`Session.ts`) |
 | `records/` | records: what a committed change shows, read from its session and its diff; what it was asked and what its commit says, which it is found by (`Task.ts`) |
@@ -90,12 +90,34 @@ each commit (`scripts/Cycle.ts`, a marker per session keeping the commit HEAD
 was at). "yes", "commit and open a PR" and "please read @HANDOFF.md" start
 nothing.
 
-A stored change is found by its task, the first prompt of its part of the
-log that asks for something, else the session's last that asked before it
-(`records/Task.ts`), and by its commit message (`task.message`; records
-stored before it get it from git when read, `Git.commitMessages`), the
-message only when it has four words of its own. A task that asks for
-nothing is never searched by.
+A stored change is found by its commit message (`task.message`; records
+stored before it get it from git when read, `Git.commitMessages`) when the
+message has four words of its own, else by its task, the first prompt of its
+part of the log that asks for something, else the session's last that asked
+before it (`records/Task.ts` `taskKeys`). A task that asks for nothing is
+never searched by. Not the task beside the message: on the 62 real task
+starts of 2026-10-23, judged blind by a stronger model, the task's words
+(chat questions, agent-written briefs) brought 5 of the 6 wrong hand-overs;
+the message alone handed over 1 wrong and 8 right where both handed over 6
+wrong and 9 right. It costs look-alike tasks told in the same words: on the
+markdownlint daily runs, the new-rule tasks no longer find the earlier rule
+by its request (21 picks to 1).
+
+In Claude Code a model may pick instead (`scripts/Pick.ts`), when the person
+chose one at setup (`config.json` `picks`, `local/Home.ts`; the default
+suggested is Haiku). Claude Code runs two task-start hooks: `hook.ts
+user-prompt-submit --picks` hands over the card at once and leaves the change
+out, and `hook.ts user-prompt-pick`, a background hook (`async: true`,
+`setup/Agents.ts`), asks `claude -p` (no tools, no settings, no session kept)
+which of the repo's latest 150 changes, listed by commit title and the start
+of its request, has the task's goal, then hands the pointer over through
+`Start.ts` as word search's pick would be. Claude Code gives a background
+hook's output to the agent at its next step. Each hook keeps its own marker of
+task starts (`Hook.ts` `startsTask`). The call takes about 5 s, most of it
+the command starting; on those 62 starts Haiku handed over 0 wrong and 11
+right ($0.0013 a start). When the model can't be asked, word search picks,
+and the hand-over log says why (`moment: "pick"`, `by`, `error`). Other
+agents' hooks, which can't run in the background, use word search.
 
 `scripts/Start.ts` ranks the repo's stored changes against the new prompt
 (`Search.ts`, the best score over those texts) and examines the best five above the bar, best first. Each

@@ -272,6 +272,8 @@ const bareCommand = (launch: Launch, args: string) =>
 
 /** Seconds a hand-over may take: no model call is made, but a large repo's git and files take a moment. */
 const START_TIMEOUT_S = 90
+/** The model's pick, which runs in the background: its own wait for the model (scripts/Pick.ts) and the git around it. */
+const PICK_TIMEOUT_S = 120
 const TOOL_TIMEOUT_S = 15
 const END_TIMEOUT_S = 30
 /** Codex allows a session-end hook 3 seconds, and says so in every session when given more; ours returns in about 0.2 s (the storing runs detached). */
@@ -284,7 +286,12 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
   switch (id) {
     case "claude":
       return {
-        UserPromptSubmit: [{ hooks: [{ type: "command", command: c("user-prompt-submit"), timeout: START_TIMEOUT_S }] }],
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: c("user-prompt-submit --picks"), timeout: START_TIMEOUT_S }] },
+          // The model's pick, when the person chose one (scripts/Pick.ts): in the background, so the seconds it
+          // takes hold nobody up; Claude Code hands what it prints to the agent at its next step.
+          { hooks: [{ type: "command", command: c("user-prompt-pick"), timeout: PICK_TIMEOUT_S, async: true }] }
+        ],
         PostToolUse: [{ matcher: CLAUDE_TOOLS, hooks: [{ type: "command", command: c("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }],
         PostToolUseFailure: [{ matcher: CLAUDE_TOOLS, hooks: [{ type: "command", command: c("post-tool-use"), timeout: TOOL_TIMEOUT_S }] }],
         SessionEnd: [{ hooks: [{ type: "command", command: c("session-end"), timeout: END_TIMEOUT_S }] }]
@@ -346,4 +353,4 @@ export const hookEvents = (id: AgentId, claudeLaunch: Launch, otherLaunch: Launc
  * replace all of them with what hookEvents gives now.
  */
 export const isMemoryHookCommand = (command: string): boolean =>
-  /\/src\/(?:workflows\/)?hook\.ts["']?\s+(?:user-prompt-submit|post-tool-use|session-end)\b/.test(slashes(command))
+  /\/src\/(?:workflows\/)?hook\.ts["']?\s+(?:user-prompt-submit|user-prompt-pick|post-tool-use|session-end)\b/.test(slashes(command))

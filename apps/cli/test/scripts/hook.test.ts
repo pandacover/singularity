@@ -7,7 +7,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { delimiter, dirname, join } from "node:path"
 import { writeFacts } from "../../src/facts/Index.ts"
 import { identifyRepo } from "../../src/local/Git.ts"
 import { buildRecord, commitRecordId } from "../../src/records/Build.ts"
@@ -19,6 +19,9 @@ import { bash, type CallSpec, session } from "../records/fixtures.ts"
 
 const RULE = "Add a new built-in rule MD061, alias `heading-max-level`, with one parameter `maximum`. Do it the way the existing rules are done: documentation, README, config schema, tests and snapshots."
 const OTHER_RULE = "Add a new built-in rule MD062, alias `code-block-max-lines`, with parameters `maximum` and `ignore_languages`. Do it the way the existing rules are done: documentation, README, config schema, tests and snapshots."
+/** What the stored change's commit said: a change is found by its commit message (records/Task.ts `taskKeys`). */
+const RULE_MESSAGE = "Add rule MD061, heading-max-level, the way existing rules are done\n\nDocumentation, README, config schema, tests and snapshots."
+const RULE_TITLE = "Add rule MD061, heading-max-level, the way existing rules are done"
 /** Like no stored task at all. */
 const UNRELATED = "Make the settings page scroll on small windows, and keep its header in view."
 const LIKE = "# A past change in this repository like your task"
@@ -52,7 +55,7 @@ const storeChange = (
   base: string,
   head: string,
   calls: Array<CallSpec> = [bash("npm test", "ok")],
-  message = "Add rule MD061, heading-max-level"
+  message = RULE_MESSAGE
 ) =>
   run(Effect.gen(function*() {
     const store = yield* RecordStore
@@ -158,7 +161,7 @@ describe("what a task's start hands over", () => {
     const s = "dddddddd-0000-0000-0000-000000000001"
     const first = say(s, OTHER_RULE)
     expect(first).toContain(LIKE)
-    expect(first).toContain(`committed as ${head.slice(0, 10)}: "${RULE}"`)
+    expect(first).toContain(`committed as ${head.slice(0, 10)}: "${RULE_TITLE}"`)
     expect(first).toContain(`\`git show ${head.slice(0, 10)}\``)
     expect(first).toContain("- lib/md061.mjs (+3 -0)")
     expect(first).not.toContain("diff --git")
@@ -167,7 +170,7 @@ describe("what a task's start hands over", () => {
     const lines = first.slice(first.indexOf(CARD)).split("\n").filter((l) => l.startsWith("- "))
     expect(lines).toEqual([
       `- \`npm run build; node "${script}" out\` (2 changes, last ${later.slice(0, 10)} "Load rules in config order")`,
-      `- \`node "${own}"\` (1 change, last ${head.slice(0, 10)} "Add rule MD061, heading-max-level")`
+      `- \`node "${own}"\` (1 change, last ${head.slice(0, 10)} "${RULE_TITLE}")`
     ])
     // Not the project's own checks: agents run them anyway.
     expect(first).not.toContain("`npm test`")
@@ -200,5 +203,63 @@ describe("what a task's start hands over", () => {
       [ITS_SESSION, null, 0],
       ["dddddddd-0000-0000-0000-000000000003", null, 0]
     ])
+  }, 60_000)
+})
+
+/** Run the hook script with `args` (an event, and its flags), as an eval run's own hook; `env` on top of this one's. */
+const hookWith = (home: string, args: Array<string>, input: Record<string, unknown>, env: Record<string, string> = {}) => {
+  const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !(k.toUpperCase() === "PATH" && "PATH" in env)))
+  const done = spawnSync(process.execPath, [HOOK_SCRIPT, ...args, "--eval-run"], {
+    input: JSON.stringify(input),
+    encoding: "utf-8",
+    env: { ...base, SINGULARITY_HOME: home, SINGULARITY_HOOKS: "off", ...env }
+  })
+  expect(done.status).toBe(0)
+  const errors = join(home, "hook-errors.log")
+  expect(existsSync(errors) ? readFileSync(errors, "utf-8") : "").toBe("")
+  return done.stdout
+}
+
+/** A PATH with git on it and no agent's command. */
+const gitOnly = () =>
+  (process.env.PATH ?? process.env.Path ?? "").split(delimiter)
+    .filter((d) => d !== "" && existsSync(join(d, process.platform === "win32" ? "git.exe" : "git")))
+    .join(delimiter)
+
+describe("a model's pick at a task's start", () => {
+  it("leaves the change to the background pick when a model picks, and picks by words when the model can't be asked", async () => {
+    const { repo, home } = newRepo()
+    const tenantDir = join(home, "tenants", "local")
+    const base = git(repo, "rev-parse", "HEAD")
+    write(repo, "lib/md061.mjs", "export const md061 = (params, onError) => {\n  const maximum = params.config.maximum ?? 6\n}\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "MD061")
+    const head = git(repo, "rev-parse", "HEAD")
+    await storeChange(repo, tenantDir, RULE, base, head)
+    const config = (picks: unknown) => writeFileSync(join(home, "config.json"), JSON.stringify({ tenant: "local", picks }))
+    config({ agent: "claude", model: "haiku" })
+    const input = (session_id: string) => ({ session_id, cwd: repo, hook_event_name: "UserPromptSubmit", prompt: OTHER_RULE })
+
+    const s = "eeeeeeee-0000-0000-0000-000000000001"
+    // Beside the pick, the start's hook leaves the change out: here that's all it had.
+    expect(hookWith(home, ["user-prompt-submit", "--picks"], input(s))).toBe("")
+    // An agent with no pick beside its hook gets word search's pointer.
+    expect(context(hookWith(home, ["user-prompt-submit"], input("eeeeeeee-0000-0000-0000-000000000002")))).toContain(LIKE)
+    // The pick, with Claude Code's command nowhere on PATH: word search picks instead, once a task.
+    const picked = context(hookWith(home, ["user-prompt-pick"], input(s), { PATH: gitOnly() }))
+    expect(picked).toContain(LIKE)
+    expect(picked).toContain(`committed as ${head.slice(0, 10)}`)
+    expect(hookWith(home, ["user-prompt-pick"], input(s), { PATH: gitOnly() })).toBe("")
+    const log = readFileSync(join(tenantDir, "workflows", "handovers.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l))
+    const pick = log.find((l) => l.moment === "pick")
+    expect(pick).toMatchObject({ session_id: s, by: "words", model: "haiku", picked: { commit: head } })
+    expect(pick.error).toContain("isn't on PATH")
+    // A prompt that asks for nothing starts no pick.
+    expect(hookWith(home, ["user-prompt-pick"], { ...input("eeeeeeee-0000-0000-0000-000000000003"), prompt: "yes, go ahead" })).toBe("")
+    // Word search chosen at setup: the pick says nothing, and the start's hook hands the change over itself.
+    config(null)
+    const t = "eeeeeeee-0000-0000-0000-000000000004"
+    expect(hookWith(home, ["user-prompt-pick"], input(t))).toBe("")
+    expect(context(hookWith(home, ["user-prompt-submit", "--picks"], input(t)))).toContain(LIKE)
   }, 60_000)
 })

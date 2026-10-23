@@ -39,12 +39,17 @@ const claudeLaunch: Launch = { node: "C:\\Program Files\\nodejs\\node.exe", scri
 const bareLaunch: Launch = { node: "node", script: "C:\\app\\src\\workflows\\hook.ts" }
 
 describe("hook entries", () => {
-  it("gives Claude Code the measured form, one task-start hook and the session's end", () => {
+  it("gives Claude Code the measured form: the task-start hook, the model's pick in the background, and the session's end", () => {
     const events = hookEvents("claude", claudeLaunch, bareLaunch)
     expect(Object.keys(events)).toEqual(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionEnd"])
     expect(events.UserPromptSubmit.map((e) => e.hooks[0].command)).toEqual([
-      "\"C:/Program Files/nodejs/node.exe\" \"C:/app/src/workflows/hook.ts\" user-prompt-submit"
+      "\"C:/Program Files/nodejs/node.exe\" \"C:/app/src/workflows/hook.ts\" user-prompt-submit --picks",
+      "\"C:/Program Files/nodejs/node.exe\" \"C:/app/src/workflows/hook.ts\" user-prompt-pick"
     ])
+    // The model's pick holds nobody up: Claude Code runs it in the background.
+    expect(events.UserPromptSubmit[0].hooks[0].async).toBeUndefined()
+    expect(events.UserPromptSubmit[1].hooks[0].async).toBe(true)
+    expect(isMemoryHookCommand(events.UserPromptSubmit[1].hooks[0].command)).toBe(true)
     expect(events.SessionEnd[0].hooks[0].timeout).toBe(30)
   })
 
@@ -436,7 +441,7 @@ describe("update", () => {
     expect(hooks).toContain(slashes(HOOK_SCRIPT))
     expect(hooks).not.toContain("/old/app")
     expect(Object.keys(json(settings).hooks)).toEqual(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "SessionEnd"])
-    expect(json(settings).hooks.UserPromptSubmit).toHaveLength(1)
+    expect(json(settings).hooks.UserPromptSubmit).toHaveLength(2)
     expect(hooks).not.toContain("user-prompt-submit-2")
     expect(readFileSync(skill, "utf-8")).toBe(SKILL_TEXT)
     expect(readFileSync(claudeMd, "utf-8")).toBe(`# Mine\n\n${NOTE_BLOCK}\n`)

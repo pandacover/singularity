@@ -16,15 +16,18 @@
  * the boilerplate. Below `MIN_SCORE` nothing is handed over: no script beats
  * a wrong one. No model call, and only the prompts: what the agent would know.
  *
- * A stored change is found by its prompt only when that asks for something,
- * and by its commit message too (records/Task.ts `taskKeys`): in daily use
- * half the prompts commits were stored under were "yes" or "commit and open a
- * PR", which matched the next session's "yes" word for word.
+ * A stored change is found by its commit message, and by its prompt only
+ * when the message says too little and the prompt asks for something
+ * (records/Task.ts `taskKeys`): in daily use half the prompts commits were
+ * stored under were "yes" or "commit and open a PR", and many of the rest
+ * were questions or agent-written briefs that matched by chance. When the
+ * person chose a model, it picks instead (Pick.ts).
  *
  * Pure functions; the callers read the store.
  */
 import { cosine, words } from "../graph/Similarity.ts"
 import { taskKeys } from "../records/Task.ts"
+import { isRequest } from "../traces/Requests.ts"
 import { fileKind, isSnapshot } from "./Render.ts"
 
 /** A saved script, as the search sees it. */
@@ -62,8 +65,8 @@ export const score = (prompt: string, old: string): number => {
 
 /**
  * How alike a new task is to a stored one: `score` against each text the
- * stored change is found by (records/Task.ts `taskKeys`: its task when that
- * asks for something, and its commit message's first line), the best.
+ * stored change is found by (records/Task.ts `taskKeys`: its commit message,
+ * or its task when the message says too little), the best.
  */
 export const scoreTask = (prompt: string, doc: SearchDoc): number => Math.max(0, ...taskKeys(doc).map((key) => score(prompt, key)))
 
@@ -95,7 +98,10 @@ export interface RecallDoc extends SearchDoc {
 /** Every script with how well it answers a recall query, best first; `score` is the better of the two measures. */
 export const rankRecall = <D extends RecallDoc>(query: string, docs: ReadonlyArray<D>): Array<Ranked<D> & { readonly matches: boolean }> => {
   const q = [...words(query).keys()]
-  const texts = docs.map((d) => words(`${taskKeys(d).join(" ")} ${d.files.join(" ")}`))
+  // The request's words too, when it asks for something: an agent that runs recall says what it is about to
+  // do, as the person asked it ("the installer won't start in wsl"), and coverage weighs words by how rare
+  // they are, so the chance matches that keep requests out of a task's start count little here.
+  const texts = docs.map((d) => words(`${[...new Set([...taskKeys(d), ...(isRequest(d.prompt) ? [d.prompt] : [])])].join(" ")} ${d.files.join(" ")}`))
   const idf = new Map(q.map((w) => [w, Math.log((docs.length + 1) / (texts.filter((t) => t.has(w)).length + 1)) + 1] as const))
   const all = q.reduce((s, w) => s + idf.get(w)!, 0)
   return docs.map((doc, i) => {

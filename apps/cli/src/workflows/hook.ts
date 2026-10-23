@@ -3,6 +3,7 @@
  * starts fast:
  *
  *     node src/workflows/hook.ts user-prompt-submit   (UserPromptSubmit)
+ *     node src/workflows/hook.ts user-prompt-pick     (UserPromptSubmit, in the background: Claude Code)
  *     node src/workflows/hook.ts post-tool-use        (PostToolUse and PostToolUseFailure)
  *     node src/workflows/hook.ts session-end          (SessionEnd)
  *
@@ -80,8 +81,13 @@ if (process.env.SINGULARITY_HOOKS !== "off" || evalRun) {
         if (trigger.ranCommit(stdin)) trigger.startStoring(stdin)
       }
     } else if (event === "user-prompt-submit") {
-      out = await (await import("../scripts/Hook.ts")).userPromptSubmit(stdin)
+      // `--picks`: the model's pick runs beside this hook (Claude Code's background hook, below).
+      out = await (await import("../scripts/Hook.ts")).userPromptSubmit(stdin, process.argv.includes("--picks"))
       if (!evalRun) (await import("./StoreTrigger.ts")).startStoring(stdin)
+    } else if (event === "user-prompt-pick") {
+      // The model's pick of the past change, when the person chose one (src/scripts/Pick.ts). Claude Code runs
+      // it in the background and hands its output to the agent at its next step.
+      out = await (await import("../scripts/Hook.ts")).userPromptPick(stdin)
     } else if (event === "user-prompt-submit-2") {
       // The second task-start hook of a hand-over in two parts, which setup no longer writes. Settings
       // not yet updated (`singularity update` takes it out) still run it: do nothing, and log nothing.

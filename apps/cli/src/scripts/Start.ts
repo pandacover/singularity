@@ -1,8 +1,9 @@
 /**
  * Saved scripts at task start: the one stored change of this repo whose task
  * is most like the new one (Search.ts), read from git as it is now
- * (Render.ts), or nothing when none is alike enough. No model call and no
- * learning: memory is the changes the hooks stored when the agent committed
+ * (Render.ts), or nothing when none is alike enough; or, when the person
+ * chose a model, the one it picks (Pick.ts), in a hook of its own that runs
+ * in the background (Hook.ts `userPromptPick`). No learning: memory is the changes the hooks stored when the agent committed
  * (src/workflows/Commits.ts), one record per commit. The task-start hook
  * hands over a pointer to it (`pointer`: its commit, what it was for, its
  * files; Render.ts `renderPointer`), then the repo's card: the check scripts
@@ -28,9 +29,9 @@
  * reads a stored commit in git, what git doesn't show about it comes along
  * (`commitHandover`, started by History.ts), once a commit a session.
  *
- * A record is found by its task when that asks for something, and by its
- * commit message (records/Task.ts); records stored before messages were kept
- * get theirs from git here.
+ * A record is found by its commit message, or by its task when the message
+ * says too little (records/Task.ts); records stored before messages were
+ * kept get theirs from git here.
  */
 import { DateTime, Effect } from "effect"
 import { cardFacts, indexPath, isLive, packageScripts, readIndex, rehome, renderCard } from "../facts/Lookup.ts"
@@ -53,6 +54,7 @@ import {
   renderPointer,
   renderScript
 } from "./Render.ts"
+import type { Picks } from "../local/Home.ts"
 import { readRetired, retire, type Retirement } from "./Retired.ts"
 import { MIN_SCORE, rank, rankRecall, tellingFiles } from "./Search.ts"
 
@@ -314,6 +316,10 @@ export const startScripts = Effect.fn("startScripts")(function*(
     readonly pointer?: boolean | undefined
     /** Add the repo's card, without the facts the session was given already (`given`). */
     readonly facts?: { readonly given: ReadonlySet<string> } | undefined
+    /** Leave the past change out: another hook hands it over (the card alone, then). */
+    readonly noChange?: boolean | undefined
+    /** A model picks the change (Pick.ts), run in `cwd`; word search when it can't be asked. */
+    readonly pick?: { readonly picks: Picks; readonly cwd: string } | undefined
   }
 ) {
   const nothing: ScriptsStart = { text: undefined, picked: null, score: 0, passed: [], facts: [] }
@@ -322,9 +328,27 @@ export const startScripts = Effect.fn("startScripts")(function*(
   // A session is never pointed to a change it made itself.
   const docs = s.stored.filter((r) => r.run.session_id !== input.sessionId)
     .map((r) => ({ id: r.id, prompt: r.task.prompt, message: r.task.message, files: r.files.map((f) => f.path), record: r }))
-  const ranked = options.query === true
-    ? rankRecall(input.prompt, docs)
-    : rank(input.prompt, docs).map((r) => ({ ...r, matches: r.score >= (options.minScore ?? MIN_SCORE) }))
+  const byWords = () =>
+    options.query === true
+      ? rankRecall(input.prompt, docs)
+      : rank(input.prompt, docs).map((r) => ({ ...r, matches: r.score >= (options.minScore ?? MIN_SCORE) }))
+  let ranked: ReadonlyArray<{ readonly doc: typeof docs[number]; readonly score: number; readonly matches: boolean }> = []
+  let model: Record<string, unknown> | undefined
+  if (options.noChange === true) ranked = []
+  else if (options.pick !== undefined) {
+    // Loaded only here: it brings the agents' commands (setup/Wiring.ts), which a task's start otherwise never needs.
+    const { askModel, MAX_LISTED } = yield* Effect.promise(() => import("./Pick.ts"))
+    const listed = docs.slice(-MAX_LISTED)
+    const asked = yield* askModel(options.pick.picks, input.prompt, listed, options.pick.cwd).pipe(Effect.result)
+    if (asked._tag === "Success") {
+      const doc = asked.success.index === null ? undefined : listed[asked.success.index]
+      ranked = doc === undefined ? [] : [{ doc, score: 1, matches: true }]
+      model = { by: "model", model: options.pick.picks.model, seconds: asked.success.seconds, cost_usd: asked.success.costUsd }
+    } else {
+      ranked = byWords()
+      model = { by: "words", model: options.pick.picks.model, error: asked.failure.message }
+    }
+  } else ranked = byWords()
   const { picked, passed, retiring } = yield* choose(s, ranked.filter((r) => r.matches).map((r) => ({ record: r.doc.record, score: r.score })))
   const change = picked === undefined ? undefined : options.pointer === true ? point(picked) : yield* show(s, picked, options.budget ?? MAX_HANDOVER_CHARS)
   const card = options.facts === undefined ? { text: undefined, ids: [] } : cardOf(s, input.sessionId, options.tenantDir, options.facts.given, picked?.record)
@@ -342,7 +366,9 @@ export const startScripts = Effect.fn("startScripts")(function*(
   yield* logHandover(options.tenantDir, {
     at: s.now,
     session_id: input.sessionId,
-    moment: "start",
+    // "pick": the change a model picked, handed over beside the start's card (Hook.ts `userPromptPick`).
+    moment: options.pick === undefined ? "start" : "pick",
+    ...model,
     memory: "scripts",
     subject: s.subject,
     stored: s.stored.length,

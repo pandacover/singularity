@@ -176,10 +176,11 @@ describe("reading a stored commit, through the hooks", () => {
     const base = git(repo, "rev-parse", "HEAD")
     write(repo, "lib/md061.mjs", "export const md061 = (params, onError) => {\n  const maximum = params.config.maximum ?? 6\n}\n")
     git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "Add MD061/heading-max-level.")
+    // A change is found by its commit message (records/Task.ts `taskKeys`).
+    git(repo, "commit", "-qm", "Add the built-in rule MD061/heading-max-level the way the existing rules are done: documentation, README, config schema, tests and snapshots.")
     const head = git(repo, "rev-parse", "HEAD")
     const tenantDir = join(home, "tenants", "local")
-    const RULE = "Add a new built-in rule MD061, alias `heading-max-level`, with one parameter `maximum`. Do it the way the existing rules are done: documentation, README, config schema, tests and snapshots."
+    const RULE ="Add a new built-in rule MD061, alias `heading-max-level`, with one parameter `maximum`. Do it the way the existing rules are done: documentation, README, config schema, tests and snapshots."
     await storeChange(repo, tenantDir, RULE, base, head)
 
     // git's own output, whatever this machine's git config says about colors and formats.
