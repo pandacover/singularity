@@ -26,9 +26,10 @@ Node.js if it is version 24 or later. Otherwise it downloads its own copy into
 nothing else on your system.
 
 The installer puts singularity in `~/.singularity` and runs
-`singularity setup`. Setup asks which of your agents get memory. In a
-repository with earlier sessions, it also stores the changes they
-committed.
+`singularity setup`. Setup asks which of your agents get memory, and, for
+Claude Code, whether a model should pick the past change at each task start
+(below). In a repository with earlier sessions, it also stores the changes
+they committed.
 
 Run `singularity setup` again to change your answers. Run
 `singularity update`, or the installer again, to get the latest version. It
@@ -63,8 +64,13 @@ still skips them.
    ran, what failed and what fixed it, and whether the last test, typecheck,
    build or lint before the commit passed.
 2. **Hand over.** At the start of a task, singularity finds the stored change
-   whose task is most like the new one by matching the text of the two
-   tasks. It tells the agent that change's commit, what it was for, and its
+   most like the new task. By default in Claude Code a small model picks it
+   (Haiku; you can choose another model, or none, in setup): it reads your
+   task and the repository's stored changes and picks one, or none. It runs
+   in the background, so nothing waits for it; the agent gets its answer a
+   few seconds in, at its next step. Without a model, singularity matches
+   the words of your task against each change's commit message. Either way
+   it tells the agent that change's commit, its commit message, and its
    files as they are called today, without the diff: git has it. Then it
    lists the check scripts earlier sessions ran before committing (a
    screenshot or end-to-end script, say) that are still on disk, once a
@@ -78,7 +84,8 @@ still skips them.
    fix or a command it may have done before in the repository. The command
    prints the most similar past change, or says there is none.
 
-singularity never calls a model. Run `singularity recall "<task>"` yourself
+Apart from that pick, singularity never calls a model; the pick costs about
+$0.002 a task with Haiku, on your Claude plan. Run `singularity recall "<task>"` yourself
 to see, in full, the stored change a task would be pointed to in the current
 repository.
 

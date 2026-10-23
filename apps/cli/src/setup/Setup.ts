@@ -10,18 +10,20 @@
  *   4. This repo: in a repo with past sessions, the changes they committed.
  *
  * Running it again updates everything in place. `--yes` takes every default
- * and asks nothing. Memory calls no model: there is no learning step.
+ * and asks nothing. There is no learning step; in Claude Code a model may
+ * pick the past change at a task's start, the person says which (`askPicks`).
  */
-import { Console, Effect, Path } from "effect"
+import { Console, Effect, FileSystem, Path } from "effect"
 import { identifyRepo } from "../local/Git.ts"
-import { loadHome } from "../local/Home.ts"
+import { type Home, loadHome, type Picks, savePicks } from "../local/Home.ts"
+import { CLAUDE_MODELS, DEFAULT_MODEL } from "../scripts/Pick.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
 import { storePast } from "../workflows/Commits.ts"
 import { type PastSession, pastSessions } from "../workflows/Transcripts.ts"
 import { type Agent, type AgentDirs, type AgentId, CODEX_TRUST_NOTE, type Reach, sessionHomes } from "./Agents.ts"
 import { codexHooks, trustCodexHooks } from "./CodexHooks.ts"
 import { addToPath, COMMAND, type PathChange, writeLaunchers } from "./Launcher.ts"
-import { askMany, confirm, listWords, makeStyle, makeTree, marks, plural, type Style, tilde, title, TITLED_ENV, type Tree, withSpinner } from "./Ui.ts"
+import { askChoice, askMany, askText, confirm, listWords, makeStyle, makeTree, marks, plural, type Style, tilde, title, TITLED_ENV, type Tree, withSpinner } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, unwireNote, versionOf, wireHooks, wireNote, wireSkills } from "./Wiring.ts"
 
 export interface SetupOptions {
@@ -145,6 +147,10 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
       for (const d of blocked) yield* T.item(M.warn(`${tilde(d, o.home)} has a skill of yours named singularity; left it alone`))
       yield* noteLines(s, T, chosen, o.home)
     }
+    if (chosen.some((a) => a.id === "claude")) {
+      if (asking) yield* T.pause
+      yield* picksLine(s, T, yield* askPicks(home, asking))
+    }
     if (leftOut.length > 0) yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))} left out`))
   }
   // WSL has agents of its own; the ones that run on Windows are set up from Windows.
@@ -194,6 +200,51 @@ export const noteLines = Effect.fnUntraced(function*(s: Style, T: Tree, chosen: 
   }
   if (files.length > 0) yield* T.item(M.ok("recall note", `in ${files.map((f) => tilde(f, home)).join(", ")}`))
 })
+
+/**
+ * Who picks the past change at a task's start in Claude Code (local/Home.ts
+ * `Picks`): one of Claude's models, the cheapest suggested, or memory's word
+ * search. Asked each time setup runs, the answer before as the default (the
+ * cheapest model the first time), and saved in config.json.
+ */
+export const askPicks = Effect.fnUntraced(function*(home: Home, asking: boolean) {
+  const words = "words" as const
+  const OTHER = "(another model)"
+  const initial = home.picks === null && (yield* configHasPicks(home)) ? words : home.picks?.model ?? DEFAULT_MODEL
+  const known = CLAUDE_MODELS.some((m) => m.model === initial) || initial === words
+  const choice = yield* askChoice(
+    "Let a model pick the past change at each task start? It reads the task the way you meant it, in the background.",
+    [
+      ...CLAUDE_MODELS.map((m) => ({ title: `Yes, ${m.title}`, description: m.description, value: m.model as string })),
+      ...(known ? [] : [{ title: `Yes, ${initial}`, description: "the model you chose before", value: initial }]),
+      { title: "Yes, another model", description: "type its name, as claude --model takes it", value: OTHER as string },
+      { title: "No, match by words", description: "free, but misses tasks put in other words", value: words as string }
+    ],
+    initial,
+    asking
+  )
+  const model = choice === OTHER ? yield* askText("Which model?", known ? DEFAULT_MODEL : initial, asking) : choice
+  const picks: Picks | null = model === words ? null : { agent: "claude", model: model === "" ? DEFAULT_MODEL : model }
+  yield* savePicks(home, picks)
+  return picks
+})
+
+/** Whether config.json says who picks, a choice of words included (`"picks": null`), or setup never asked. */
+const configHasPicks = Effect.fnUntraced(function*(home: Home) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const text = yield* fs.readFileString(path.join(home.root, "config.json")).pipe(Effect.orElseSucceed(() => ""))
+  return /"picks"\s*:/.test(text)
+})
+
+/** The line under the agents saying who picks. */
+const picksLine = (s: Style, T: Tree, picks: Picks | null) => {
+  const M = marks(s)
+  const model = CLAUDE_MODELS.find((m) => m.model === picks?.model)?.title ?? picks?.model
+  return picks === null
+    ? T.item(M.skip("word search picks the past change at a task's start"))
+    : T.item(M.ok(`${model} picks the past change`, "at a task's start in Claude Code, in the background"))
+}
 
 /**
  * Codex runs memory's hooks only once the user trusts them. Asks, when some

@@ -10,6 +10,7 @@ import { identifyRepo } from "../local/Git.ts"
 import { type Home, loadHome } from "../local/Home.ts"
 import { commitRecordId } from "../records/Build.ts"
 import * as JsonRecordStore from "../records/JsonRecordStore.ts"
+import { CLAUDE_MODELS } from "../scripts/Pick.ts"
 import { readRetired } from "../scripts/Retired.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { matchSubject } from "../records/Subjects.ts"
@@ -89,6 +90,8 @@ export interface StatusReport {
     readonly left_out: ReadonlyArray<{ readonly reason: string; readonly count: number }>
   }>
   readonly hook_errors: { readonly this_week: number; readonly last: string | null; readonly log: string }
+  /** Who picks the past change at a task's start in Claude Code (scripts/Pick.ts): a model, or the word search. */
+  readonly picks: { readonly by: "model" | "words"; readonly model: string | null }
 }
 
 export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly memoryHome?: string | undefined }) {
@@ -153,7 +156,8 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
     agents,
     here: repo === undefined ? null : { name: path.basename(repo.root), root: repo.root, stored: hereStored },
     repos,
-    hook_errors: { this_week: errors.count, last: errors.last ?? null, log: path.join(home.root, "hook-errors.log") }
+    hook_errors: { this_week: errors.count, last: errors.last ?? null, log: path.join(home.root, "hook-errors.log") },
+    picks: home.picks === null ? { by: "words", model: null } : { by: "model", model: home.picks.model }
   }
   return report
 })
@@ -179,6 +183,11 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
     if (n > 0) say(`      ${" ".repeat(width)}${s.yellow(`${plural(n, "hook")} waiting for your trust, so Codex skips ${n === 1 ? "it" : "them"}: type /hooks in Codex`)}`)
   }
   if (r.agents.some((a) => !a.set_up)) say(`    ${s.dim("set up with")} ${s.cyan("singularity setup")}`)
+  if (r.agents.some((a) => a.id === "claude" && a.set_up)) {
+    const model = CLAUDE_MODELS.find((m) => m.model === r.picks.model)?.title ?? r.picks.model
+    const who = r.picks.by === "model" ? `${model} picks the past change at each task start, in the background` : "word search picks the past change at each task start"
+    say(`    ${who}  ${s.dim("·")} ${s.cyan("singularity setup")} ${s.dim("changes it")}`)
+  }
 
   say(`\n  ${s.bold("Repos")}`)
   const w = Math.max(0, ...r.repos.map((x) => x.name.length)) + 3

@@ -45,9 +45,9 @@ starts a task (one that asks for something, `src/traces/Requests.ts`: the
 session's first such, then the first after each commit, `src/scripts/Cycle.ts`)
 the hook (`src/workflows/hook.ts`, which calls `src/scripts/Hook.ts`)
 points to the stored commit most like the task (its hash, what it was for,
-its files; no diff), found by the prompt that asked for it and by its commit
-message (`src/records/Task.ts`), read from git, with no model call and no
-learning step, then adds the repo's card of check scripts earlier sessions
+its files; no diff), found by its commit message (`src/records/Task.ts`), or
+picked by a model the person chose at setup, in a background hook
+(`src/scripts/Pick.ts`), read from git, with no learning step, then adds the repo's card of check scripts earlier sessions
 ran, still on disk, once a session (`src/facts/Lookup.ts`); and when the agent
 reads a stored commit with `git show` or `git log`, the tool-call hook adds
 what git doesn't show about it, once a session: the request, the project
