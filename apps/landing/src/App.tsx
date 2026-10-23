@@ -16,7 +16,7 @@ import { TipProvider } from "./Tip.tsx"
 const TOC: ReadonlyArray<{ readonly id: string; readonly title: string }> = [
   { id: "problem", title: "The same task, from zero" },
   { id: "method", title: "What memory keeps" },
-  { id: "picking", title: "Picking without a model" },
+  { id: "picking", title: "Picking the past change" },
   { id: "results", title: "Results" },
   { id: "limits", title: "Limitations" },
   { id: "rules", title: "Rules it keeps" },
@@ -124,7 +124,7 @@ const H2 = ({ id, children }: { readonly id: string; readonly children: ReactNod
 
 const Dot = ({ yes }: { readonly yes: boolean }) => <span className={yes ? "dot-y" : "dot-n"} role="img" aria-label={yes ? "yes" : "no"} />
 const AGENTS: ReadonlyArray<[name: string, handsOver: boolean, stores: boolean, note?: string]> = [
-  ["Claude Code", true, true],
+  ["Claude Code", true, true, "a model you choose picks, Haiku by default"],
   ["Codex", true, true],
   ["Gemini CLI", true, false],
   ["Droid", true, false],
@@ -203,9 +203,10 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               An agent asked for the same kind of change twice starts from zero both times, and most of its turns go to
               finding places it has found before. singularity stores each change a Claude Code, Codex or Hermes Agent
               session commits, with whether its last check passed. When a new task starts, it picks the stored change
-              whose task is most like it by plain text matching, with no model call. It points the agent to that change's
-              commit and files, since git holds the diff, and lists the check scripts earlier sessions ran that are still
-              on disk. When the agent reads a stored commit in git, memory adds what the commit doesn't hold. In runs of
+              closest to it. In Claude Code a small model picks by default, in the background, so the session never
+              waits; elsewhere memory matches the task's words against each change's commit message. It points the agent
+              to that change's commit and files, since git holds the diff, and lists the check scripts earlier sessions
+              ran that are still on disk. When the agent reads a stored commit in git, memory adds what the commit doesn't hold. In runs of
               an earlier version, whose hand-over included the diff, the 7 of 12 markdownlint tasks that got one cost 16%
               less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a build
               command that had failed before, agents ran it in 8 of 10 tasks.
@@ -267,17 +268,27 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           </section>
 
           <section>
-            <H2 id="picking">Picking without a model</H2>
+            <H2 id="picking">Picking the past change</H2>
             <p>
-              Picking happens before the agent's first turn, so it has to be fast and cost nothing. Memory scores each
-              stored task against the new one. The score combines how much of the stored task's words the new task holds
-              with how alike the two are overall. Each stored change is matched by its task and by its commit message,
-              since many sessions commit after a reply like "yes". Below 0.38 memory hands over nothing, because a wrong
-              example is worse than none.
+              A wrong pointer is worse than none, so memory picks one change or nothing. It has two ways to pick.
             </p>
             <p>
-              Figure 3 shows the first pass of this memory over 12 tasks in the markdownlint repository. Each task ran
-              after the ones before it, with their committed changes stored.
+              <b>By words.</b> Memory scores each stored change against the new task. The score combines how much of the
+              change's words the new task holds with how alike the two are overall. A change is found by its commit
+              message, and by the request that asked for it only when the message says too little. Below 0.38 memory
+              hands over nothing. It costs nothing and needs no model, but it misses a task put in other words. Codex,
+              Gemini CLI, Droid and Hermes Agent pick this way.
+            </p>
+            <p>
+              <b>By a model.</b> In Claude Code, setup asks whether a model should pick. The default is Haiku, the
+              cheapest, at about $0.002 a task on your Claude plan. You can choose Sonnet, Opus, another model by name,
+              or none, which keeps word search. The model reads your task and the repository's stored changes, and picks
+              one or none. It runs in a background hook, so the session never waits: the check scripts arrive at once,
+              and the pointer reaches the agent with its next tool result, a few seconds in.
+            </p>
+            <p>
+              Figure 3 shows both on 62 real task starts. Finding changes by their commit message instead of also by
+              their request cut wrong pointers from 6 to 1. Haiku handed over none wrong, and 11 right.
             </p>
             <div className="wide"><Picks /></div>
           </section>
@@ -310,7 +321,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <ul className="limits">
               <li><b>It helps with what it has seen.</b> The savings come from tasks like ones already committed in the same repository. With no close past change, a task costs what it costs without memory.</li>
               <li><b>Past commands can carry a mistake.</b> Agents run the commands a past change lists, including ones that failed. Memory shows them only when the agent reads a stored commit in git.</li>
-              <li><b>Measured on an older hand-over.</b> The results above come from a hand-over that included the diff, not the pointer and card memory gives now.</li>
+              <li><b>Measured on an older hand-over.</b> The results above come from a hand-over that included the diff, and a word search that matched by the request, not the pointer, card and picking memory has now.</li>
+              <li><b>A model's pick comes a step in.</b> It reaches the agent with its first tool result after the pick, a few seconds in, so the agent starts without it. Picking was judged on 62 real task starts, not on paid runs.</li>
               <li><b>Agents rarely ask.</b> Agents ran <code>singularity recall</code> on their own once in 60 runs that had the note.</li>
               <li><b>Small samples.</b> Three to five passes of 12 tasks on markdownlint, and four to eight runs per task on excalidraw.</li>
               <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. Runs are only compared within one version.</li>
@@ -328,7 +340,10 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
 
           <section>
             <H2 id="use">Use it</H2>
-            <p>One command installs it. A short setup asks before it changes anything.</p>
+            <p>
+              One command installs it. A short setup asks before it changes anything, and, for Claude Code, which model
+              picks the past change, if any.
+            </p>
             <div className="use-install"><Install os={os} setOs={setOs} /></div>
             <div className="use-grid">
               <div>

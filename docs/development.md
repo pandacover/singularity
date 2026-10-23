@@ -175,8 +175,13 @@ lists (`gatherChanges`), with the sessions each commit was handed to
 (`scripts/sessions/*.given`): a calendar of the days changes were
 committed, the latest changes, the folders they touched most, their checks
 and the changes handed over most; where memory knows no repo, every repo
-with a sparkline of its weeks. Reading is the only Effect; `summarise` and
-the renderers are plain functions, and `--json` prints `summarise`'s data.
+with a sparkline of its weeks. Each graph has a title over a rule, a line
+saying what it shows, and its axes and units labelled; bars are drawn in
+`▆`, which leaves a gap between rows, and neighbouring rows alternate two
+shades in color. It draws 48 to 110 columns wide, dropping the date column
+below 72, with the glyphs setup already prints and every line as long with
+color as without. Reading is the only Effect; `summarise` and the renderers
+are plain functions, and `--json` prints `summarise`'s data.
 
 On real prompts of 2026-10-21 (a copy of `~/.singularity`), two chat-v2
 tasks went from the 9,583 characters of the diff hand-over to 1,514, pointer
