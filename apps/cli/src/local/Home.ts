@@ -59,8 +59,9 @@ export interface Home {
   /** Who picks at a task's start: a model, or null for the word search (also when setup never asked). */
   readonly picks: Picks | null
   /**
-   * Whether setup put the `singularity` command on PATH (it wasn't given
-   * --no-path), so update keeps it there; null when no setup has said yet.
+   * Whether setup put the `singularity` command on PATH (false when given
+   * --no-path); null when no setup has said yet. Update keeps the command on
+   * PATH unless it is false.
    */
   readonly path: boolean | null
 }

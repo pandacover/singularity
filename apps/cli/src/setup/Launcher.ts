@@ -138,6 +138,17 @@ const windowsPath = (bin: string, add: boolean) =>
     Effect.orElseSucceed(() => undefined)
   )
 
+/**
+ * Set (to anything) where nothing may change the user's PATH: try-install's
+ * sandbox, whose home is fake but whose registry is the user's own, and the
+ * tests. Setup and update then leave PATH alone, as with --no-path.
+ */
+export const NO_PATH_ENV = "SINGULARITY_NO_PATH"
+
+/** Whether PATH is off limits here: `NO_PATH_ENV` in the environment given or this process's. */
+export const pathOffLimits = (env: Readonly<Record<string, string | undefined>>): boolean =>
+  (env[NO_PATH_ENV] ?? process.env[NO_PATH_ENV]) !== undefined
+
 export interface PathChange {
   /** "already": it was on PATH; "added": new terminals have it; "failed": the user must add it. */
   readonly state: "already" | "added" | "failed"

@@ -58,6 +58,8 @@ $env:LOCALAPPDATA = Join-Path $home2 'AppData\Local'
 $env:APPDATA = Join-Path $home2 'AppData\Roaming'
 foreach ($name in 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'HERMES_HOME', 'XDG_CONFIG_HOME') { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
 $env:SINGULARITY_HOME = $memory
+# The registry is the user's own, whatever the home: neither setup nor update may touch PATH.
+$env:SINGULARITY_NO_PATH = '1'
 $env:SINGULARITY_REPO = "file:///$($served -replace '\\', '/')"
 $env:SINGULARITY_REF = 'main'
 if ($OwnNode) { $env:SINGULARITY_OWN_NODE = '1' }

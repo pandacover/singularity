@@ -22,7 +22,7 @@ import { storePast } from "../workflows/Commits.ts"
 import { type PastSession, pastSessions } from "../workflows/Transcripts.ts"
 import { type Agent, type AgentDirs, type AgentId, CODEX_TRUST_NOTE, type Reach, sessionHomes } from "./Agents.ts"
 import { codexHooks, trustCodexHooks } from "./CodexHooks.ts"
-import { addToPath, COMMAND, type PathChange, writeLaunchers } from "./Launcher.ts"
+import { addToPath, COMMAND, type PathChange, pathOffLimits, writeLaunchers } from "./Launcher.ts"
 import { askChoice, askMany, askText, confirm, listWords, makeStyle, makeTree, marks, plural, type Style, tilde, title, TITLED_ENV, type Tree, withSpinner } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable, HOOK_SCRIPT, MIN_NODE_MAJOR, nodeForHooks, skillDirsFor, unwireHooks, unwireNote, versionOf, wireHooks, wireNote, wireSkills } from "./Wiring.ts"
 
@@ -161,10 +161,10 @@ export const runSetup = Effect.fn("runSetup")(function*(o: SetupOptions) {
 
   // 3. The command: said at the end, with what to do next.
   const bin = yield* writeLaunchers(home.root, process.execPath, COMMAND, process.platform)
-  const onPath: PathChange | undefined = o.path
+  const onPath: PathChange | undefined = o.path && !pathOffLimits(o.env)
     ? yield* addToPath(bin, { home: o.home, shell: o.env.SHELL, platform: process.platform, pathValue: o.env.PATH ?? o.env.Path })
     : undefined
-  // Update keeps the command on PATH only where setup put it there (never a --no-path sandbox's).
+  // Update keeps the command on PATH unless the person said --no-path here.
   yield* savePath(home, o.path)
   const end = () => done(s, T, o, chosen, bin, onPath)
 
