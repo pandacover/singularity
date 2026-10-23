@@ -8,13 +8,16 @@
  * notes of what they were given (scripts/History.ts); drawing it is plain
  * functions, and --json prints the data instead.
  *
- *       ◆ singularity  65 changes stored in singularity · 7 retired
- *         Sep 24 → Oct 22 · handed to 23 sessions
+ *       ◆ singularity  67 changes stored in singularity · 7 retired
+ *         Oct 1 → Oct 23 · handed to 13 sessions
  *
- *       Committed
- *            Sep       Oct
- *       Mon  · ■ · ■ ■
- *       ...
+ *       Where it knows the code ─────────────────────────────────
+ *       Folders by how many stored changes touched them.
+ *
+ *         (top level)          ▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆▆ 49
+ *         apps/cli/src/setup   ▆▆▆▆▆▆▆▆▆ 21
+ *                              └────────┴─────────┘
+ *                     changes  0       25        49
  */
 import { Console, Effect, FileSystem, Path } from "effect"
 import { loadHome } from "../local/Home.ts"
@@ -183,24 +186,121 @@ export const weekly = (changes: ReadonlyArray<Change>, now: Date): Array<number>
 }
 
 // Drawing
+//
+// Every graph has a title over a rule to the right edge, a line saying what
+// it shows, and its axes and units labelled. Bars are drawn in ▆, which
+// leaves a gap above it, so bars on rows one under another stay apart; in
+// color, neighbouring rows alternate two shades. Glyphs are the ones setup
+// already prints (block elements, box drawing, ✓ ✗ ● ○ ◆), and every line
+// is as long with color as without.
 
 const ramp = (color: boolean, n: number) => (s: string) => (color ? `\u001b[38;5;${n}m${s}\u001b[39m` : s)
 
 /** The calendar's shades, least to most; without color, by the glyph alone. */
 const HEAT = [96, 133, 170, 207]
 const HEAT_GLYPHS = ["░", "▒", "▓", "█"]
-const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 const SPARKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+/** A bar's cell. */
+const CELL = "▆"
+/** The cell of a change's lines removed, without color: lower, so added and removed read apart. */
+const CELL_REMOVED = "▂"
+/** Two shades of the same hue, for rows one under another. */
+const ROW_SHADES = [170, 133]
+
+/** The narrowest and widest `visualise` draws. */
+export const MIN_WIDTH = 48
+export const MAX_WIDTH = 110
 
 const cut = (s: string, width: number) => (s.length > width ? s.slice(0, Math.max(0, width - 1)) + "…" : s)
 const cutLeft = (s: string, width: number) => (s.length > width ? "…" + s.slice(s.length - width + 1) : s)
 
-/** A bar `n / of` of `width` cells, in eighths of a cell. */
-const bar = (n: number, of: number, width: number): string => {
-  if (of <= 0 || n <= 0) return ""
-  const eighths = Math.max(1, Math.round((n / of) * width * 8))
-  return "█".repeat(Math.floor(eighths / 8)) + EIGHTHS[eighths % 8]
+/** Words in lines of at most `width`. */
+const wrapWords = (text: string, width: number): Array<string> => {
+  const lines: Array<string> = []
+  let line = ""
+  for (const word of text.split(" ")) {
+    if (line !== "" && line.length + 1 + word.length > width) {
+      lines.push(line)
+      line = ""
+    }
+    line = line === "" ? cut(word, width) : `${line} ${word}`
+  }
+  return line === "" ? lines : [...lines, line]
+}
+
+/** Parts of a line, each its plain text and how it is drawn, in lines of at most `width`, `gap` between parts. */
+const flow = (parts: ReadonlyArray<readonly [plain: string, drawn: string]>, width: number, gap = "   "): Array<string> => {
+  const lines: Array<string> = []
+  let plain = ""
+  let drawn = ""
+  for (const [p, d] of parts) {
+    if (plain !== "" && plain.length + gap.length + p.length > width) {
+      lines.push(drawn)
+      plain = drawn = ""
+    }
+    plain = plain === "" ? p : plain + gap + p
+    drawn = drawn === "" ? d : drawn + gap + d
+  }
+  return plain === "" ? lines : [...lines, drawn]
+}
+
+/** A graph's head: a blank line, its title over a rule to the right edge, and what it shows. */
+const heading = (s: Style, width: number, title: string, about: string): Array<string> => [
+  "",
+  `  ${s.bold(title)} ${s.dim("─".repeat(Math.max(1, width - 3 - title.length)))}`,
+  ...wrapWords(about, width - 4).map((l) => `  ${s.dim(l)}`),
+  ""
+]
+
+/** Cells a bar of `n` takes, of `width` for `max`: at least one for anything above zero. */
+const cellsFor = (n: number, max: number, width: number) => (n <= 0 || max <= 0 ? 0 : Math.max(1, Math.round((n / max) * width)))
+
+interface BarRow {
+  readonly label: string
+  readonly n: number
+  /** After the bar: its value, in plain text. */
+  readonly value: string
+  /** How the bar is drawn; by default the row's shade. */
+  readonly paint?: (cells: string) => string
+}
+
+/**
+ * Horizontal bars against `max`, a row each: the label, the bar, its value.
+ * Under them an axis from 0 to `max`, its ticks labelled by `tick`, the
+ * unit under the labels.
+ */
+const barChart = (s: Style, color: boolean, rows: ReadonlyArray<BarRow>, o: {
+  readonly width: number
+  readonly max: number
+  readonly ticks: ReadonlyArray<number>
+  readonly tick: (v: number) => string
+  readonly unit: string
+}): Array<string> => {
+  if (rows.length === 0) return [`    ${s.dim("none")}`]
+  const lw = Math.min(36, Math.floor(o.width / 2.5), Math.max(o.unit.length, ...rows.map((r) => r.label.length)))
+  const vw = Math.max(...rows.map((r) => r.value.length))
+  const fw = Math.max(8, o.width - 4 - lw - 2 - 1 - vw)
+  const out = rows.map((r, i) => {
+    const paint = r.paint ?? ramp(color, ROW_SHADES[i % 2]!)
+    return `    ${cutLeft(r.label, lw).padEnd(lw)}  ${paint(CELL.repeat(cellsFor(r.n, o.max, fw)))} ${r.value}`
+  })
+  // a tick where a bar of its value ends; its label centred on it, kept inside the axis and off its neighbours
+  const at = (v: number) => Math.max(0, Math.min(fw - 1, cellsFor(v, o.max, fw) - 1))
+  const axis = [..."─".repeat(fw)]
+  const labels = new Array<string>(fw).fill(" ")
+  let free = 0
+  for (const v of o.ticks) {
+    const p = at(v)
+    axis[p] = p === 0 ? "└" : p === fw - 1 ? "┘" : "┴"
+    const text = o.tick(v)
+    const start = Math.max(0, Math.min(fw - text.length, p - Math.floor(text.length / 2)))
+    if (start < free) continue
+    for (let k = 0; k < text.length; k++) labels[start + k] = text[k]!
+    free = start + text.length + 1
+  }
+  out.push(`    ${"".padEnd(lw)}  ${s.dim(axis.join(""))}`, `    ${s.dim(o.unit.padStart(lw))}  ${s.dim(labels.join("").trimEnd())}`)
+  return out
 }
 
 const shade = (s: Style, color: boolean) => (n: number, most: number): string => {
@@ -240,7 +340,13 @@ const calendar = (v: Visual, s: Style, color: boolean, width: number): Array<str
     out.push(`    ${s.dim(label.padEnd(4))}${cells.join(" ")}`.trimEnd())
   }
   const legend = [1, 2, 3, 4].map((k) => shadeOf(k, 4)).join(" ")
-  out.push(`    ${"".padEnd(4)}${s.dim("less")} ${legend} ${s.dim(`more   most in a day: ${most}`)}`)
+  out.push(
+    "",
+    ...flow([
+      [`· none  less ${"░ ▒ ▓ █"} more`, `${s.dim("·")} ${s.dim("none")}  ${s.dim("less")} ${legend} ${s.dim("more")}`],
+      [`busiest day: ${plural(most, "change")}`, s.dim(`busiest day: ${plural(most, "change")}`)]
+    ], width - 4).map((l) => `    ${l}`)
+  )
   return out
 }
 
@@ -251,111 +357,148 @@ const linesBar = (s: Style, color: boolean, added: number, removed: number, most
   const len = Math.max(1, Math.round((width * Math.log10(1 + total)) / Math.log10(1 + most)))
   const plus = Math.round((len * added) / total)
   const minus = len - plus
-  const text = color
-    ? s.green("▆".repeat(plus)) + s.red("▆".repeat(minus))
-    : "█".repeat(plus) + "░".repeat(minus)
+  const text = color ? s.green(CELL.repeat(plus)) + s.red(CELL.repeat(minus)) : CELL.repeat(plus) + CELL_REMOVED.repeat(minus)
   return text + " ".repeat(width - len)
 }
 
 const checkMark = (s: Style, c: CheckState) => (c === "passed" ? s.green("✓") : c === "failed" ? s.red("✗") : s.dim("·"))
 
-const BAR = 10
+/** The latest changes: a node each, then (when it fits) the date, the commit, the title, its lines, its check, the sessions given it. */
+const latestTable = (v: Visual, s: Style, color: boolean, width: number): Array<string> => {
+  const dated = width >= 72
+  const bw = width >= 72 ? 10 : 7
+  // indent and node, date, commit, then after the title: lines, check, given
+  const fixed = 4 + 2 + (dated ? 9 : 0) + 9 + 2 + bw + 2 + 5 + 2 + 5
+  const tw = Math.max(10, width - fixed)
+  const head = `${dated ? "date".padEnd(9) : ""}${"commit".padEnd(9)}${"change".padEnd(tw)}  ${"lines".padEnd(bw)}  check  given`
+  const out = [`      ${s.dim(head)}`]
+  for (const c of v.latest) {
+    const node = c.retired ? s.dim("○") : s.magenta("●")
+    const date = dated ? `${dayLabel(c.day).padEnd(7)}  ` : ""
+    const sha = `${(c.commit?.slice(0, 7) ?? "").padEnd(7)}  `
+    const title = cut(c.title, tw).padEnd(tw)
+    const lines = c.retired ? "retired".padEnd(bw) : linesBar(s, color, c.added, c.removed, v.most_lines, bw)
+    const check = `  ${checkMark(s, c.check)}  `
+    const given = c.handed === 0 ? s.dim("·".padStart(5)) : s.cyan(`${c.handed}×`.padStart(5))
+    const row = c.retired
+      ? `${s.dim(`${date}${sha}${title}`)}  ${s.dim(lines)}  ${check}  ${given}`
+      : `${s.dim(date)}${s.yellow(sha)}${title}  ${lines}  ${check}  ${given}`
+    out.push(`    ${node} ${row}`)
+  }
+  if (v.more > 0) out.push(`    ${s.dim(cut(`┆ ${v.more} more: singularity changes lists them all`, width - 4))}`)
+  out.push(
+    "",
+    ...flow([
+      color ? ["▆ added ▆ removed", `${s.green(CELL)} ${s.dim("added")} ${s.red(CELL)} ${s.dim("removed")}`] : [`${CELL} added ${CELL_REMOVED} removed`, `${CELL} added ${CELL_REMOVED} removed`],
+      [`lines, log scale: a full bar is ${v.most_lines.toLocaleString("en")}`, s.dim(`lines, log scale: a full bar is ${v.most_lines.toLocaleString("en")}`)],
+      ["✓ passed ✗ failed · none", `${s.green("✓")} ${s.dim("passed")} ${s.red("✗")} ${s.dim("failed")} ${s.dim("· none")}`],
+      ["given: sessions handed it", s.dim("given: sessions handed it")]
+    ], width - 4).map((l) => `    ${l}`)
+  )
+  return out
+}
+
+/** The changes handed to most sessions: a dot a session, or scaled to twelve when more. */
+const handedRows = (v: Visual, s: Style, width: number): Array<string> => {
+  if (v.handed.length === 0) return [`    ${s.dim("none yet: memory hands a change over when a task like it starts")}`]
+  const top = v.handed[0]!.sessions
+  const dots = Math.min(12, top)
+  const hw = Math.max(10, width - 4 - 9 - 2 - dots - 1 - 12)
+  const out = v.handed.map((h) => {
+    const k = Math.max(1, Math.round((h.sessions / top) * dots))
+    return `    ${s.yellow(h.commit.slice(0, 7))}  ${cut(h.title, hw).padEnd(hw)}  ${s.cyan("●".repeat(k))}${" ".repeat(dots - k)} ${plural(h.sessions, "session")}`
+  })
+  const per = top > dots ? `● about ${(top / dots).toFixed(1)} sessions` : "● a session"
+  return [...out, "", `    ${s.dim(per)}`]
+}
 
 /** One repo's memory, drawn `width` columns wide. */
 export const renderVisual = (v: Visual, o: { readonly color: boolean; readonly width: number }): Array<string> => {
   const s = makeStyle(o.color)
-  const width = Math.max(64, Math.min(110, o.width))
+  const width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, o.width))
   const span = v.first === null ? "" : v.first === v.last ? dayLabel(v.first) : `${dayLabel(v.first)} → ${dayLabel(v.last!)}`
+  const stored = `${plural(v.stored, "change")} stored in ${v.repo.name}`
+  const retired = v.retired === 0 ? "" : ` · ${v.retired} retired`
+  const wide = 2 + 2 + 11 + 2 + stored.length + retired.length <= width
   const out = [
     "",
-    `  ${s.magenta("◆")} ${s.bold("singularity")}  ${plural(v.stored, "change")} stored in ${s.bold(v.repo.name)}${v.retired === 0 ? "" : s.dim(` · ${v.retired} retired`)}`
+    `  ${s.magenta("◆")} ${s.bold("singularity")}  ${plural(v.stored, "change")} stored in ${s.bold(cut(v.repo.name, width - 17 - stored.length + v.repo.name.length))}${wide ? s.dim(retired) : ""}`
   ]
   if (v.stored === 0) {
-    return [...out, "", `  ${s.dim("none yet: memory stores a change when a session commits it; singularity store adds earlier sessions'")}`, ""]
+    return [...out, "", ...wrapWords("none yet: memory stores a change when a session commits it; singularity store adds earlier sessions'", width - 4).map((l) => `  ${s.dim(l)}`), ""]
   }
-  out.push(`    ${s.dim([span, v.sessions === 0 ? "handed to no session yet" : `handed to ${plural(v.sessions, "session")}`].join(" · "))}`)
+  const given = v.sessions === 0 ? "handed to no session yet" : `handed to ${plural(v.sessions, "session")}`
+  out.push(...flow([[span, s.dim(span)], ...(wide ? [] : [[retired.slice(3), s.dim(retired.slice(3))] as const]), [given, s.dim(given)]], width - 4, " · ").map((l) => `    ${l}`))
 
-  out.push("", `  ${s.bold("Committed")}`, ...calendar(v, s, o.color, width))
-
-  // the latest changes: a node each, then date, commit, title, lines, check, sessions given it
-  // indent, node, date, commit, then after the title: lines, and "check given" (a mark under check, a count under given)
-  const fixed = 4 + 2 + 7 + 2 + 7 + 2 + 2 + BAR + 2 + 11
-  const tw = Math.max(16, width - fixed - 1)
   out.push(
-    "",
-    `  ${s.bold("Latest changes")}`,
-    `    ${"".padEnd(2 + 7 + 2 + 7 + 2 + tw + 2)}${s.dim("lines".padEnd(BAR + 2) + "check given")}`
+    ...heading(s, width, "Changes by day", "A square a day, a column a week: the darker, the more changes that day."),
+    ...calendar(v, s, o.color, width)
   )
-  for (const c of v.latest) {
-    const node = c.retired ? s.dim("○") : s.magenta("●")
-    const date = dayLabel(c.day).padEnd(7)
-    const sha = (c.commit?.slice(0, 7) ?? "").padEnd(7)
-    const title = cut(c.title, tw).padEnd(tw)
-    const lines = linesBar(s, o.color, c.added, c.removed, v.most_lines, BAR)
-    const given = c.handed === 0 ? s.dim("·".padStart(5)) : s.cyan(`${c.handed}×`.padStart(5))
-    const row = c.retired
-      ? `${s.dim(`${date}  ${sha}  ${title}`)}  ${s.dim("retired".padEnd(BAR))}    ${checkMark(s, c.check)}   ${given}`
-      : `${s.dim(date)}  ${s.yellow(sha)}  ${title}  ${lines}    ${checkMark(s, c.check)}   ${given}`
-    out.push(`    ${node} ${row}`)
-  }
-  if (v.more > 0) out.push(`    ${s.dim(`┆ ${v.more} more: singularity changes lists them all`)}`)
 
-  // the folders memory knows most
+  out.push(
+    ...heading(s, width, "Latest changes", "Newest first, with each one's lines, last check, and sessions given it."),
+    ...latestTable(v, s, o.color, width)
+  )
+
   const most = v.folders[0]?.changes ?? 0
-  const pw = Math.min(36, Math.max(...v.folders.map((f) => f.path.length)))
-  const fw = Math.max(10, width - 4 - pw - 2 - 8)
-  out.push("", `  ${s.bold("Where it knows the code")}  ${s.dim("changes that touched each folder")}`)
-  for (const f of v.folders) {
-    out.push(`    ${cutLeft(f.path, pw).padEnd(pw)}  ${s.magenta(bar(f.changes, most, fw).padEnd(fw))} ${String(f.changes).padStart(3)}`)
-  }
-
-  // the checks before commits, as one bar
-  const { passed, failed, none } = v.checks
-  const cw = Math.max(20, width - 8)
-  const cells = (n: number) => Math.round((n / v.stored) * cw)
-  const [p, f] = [cells(passed), cells(failed)]
-  const n = Math.max(0, cw - p - f)
   out.push(
-    "",
-    `  ${s.bold("Checks before each commit")}`,
-    `    ${o.color ? s.green("█".repeat(p)) + s.red("█".repeat(f)) + s.dim("░".repeat(n)) : "█".repeat(p) + "▒".repeat(f) + "░".repeat(n)}`,
-    `    ${s.green("✓")} ${passed} passed   ${s.red("✗")} ${failed} failed   ${s.dim("·")} ${none} with no check`
+    ...heading(s, width, "Where it knows the code", "Folders by how many stored changes touched them."),
+    ...barChart(s, o.color, v.folders.map((f) => ({ label: f.path, n: f.changes, value: String(f.changes) })), {
+      width,
+      max: most,
+      ticks: most > 1 ? [0, Math.round(most / 2), most] : [0, most],
+      tick: String,
+      unit: "changes"
+    })
   )
 
-  // the changes handed over most
-  out.push("", `  ${s.bold("Handed over most")}  ${s.dim("sessions memory gave each change to")}`)
-  if (v.handed.length === 0) out.push(`    ${s.dim("none yet: memory hands a change over when a task like it starts")}`)
-  else {
-    const top = v.handed[0]!.sessions
-    const dots = Math.min(12, top)
-    const hw = Math.max(16, width - 4 - 7 - 2 - 2 - dots - 12)
-    for (const h of v.handed) {
-      const k = Math.max(1, Math.round((h.sessions / top) * dots))
-      out.push(`    ${s.yellow(h.commit.slice(0, 7))}  ${cut(h.title, hw).padEnd(hw)}  ${s.cyan("●".repeat(k))}${" ".repeat(dots - k)} ${plural(h.sessions, "session")}`)
-    }
-  }
-  out.push("", `  ${s.dim("one in full, as an agent would read it:")} ${s.cyan("singularity changes <commit>")}`, "")
+  const { passed, failed, none } = v.checks
+  const pct = (n: number) => `${Math.round((n / v.stored) * 100)}%`
+  out.push(
+    ...heading(s, width, "Checks before each commit", "The last test, typecheck, build or lint a session ran before committing."),
+    ...barChart(s, o.color, [
+      { label: "passed", n: passed, value: `${passed} · ${pct(passed)}`, paint: s.green },
+      { label: "failed", n: failed, value: `${failed} · ${pct(failed)}`, paint: s.red },
+      { label: "no check", n: none, value: `${none} · ${pct(none)}`, paint: s.dim }
+    ], { width, max: v.stored, ticks: [0, v.stored / 2, v.stored], tick: pct, unit: `of ${plural(v.stored, "change")}` })
+  )
+
+  out.push(
+    ...heading(s, width, "Handed over most", "Changes memory gave to the most sessions, at task start or on git show."),
+    ...handedRows(v, s, width)
+  )
+  out.push("", ...flow([["one in full, as an agent would read it:", s.dim("one in full, as an agent would read it:")], ["singularity changes <commit>", s.cyan("singularity changes <commit>")]], width - 2, " ").map((l) => `  ${l}`), "")
   return out
 }
 
-/** Every repo memory knows, a row each, with a sparkline of its last weeks. */
-export const renderOverview = (v: Overview, o: { readonly color: boolean }): Array<string> => {
+/** Every repo memory knows, a row each, with its changes a week over the last weeks. */
+export const renderOverview = (v: Overview, o: { readonly color: boolean; readonly width?: number }): Array<string> => {
   const s = makeStyle(o.color)
+  const width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, o.width ?? 80))
   const out = [""]
   if (v.repos.length === 0) {
-    return [...out, `  ${s.magenta("◆")} ${s.bold("singularity")}  ${s.dim("no changes stored yet")}`, "", `  ${s.dim("memory stores a change when a session commits it; singularity store adds earlier sessions'")}`, ""]
+    return [...out, `  ${s.magenta("◆")} ${s.bold("singularity")}  ${s.dim("no changes stored yet")}`, "", ...wrapWords("memory stores a change when a session commits it; singularity store adds earlier sessions'", width - 4).map((l) => `  ${s.dim(l)}`), ""]
   }
-  out.push(`  ${s.magenta("◆")} ${s.bold("singularity")}  memory across ${plural(v.repos.length, "repo")}`, "")
-  const nw = Math.min(28, Math.max(...v.repos.map((r) => r.name.length)))
+  out.push(`  ${s.magenta("◆")} ${s.bold("singularity")}  memory across ${plural(v.repos.length, "repo")}`)
   const most = Math.max(1, ...v.repos.flatMap((r) => r.weeks))
-  out.push(`    ${"".padEnd(nw)}  ${"".padEnd(12)}  ${s.dim(`last ${WEEKS} weeks`)}`)
-  for (const r of v.repos) {
-    const spark = r.weeks.map((n) => (n === 0 ? s.dim("·") : s.magenta(SPARKS[Math.min(7, Math.ceil((n / most) * 8) - 1)]!))).join("")
-    const count = `${plural(r.stored, "change")}`.padEnd(12)
-    const last = r.last === null ? "" : s.dim(`  last ${dayLabel(r.last)}`)
-    out.push(`    ${cut(r.name, nw).padEnd(nw)}  ${count}  ${spark}${last}${r.retired === 0 ? "" : s.dim(` · ${r.retired} retired`)}`)
+  out.push(...heading(s, width, "Changes a week", `Changes stored per week, last ${WEEKS} weeks; the taller, the more (most: ${most}).`))
+  // a bar a week, a space between where it fits
+  const spaced = width >= 70
+  const sw = spaced ? WEEKS * 2 - 1 : WEEKS
+  const nw = Math.max(4, Math.min(28, width - 4 - 2 - 11 - 2 - sw - 8, Math.max(...v.repos.map((r) => r.name.length))))
+  out.push(`    ${s.dim(`${"repo".padEnd(nw)}  ${"stored".padEnd(11)}  ${"per week".padEnd(sw)}  last`)}`)
+  for (const [i, r] of v.repos.entries()) {
+    const paint = ramp(o.color, ROW_SHADES[i % 2]!)
+    const spark = r.weeks.map((n) => (n === 0 ? s.dim("·") : paint(SPARKS[Math.min(7, Math.ceil((n / most) * 8) - 1)]!))).join(spaced ? " " : "")
+    const count = plural(r.stored, "change").padEnd(11)
+    const last = r.last === null ? "" : `  ${dayLabel(r.last)}`
+    const retired = r.retired === 0 ? "" : ` · ${r.retired} retired`
+    const room = width - (4 + nw + 2 + 11 + 2 + sw)
+    out.push(`    ${cut(r.name, nw).padEnd(nw)}  ${count}  ${spark}${s.dim(last.length + retired.length <= room ? last + retired : last.length <= room ? last : "")}`)
   }
-  out.push("", `  ${s.dim("one repo, drawn in full:")} ${s.cyan("singularity visualise --repo NAME")}`, "")
+  const axis = spaced ? `└${`${WEEKS} weeks ago`.padEnd(sw - 5)}now┘` : `${WEEKS} wks → now`
+  out.push(`    ${"".padEnd(nw)}  ${"".padEnd(11)}  ${s.dim(axis)}`)
+  out.push("", ...flow([["one repo, drawn in full:", s.dim("one repo, drawn in full:")], ["singularity visualise --repo NAME", s.cyan("singularity visualise --repo NAME")]], width - 2, " ").map((l) => `  ${l}`), "")
   return out
 }
 

@@ -114,8 +114,9 @@ of its request, has the task's goal, then hands the pointer over through
 `Start.ts` as word search's pick would be. Claude Code gives a background
 hook's output to the agent at its next step. Each hook keeps its own marker of
 task starts (`Hook.ts` `startsTask`). The call takes about 5 s, most of it
-the command starting; on those 62 starts Haiku handed over 0 wrong and 11
-right ($0.0013 a start). When the model can't be asked, word search picks,
+the command starting; on those 62 starts Haiku handed over 0 wrong and 10
+right ($0.0013 a start; one start counted right before isn't a task start
+under `isRequest`, so no pick runs for it). When the model can't be asked, word search picks,
 and the hand-over log says why (`moment: "pick"`, `by`, `error`). Other
 agents' hooks, which can't run in the background, use word search.
 
@@ -175,8 +176,13 @@ lists (`gatherChanges`), with the sessions each commit was handed to
 (`scripts/sessions/*.given`): a calendar of the days changes were
 committed, the latest changes, the folders they touched most, their checks
 and the changes handed over most; where memory knows no repo, every repo
-with a sparkline of its weeks. Reading is the only Effect; `summarise` and
-the renderers are plain functions, and `--json` prints `summarise`'s data.
+with a sparkline of its weeks. Each graph has a title over a rule, a line
+saying what it shows, and its axes and units labelled; bars are drawn in
+`▆`, which leaves a gap between rows, and neighbouring rows alternate two
+shades in color. It draws 48 to 110 columns wide, dropping the date column
+below 72, with the glyphs setup already prints and every line as long with
+color as without. Reading is the only Effect; `summarise` and the renderers
+are plain functions, and `--json` prints `summarise`'s data.
 
 On real prompts of 2026-10-21 (a copy of `~/.singularity`), two chat-v2
 tasks went from the 9,583 characters of the diff hand-over to 1,514, pointer

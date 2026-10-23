@@ -22,9 +22,10 @@ export const Steps = () => (
       <h3>It points to one</h3>
       <p>The stored change most like the new task: its commit and files, no diff. Then the check scripts earlier sessions ran.</p>
       <div className="vis">
-        <div className="vh">t09 · a new option for MD014</div>
-        <div className="vr"><span className="good">✓</span><span>t03's change, score 0.49</span></div>
-        <div className="vn">bar 0.38 · no model call</div>
+        <div className="vh">Who picks it</div>
+        <div className="vr"><span className="good">●</span><span>Claude Code: a model, Haiku by default</span></div>
+        <div className="vr"><span className="good">○</span><span>Others, or no model: the words of commit messages</span></div>
+        <div className="vn">in the background · about $0.002 a task</div>
       </div>
     </div>
     <div className="step s3">
