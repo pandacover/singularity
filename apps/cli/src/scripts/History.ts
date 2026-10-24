@@ -11,9 +11,18 @@
  *
  * Plain node: the hook runs after every call. A call reads a
  * change when it runs `git show`, or `git log` printing a diff or a stat (a
- * list of subjects only is a look around). Which commits it read: the ones
- * its output heads with `commit <hash>`, else the lines it starts with a hash
- * (`--oneline`, `--format=%H`), else the ones its command names: hashes of 7
+ * list of subjects only is a look around). It runs them, not mentions them:
+ * what quotes hold and heredoc bodies (a commit message, a pull request's
+ * description, an `echo`'s text) are left out first (`shellRuns`). Opening a
+ * pull request whose description said `git show` and a stored commit's hash
+ * brought that commit's hand-over (2026-10-24). Replayed over the 28
+ * hand-overs by commit in transcripts then, these rules drop that one and two
+ * loops over four commits (`for c in …; do git show $c:<file>`, and one
+ * listing four messages) whose hashes came from the loop's list, not from
+ * git show; the other 25 read the same. Which commits it read: the ones its
+ * output heads with `commit <hash>`, else the lines it starts with a hash
+ * (`--oneline`, `--format=%H`), else the ones the git command itself names
+ * (its arguments, up to the next `;`, `&`, `|`, `)` or line end): hashes of 7
  * or more hex characters and HEAD-relative revisions (`HEAD~2`, `@~1`, which
  * Start.ts resolves), not a file read at a commit (`<commit>:<path>`) or a
  * reflog entry (`HEAD@{1}`). A command continued over lines (`\` or
@@ -34,6 +43,66 @@ import { commandOf } from "../workflows/StoreTrigger.ts"
 const gitRuns = (sub: string) => new RegExp(String.raw`\bgit(?:\.exe)?(?:\s+(?:-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=\S+)?|-[pP]))*\s+${sub}(?![\w-])`)
 const SHOW = gitRuns("show")
 const LOG = gitRuns("log")
+const READS = new RegExp(gitRuns("(?:show|log)").source, "g")
+
+/**
+ * A command as the shell runs it: what single and double quotes hold, and
+ * heredoc bodies (`<<'EOF'` to its `EOF` line), emptied to a pair of quotes,
+ * so an argument stays an argument (`git -C "my repo" show` still runs git
+ * show) and a mention runs nothing (`gh pr create --body "…git show
+ * 4318912…"`). Bash's rules, roughly: a backslash escapes the next character
+ * outside single quotes, and `$(…)` inside double quotes isn't looked into.
+ */
+export const shellRuns = (command: string): string => {
+  const text = command.replace(/\r\n?/g, "\n")
+  const heredocs: Array<{ readonly word: string; readonly tabs: boolean }> = []
+  let out = ""
+  let i = 0
+  while (i < text.length) {
+    const c = text[i]
+    if (c === "\\") {
+      out += text.slice(i, i + 2)
+      i += 2
+    } else if (c === "'") {
+      const end = text.indexOf("'", i + 1)
+      out += "''"
+      i = end < 0 ? text.length : end + 1
+    } else if (c === "\"") {
+      let j = i + 1
+      while (j < text.length && text[j] !== "\"") j += text[j] === "\\" ? 2 : 1
+      out += "\"\""
+      i = j + 1
+    } else if (c === "<" && text.startsWith("<<", i) && text[i + 2] !== "<") {
+      // A heredoc: its body starts on the next line.
+      const m = /^<<(-?)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|\\?([A-Za-z_][\w.-]*))/.exec(text.slice(i))
+      if (m !== null) heredocs.push({ word: m[2] ?? m[3] ?? m[4], tabs: m[1] === "-" })
+      out += m === null ? "<<" : "<<''"
+      i += m === null ? 2 : m[0].length
+    } else if (c === "\n" && heredocs.length > 0) {
+      // Each heredoc's body, in order, up to the line that holds only its word (tabs before it, with `<<-`).
+      let at = i + 1
+      for (const h of heredocs) {
+        while (at < text.length) {
+          const eol = text.indexOf("\n", at)
+          const line = text.slice(at, eol < 0 ? text.length : eol)
+          at = eol < 0 ? text.length : eol + 1
+          if ((h.tabs ? line.replace(/^\t+/, "") : line) === h.word) break
+        }
+      }
+      heredocs.length = 0
+      out += "\n"
+      i = at
+    } else {
+      out += c
+      i++
+    }
+  }
+  return out
+}
+
+/** What each `git show` and `git log` in a command (as `shellRuns` has it) is given: its text up to the next `;`, `&`, `|`, `)` or line end. */
+const gitArguments = (line: string): string =>
+  [...line.matchAll(READS)].map((m) => line.slice(m.index + m[0].length).split(/[;&|)\n]/)[0]).join(" ")
 
 /** An output holding a change: a diff, or a stat's summary line. */
 const CHANGE = /^diff --git |^ \d+ files? changed\b/m
@@ -105,14 +174,14 @@ export const commitsRead = (
   command: string,
   output: string
 ): { readonly hashes: ReadonlyArray<string>; readonly revs: ReadonlyArray<string> } | undefined => {
-  // A command continued over lines (`git \` then `log -1 --stat` on the next) is one line.
-  const line = command.replace(/[\\`]\r?\n/g, " ")
+  // What the shell runs, a command continued over lines (`git \` then `log -1 --stat` on the next) as one line.
+  const line = shellRuns(command).replace(/[\\`]\n/g, " ")
   if (!SHOW.test(line) && !(LOG.test(line) && CHANGE.test(output.replace(/\r\n?/g, "\n")))) return undefined
   const listed = listedCommits(output)
   if (listed.length > MAX_READ) return undefined
   if (listed.length > 0) return { hashes: listed, revs: [] }
-  // Nothing listed (`git show HEAD~2 -- file | tail -30`): what the command names.
-  const named = namedCommits(line)
+  // Nothing listed (`git show HEAD~2 -- file | tail -30`): what the git command names.
+  const named = namedCommits(gitArguments(line))
   return named.hashes.length + named.revs.length === 0 ? undefined : named
 }
 

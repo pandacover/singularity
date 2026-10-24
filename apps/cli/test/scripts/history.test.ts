@@ -8,7 +8,7 @@ import { identifyRepo } from "../../src/local/Git.ts"
 import { buildRecord, commitRecordId } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { addGiven, commitsRead, givenPath, listedCommits, namedCommits, readGiven, readsCommits } from "../../src/scripts/History.ts"
+import { addGiven, commitsRead, givenPath, listedCommits, namedCommits, readGiven, readsCommits, shellRuns } from "../../src/scripts/History.ts"
 import { inlineCode, renderBehind } from "../../src/scripts/Render.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
@@ -46,6 +46,22 @@ describe("which commits a call read", () => {
     expect(commitsRead(`git show @~1 -- lib/md063.mjs | tail -5`, "+x\n")).toEqual({ hashes: [], revs: ["@~1"] })
     expect(namedCommits(`git show @ --stat`)).toEqual({ hashes: [], revs: ["@"] })
     expect(namedCommits(`git log -p --author=me@example.com HEAD@{1} @{u}`)).toEqual({ hashes: [], revs: [] })
+  })
+
+  it("reads what a command runs, not what it mentions", () => {
+    // A pull request or a commit message that names `git show` and a hash reads nothing (2026-10-24).
+    const pr = "gh pr create --base main --title \"Lean hand-over\" --body-file - <<'EOF'\nThe `git show` add-on: `changes 4318912` printed 9,734 characters.\nEOF"
+    expect(commitsRead(pr, "https://github.com/pandacover/singularity/pull/45\n")).toBeUndefined()
+    expect(commitsRead("git commit -m \"see git show 4318912\"", "[main 1a2b3c4] see git show 4318912\n 1 file changed, 2 insertions(+)\n")).toBeUndefined()
+    expect(commitsRead("git commit -m \"$(cat <<'EOF'\nUse git show 4318912 to read it\nEOF\n)\"", " 1 file changed, 2 insertions(+)\n")).toBeUndefined()
+    expect(commitsRead("echo 'run git show 4318912' > notes.md", "")).toBeUndefined()
+    // The commit comes from the git command's own arguments, not from anything else on the line.
+    expect(commitsRead("echo 1234567 && git show HEAD~1 -- lib/md062.mjs | tail -3", "+x\n")).toEqual({ hashes: [], revs: ["HEAD~1"] })
+    // A run beside a mention is still a reading, and a quoted path for git -C is still an argument.
+    expect(commitsRead("git log --oneline -1 --grep 'git show' && git show 8a4ba047a3 -- a.md | tail -3", "+x\n")).toEqual({ hashes: ["8a4ba047a3"], revs: [] })
+    expect(commitsRead("git -C 'my repo' show 8a4ba047a3 -- a.md | tail -3", "+x\n")).toEqual({ hashes: ["8a4ba047a3"], revs: [] })
+    // A heredoc's body ends at its word, tabs before it with `<<-`; what comes after runs.
+    expect(shellRuns("cat > a.sh <<-EOF\n\tgit show HEAD\n\tEOF\ngit show 8a4ba047a3")).toBe("cat > a.sh <<''\ngit show 8a4ba047a3")
   })
 
   it("reads a command continued over lines as one", () => {
