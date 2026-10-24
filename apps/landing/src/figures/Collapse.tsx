@@ -85,9 +85,9 @@ export const Collapse = () => {
             <li>What it was for, from its commit message</li>
             <li>Its files, as they are named today</li>
             <li>Check scripts earlier sessions ran</li>
-            <li>On git show: the commands its session ran</li>
+            <li>The commands its session ran, on git show</li>
           </ol>
-          <div className="wf-f">picked by the words of the two tasks</div>
+          <div className="wf-f">picked by a model, or by word search</div>
         </div>
       </div>
       <figcaption>Four real runs of one <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> task without memory. They took {turns} turns between them, most spent reading and searching. Memory keeps a change like theirs once it is committed, and points the next run of a similar task to it.</figcaption>

@@ -6,7 +6,7 @@ export const Steps = () => (
     <div className="step s1">
       <div className="n">1</div>
       <h3>It stores the change</h3>
-      <p>With whether the last check before the commit passed.</p>
+      <p>It also notes whether the last check before the commit passed.</p>
       <div className="vis">
         <div className="vh">A record, no code</div>
         <ol>
@@ -20,11 +20,11 @@ export const Steps = () => (
     <div className="step s2">
       <div className="n">2</div>
       <h3>It points to one</h3>
-      <p>The stored change most like the new task: its commit and files, no diff. Then the check scripts earlier sessions ran.</p>
+      <p>It hands over the commit and files of the stored change most like the new task, without the diff, and lists the check scripts earlier sessions ran.</p>
       <div className="vis">
         <div className="vh">Who picks it</div>
-        <div className="vr"><span className="good">●</span><span>Claude Code: a model, Haiku by default</span></div>
-        <div className="vr"><span className="good">○</span><span>Others, or no model: the words of commit messages</span></div>
+        <div className="vr"><span className="good">●</span><span>In Claude Code, a model, Haiku by default</span></div>
+        <div className="vr"><span className="good">○</span><span>Elsewhere, or with no model, the words of commit messages</span></div>
         <div className="vn">in the background · about $0.002 a task</div>
       </div>
     </div>

@@ -60,7 +60,7 @@ export const Install = ({ os, setOs, requirement, style }: {
       </div>
       {state === "blocked" && (
         <div className="req blocked" role="status">
-          Your ad blocker stopped the copy: it blocks pages from copying commands shaped like this one, because attacks use them too.
+          Your ad blocker stopped the copy. It blocks pages from copying commands shaped like this one, because attacks use them too.
           The command is selected, so press {os === "ps" ? "Ctrl+C" : "Ctrl+C or ⌘C"} to copy it yourself, or <a href={SCRIPT[os]}>read the script</a> first.
         </div>
       )}

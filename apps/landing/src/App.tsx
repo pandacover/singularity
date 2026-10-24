@@ -57,7 +57,8 @@ const useReading = (still: boolean) => {
  * the inverted theme. Kept in the address as ?for=agents, so a link can open either. */
 type View = "human" | "agents"
 type Go = (v: View) => void
-const viewOf = (): View => (new URLSearchParams(location.search).get("for") === "agents" ? "agents" : "human")
+const viewOf = (): View =>
+  typeof location !== "undefined" && new URLSearchParams(location.search).get("for") === "agents" ? "agents" : "human"
 const keepView = (v: View) => {
   const url = new URL(location.href)
   if (v === "agents") url.searchParams.set("for", "agents")
@@ -201,27 +202,26 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <h2 id="abs" className="label">Abstract</h2>
             <p>
               An agent asked for the same kind of change twice starts from zero both times, and most of its turns go to
-              finding places it has found before. singularity stores each change a Claude Code, Codex or Hermes Agent
-              session commits, with whether its last check passed. When a new task starts, it picks the stored change
-              closest to it. In Claude Code a small model picks by default, in the background, so the session never
-              waits; elsewhere memory matches the task's words against each change's commit message. It points the agent
-              to that change's commit and files, since git holds the diff, and lists the check scripts earlier sessions
-              ran that are still on disk. When the agent reads a stored commit in git, memory adds what the commit doesn't hold. In runs of
-              an earlier version, whose hand-over included the diff, the 7 of 12 markdownlint tasks that got one cost 16%
-              less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a build
-              command that had failed before, agents ran it in 8 of 10 tasks. Hand-overs no longer list past mistakes.
+              finding places it has found before. singularity stores each change that a Claude Code, Codex or Hermes
+              Agent session commits. When a new task starts, it points the agent to the stored change closest to it,
+              without the diff, which git holds. It also lists the check scripts earlier sessions ran that are still on
+              disk, and when the agent reads a stored commit in git, it adds the commands that commit's session ran. On
+              fresh clones of chat-v2, with Claude Code's auto memory off, Opus cost 26% less with memory over 12 pairs
+              of runs. Sonnet cost the same and passed 12 of 12 runs, against 10 of 12 without. The help came from the
+              check scripts and the commands, not from the pointer. In daily use on markdownlint, an earlier hand-over
+              that included the diff saved 6%, which is inside the noise.
             </p>
             <dl className="glance">
-              <div><dt>−16%</dt><dd>cost, tasks with a hand-over</dd></div>
-              <div><dt>−24%</dt><dd>tokens, same tasks</dd></div>
-              <div><dt>8 / 10</dt><dd>ran a failed command a hand-over named</dd></div>
+              <div><dt>−26%</dt><dd>cost, Opus on fresh clones</dd></div>
+              <div><dt>12 / 12</dt><dd>Sonnet runs passed with memory, 10 / 12 without</dd></div>
+              <div><dt>−6%</dt><dd>cost in daily use, inside the noise</dd></div>
             </dl>
           </section>
 
           <div className="ar-install">
             <Install os={os} setOs={setOs} requirement={<>
               <a href="#use">Works with</a> Claude Code, Codex, Gemini CLI, Droid and Hermes Agent.<br />
-              Needs git. Setup asks before it changes anything.
+              You need git. Setup asks before it changes anything.
             </>} />
             <ProductHunt />
           </div>
@@ -229,10 +229,11 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           <section>
             <H2 id="problem">The same task, from zero</H2>
             <p>
-              Ask a coding agent to add a setting to <a href="https://github.com/excalidraw/excalidraw">excalidraw</a> and
-              it will find its way. It reads the app state, searches for how other settings are stored, finds the menu,
-              runs the tests, fails once on a flag and runs them again. Ask it for a second setting the next day and it
-              does all of that again. Nothing it learned about the codebase survives the session.
+              Ask a coding agent to add a setting to <a href="https://github.com/excalidraw/excalidraw">excalidraw</a>,
+              and it does. It reads the app state, searches for how other settings are stored, finds the menu, runs the
+              tests, fails once on a flag and runs them again. Ask it for a second setting the next day and it does all
+              of that again. Unless the agent keeps a memory of its own, nothing it learned about the codebase survives
+              the session.
             </p>
             <p>
               Figure 1 shows four real runs of one such task without memory. They spent 110 turns between them, most of
@@ -247,24 +248,24 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <p>
               When a session commits a change, memory records it. The record holds the task as the person wrote it, the
               files changed, the commands that ran, what failed and what fixed it, and whether the last test, typecheck,
-              build or lint before the commit passed. It holds no code: git has that. Memory stops handing over a change
-              that was reverted or replaced.
+              build or lint before the commit passed. It holds no code, because git has that. Memory stops handing over
+              a change that was reverted or replaced.
             </p>
             <div className="wide"><Steps /></div>
             <p>
-              At task start the agent gets a pointer, not a diff: the past change's commit, the first line of the task
-              that asked for it, and its files as they are named today. It can read the change with{" "}
-              <code>git show</code>, and it still writes every line itself. The pointer says that the names, values and
-              details of the new task differ. Then, once a session, comes a short card of the check scripts earlier
-              sessions ran before committing that are still on disk, a screenshot or end-to-end script say, the pointed-to
-              change's own first.
+              At task start the agent gets a pointer, not a diff: the past change's commit, the first line of its commit
+              message, and its files as they are named today. It can read the change with <code>git show</code>, and it
+              still writes every line itself. The pointer says that the names, values and details of the new task
+              differ. Once a session, a short card follows. It lists the check scripts that earlier sessions ran before
+              committing and that are still on disk, such as a screenshot or end-to-end script, with the pointed-to
+              change's own scripts first.
             </p>
             <p>
               When the agent reads a stored change in git, with <code>git show</code> or <code>git log</code>, memory
               adds what the commit doesn't hold: the commands its session ran, and the task when the commit message says
-              too little. Never a diff or past mistakes. Each change
-              comes once a session, and never the session's own. Setup also adds a note to the agent's instructions
-              saying it can run <code>singularity recall</code> before work it may have done before.
+              too little. It never adds a diff or past mistakes. It adds each change once a session, and never one the
+              session made itself. Setup also adds a note to the agent's instructions saying it can run{" "}
+              <code>singularity recall</code> before work it may have done before.
             </p>
           </section>
 
@@ -275,7 +276,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             </p>
             <p>
               <b>By words.</b> Memory scores each stored change against the new task. The score combines how much of the
-              change's words the new task holds with how alike the two are overall. A change is found by its commit
+              change's words the new task holds with how alike the two are overall. Memory finds a change by its commit
               message, and by the request that asked for it only when the message says too little. Below 0.38 memory
               hands over nothing. It costs nothing and needs no model, but it misses a task put in other words. Codex,
               Gemini CLI, Droid and Hermes Agent pick this way.
@@ -284,7 +285,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               <b>By a model.</b> In Claude Code, setup asks whether a model should pick. The default is Haiku, the
               cheapest, at about $0.002 a task on your Claude plan. You can choose Sonnet, Opus, another model by name,
               or none, which keeps word search. The model reads your task and the repository's stored changes, and picks
-              one or none. It runs in a background hook, so the session never waits: the check scripts arrive at once,
+              one or none. It runs in a background hook, so the session never waits. The check scripts arrive at once,
               and the pointer reaches the agent with its next tool result, a few seconds in.
             </p>
             <p>
@@ -297,42 +298,54 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
           <section>
             <H2 id="results">Results</H2>
             <p>
-              We ran the 12 markdownlint tasks five times with memory and three times without, on one Claude Code
-              version. We also ran two long excalidraw tasks, with memory built from six earlier runs. Figure 4 shows the
-              cost of each with memory as a share of its cost without. These runs used an earlier hand-over that included
-              the change's diff. The pointer and card that replaced it have no published run yet.
+              On 2026-10-22 we gave Claude Code two tasks related to earlier work in{" "}
+              <a href="https://github.com/pandacover/chat-v2">chat-v2</a>, an Electron app of ours. Every run started
+              from a fresh clone with Claude Code's auto memory off, so the only memory of the repository was
+              singularity's. Runs with memory had a copy of the memory our own sessions had built in chat-v2. Each one
+              ran at the same time as a run without memory, on the same machine. Figure 4 shows each pair's cost with
+              memory as a share of its cost without.
             </p>
             <div className="wide"><Results /></div>
             <p>
-              Tasks with a hand-over cost less. Tasks without one cost the same as with no memory. On excalidraw, the
-              task with a mix of changes used 43% to 53% fewer tokens. The task with four changes was within the noise.
+              Opus cost 26% less with memory, and 10 of its 12 pairs were cheaper. Every Opus run passed, with memory
+              and without. Sonnet cost the same, $3.50 with memory and $3.51 without, and passed 12 of 12 runs against
+              10 of 12. No task passed less often with memory.
             </p>
             <p>
-              Pass counts swing. A task that leaves a check failing fails every later task until an agent fixes it.
-              With memory, 4 of 60 tasks started such a run of failures; without it, 2 of 36 did. Two of memory's came
-              after a hand-over that listed a failing build command among past mistakes. Across all our markdownlint
-              runs, agents ran that command in 8 of the 10 tasks whose hand-over named it, and in none of the other 78.
-              No hand-over lists past mistakes now, and the project commands that worked come only when the agent reads
-              a stored commit in git or runs recall.
+              The transcripts show where the help came from. Opus runs with memory reused the browser install that a
+              past session had left on disk, wrote their check from that session's scripts, and tested the change in
+              the running app. The two Sonnet runs that failed without memory committed a type error after trying{" "}
+              <code>npx tsc</code>, which chat-v2 doesn't install. With memory, Sonnet ran{" "}
+              <code>bun run typecheck</code>, and several runs got that command from what memory adds to{" "}
+              <code>git show</code>. One task got a pointer at every start, to a weak match, and no run visibly used it.
+            </p>
+            <p>
+              Daily use on markdownlint tells a different story. Sonnet did 12 tasks in order, each in a fresh session,
+              three times with memory and three times without, on an earlier version whose hand-over included the past
+              change's diff. Cost fell 6% (95% interval −13% to +1%), which is inside the noise. A second run of the
+              same passes, which also added notes when an agent ran <code>git show</code>, cost 1.9% less (−12% to
+              +8%). There the earlier changes were in the repository's git history, and agents read them there with
+              memory and without.
             </p>
           </section>
 
           <section>
             <H2 id="limits">Limitations</H2>
             <ul className="limits">
-              <li><b>It helps with what it has seen.</b> The savings come from tasks like ones already committed in the same repository. With no close past change, a task costs what it costs without memory.</li>
-              <li><b>Past commands can carry a mistake.</b> Agents run the commands a past change lists. Memory lists only the project commands that worked, and only when the agent reads a stored commit in git or runs recall.</li>
-              <li><b>Measured on an older hand-over.</b> The results above come from a hand-over that included the diff, and a word search that matched by the request, not the pointer, card and picking memory has now.</li>
-              <li><b>A model's pick comes a step in.</b> It reaches the agent with its first tool result after the pick, a few seconds in, so the agent starts without it. Picking was judged on 62 real task starts, not on paid runs.</li>
-              <li><b>Agents rarely ask.</b> Agents ran <code>singularity recall</code> on their own once in 60 runs that had the note.</li>
-              <li><b>Small samples.</b> Three to five passes of 12 tasks on markdownlint, and four to eight runs per task on excalidraw.</li>
-              <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. Runs are only compared within one version.</li>
+              <li><b>It helps where git says too little.</b> The help came from check scripts and commands that the repository doesn't hold. Where the past changes are in git and the agent reads them anyway, as on markdownlint, memory added little.</li>
+              <li><b>One machine.</b> The card lists only check scripts still on disk, so on a new machine it would list none. The chat-v2 runs were on the machine where the past sessions ran.</li>
+              <li><b>Agents with a memory of their own.</b> The runs had Claude Code's auto memory off. An agent that keeps its own notes on a repository may already know what memory tells it.</li>
+              <li><b>Measured before the latest changes.</b> The chat-v2 runs picked by word search, before the model's pick, and their notes on <code>git show</code> still listed past mistakes. The markdownlint runs had a hand-over with the diff.</li>
+              <li><b>A model's pick comes a step in.</b> It reaches the agent with its first tool result after the pick, a few seconds in, so the agent starts without it. We judged picking on 62 real task starts, not on paid runs.</li>
+              <li><b>Sonnet rarely asks.</b> Across 177 sessions with the recall note on markdownlint, excalidraw and validator, Sonnet ran <code>singularity recall</code> on its own once, and in its 12 runs on chat-v2 it never did. Opus ran it in 5 of its 12 runs on chat-v2.</li>
+              <li><b>Small samples.</b> Twelve pairs of runs per model on chat-v2, over two tasks in one repository. Three passes of 12 tasks on markdownlint.</li>
+              <li><b>Agents change.</b> Claude Code updates itself, and each version behaves a little differently. We compare runs only within one version.</li>
             </ul>
           </section>
 
           <section>
             <H2 id="rules">Rules it keeps</H2>
-            <p>Memory sits between your machine and your agent. Each layer keeps one rule.</p>
+            <p>Figure 5 draws memory as layers, from your machine up to your agent. Each layer keeps one rule.</p>
             <figure className="wide" aria-labelledby="f5t">
               <div className="fig-head"><h3 id="f5t"><span className="label">Figure 5</span>Layer by layer, from your machine up to your agent</h3></div>
               <Stack />

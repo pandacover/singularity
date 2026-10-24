@@ -2,8 +2,8 @@
 // no pick: wrong pointers by each way of picking, and Haiku's right ones.
 const STARTS = 62
 const WAYS: ReadonlyArray<readonly [way: string, how: string, wrong: number, right: number | null]> = [
-  ["Words: request and commit message", "the earlier word search", 6, null],
-  ["Words: commit message", "word search today", 1, null],
+  ["Request and commit message words", "the earlier word search", 6, null],
+  ["Commit message words", "word search today", 1, null],
   ["Haiku", "a model, in the background", 0, 10]
 ]
 
@@ -74,11 +74,12 @@ export const Picks = () => (
       ))}
     </ol>
     <figcaption>
-      (a) Each pointer was judged by a stronger model that didn't know how it was picked. Matching a request's words
-      brought most of the wrong ones, so word search now goes by the commit message. (b) The earlier word search, which
-      matched by the request, over twelve tasks run in order, each with the changes the earlier ones committed. Every
-      new rule after the first got the first rule's change; the one-offs scored below the bar and got nothing. Going by
-      the commit message has a cost here: those new rules, asked for in the same words, no longer find the first one.
+      (a) A stronger model judged each pointer without knowing how it was picked. Matching a request's words brought
+      most of the wrong ones, so word search now goes by the commit message. (b) shows the earlier word search, which
+      matched by the request, over twelve tasks run in order. Each task had the changes the earlier ones committed.
+      Every new rule after the first got the first rule's change, and the one-offs scored below the bar and got
+      nothing. Going by the commit message has a cost here. Those new rules, asked for in the same words, no longer
+      find the first one.
     </figcaption>
   </figure>
 )
