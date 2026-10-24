@@ -1,0 +1,519 @@
+{
+  "moments": {
+    "start": 21,
+    "git": 12,
+    "file": 3
+  },
+  "recallSessions": 0,
+  "fires": [
+    {
+      "pass": 1,
+      "task": "t04-list-max-depth",
+      "session": "732a46f4-aad3-4400-8d98-b3cff7abae0a",
+      "call": 0,
+      "read": "207515b896",
+      "chars": 2780,
+      "command": "git show ab8e932586 --stat | cat; git show ab8e932586 -- README.md doc-build test/heading-",
+      "named": [
+        "coverage"
+      ],
+      "made_after": [],
+      "made_without": []
+    },
+    {
+      "pass": 1,
+      "task": "t05-get-rules",
+      "session": "11caf460-9d61-4b26-843d-4196025028c3",
+      "call": 0,
+      "read": "4cc0d52ba8",
+      "chars": 1478,
+      "command": "cd C:/singularity-workspaces/eval-1017/ml/arm-with-p1 && git show --stat HEAD | head -30 &",
+      "named": [
+        "plan-count"
+      ],
+      "made_after": [
+        "plan-count"
+      ],
+      "made_without": []
+    },
+    {
+      "pass": 1,
+      "task": "t07-link-url-scheme",
+      "session": "c586658b-46a1-4dad-8d0d-54b28154b4eb",
+      "call": 0,
+      "read": "4cc0d52ba8",
+      "chars": 1478,
+      "command": "git show 4cc0d52b --stat | cat; cat lib/md063.mjs; cat package.json | grep -n '\"' | sed -n",
+      "named": [
+        "plan-count"
+      ],
+      "made_after": [
+        "plan-count"
+      ],
+      "made_without": [
+        "plan-count"
+      ]
+    },
+    {
+      "pass": 1,
+      "task": "t10-ol-delimiter-style",
+      "session": "35e5dd6b-e157-4cc9-907d-35880bfd490f",
+      "call": 1,
+      "read": "fb086a6a15",
+      "chars": 2240,
+      "command": "git show fb086a6a --stat; cat lib/md064.mjs doc-src/md064.md; grep -n \"md064\\|MD064\" -r li",
+      "named": [
+        "plan-count"
+      ],
+      "made_after": [
+        "plan-count"
+      ],
+      "made_without": [
+        "plan-count"
+      ]
+    },
+    {
+      "pass": 1,
+      "task": "t12-no-empty-headings",
+      "session": "67c81780-1ef5-4a6e-87bb-31068858bc06",
+      "call": 0,
+      "read": "443598e9fd",
+      "chars": 1169,
+      "command": "git show --stat HEAD~1 | head -40; ls doc-src doc-build 2>&1 | tail -5; cat package.json |",
+      "named": [],
+      "made_after": [],
+      "made_without": []
+    },
+    {
+      "pass": 2,
+      "task": "t04-list-max-depth",
+      "session": "8d6a2110-4f19-4cb2-923a-acadaeed01df",
+      "call": 0,
+      "read": "63043440f4",
+      "chars": 2154,
+      "command": "git show 63043440 --stat; git show ce90fd31d0 -- README.md doc-build doc/md061.md schema/.",
+      "named": [
+        "plan-count"
+      ],
+      "made_after": [
+        "plan-count"
+      ],
+      "made_without": []
+    },
+    {
+      "pass": 2,
+      "task": "t07-link-url-scheme",
+      "session": "fc8342e2-8371-44ae-8393-76f2a433857c",
+      "call": 1,
+      "read": "0fa3b5c868",
+      "chars": 1166,
+      "command": "git show 0fa3b5c8 -- . ':!schema/*.json' ':!test/*.snapshot' ':!lib/configuration-strict.d",
+      "named": [],
+      "made_after": [],
+      "made_without": []
+    },
+    {
+      "pass": 2,
+      "task": "t12-no-empty-headings",
+      "session": "849db691-82d5-4c92-b80e-08eef5fa383c",
+      "call": 1,
+      "read": "1d4a1f4598",
+      "chars": 1155,
+      "command": "git show 1d4a1f45 --stat | cat; git show 1d4a1f45 -- README.md lib/rules.mjs test/markdown",
+      "named": [],
+      "made_after": [],
+      "made_without": []
+    },
+    {
+      "pass": 3,
+      "task": "t04-list-max-depth",
+      "session": "4b4bf8b9-ec27-48ab-97ca-de646e7e80cd",
+      "call": 0,
+      "read": "508585e2c3",
+      "chars": 2253,
+      "command": "git show 508585e2 --stat | cat; git show 508585e2 -- README.md lib test/markdownlint-test.",
+      "named": [
+        "file-count",
+        "coverage"
+      ],
+      "made_after": [
+        "file-count"
+      ],
+      "made_without": [
+        "file-count"
+      ]
+    },
+    {
+      "pass": 3,
+      "task": "t07-link-url-scheme",
+      "session": "7ba9ce4c-b5ab-4dd6-8cbe-2ed4df2b95cc",
+      "call": 0,
+      "read": "dc2d8aeecd",
+      "chars": 1636,
+      "command": "git show dc2d8aee --stat; cat lib/md063.mjs; cat doc-src/md063.md; git show dc2d8aee -- sc",
+      "named": [
+        "plan-count",
+        "file-count"
+      ],
+      "made_after": [
+        "plan-count",
+        "file-count"
+      ],
+      "made_without": [
+        "plan-count"
+      ]
+    },
+    {
+      "pass": 3,
+      "task": "t10-ol-delimiter-style",
+      "session": "e1794903-c17d-4658-a13f-25a4f9129ba4",
+      "call": 0,
+      "read": "0463cf4519",
+      "chars": 1630,
+      "command": "git show --stat HEAD~2 | head -40; ls lib | grep md06; cat lib/md064.mjs; grep -n \"md06\\|M",
+      "named": [],
+      "made_after": [],
+      "made_without": []
+    },
+    {
+      "pass": 3,
+      "task": "t12-no-empty-headings",
+      "session": "30c83b5e-123f-4d72-8781-e5e32a3e6190",
+      "call": 1,
+      "read": "44ed48263f",
+      "chars": 2168,
+      "command": "git show 44ed4826 --stat --format=%s | cat; cat lib/md065.mjs | head -20; git show 44ed482",
+      "named": [
+        "coverage"
+      ],
+      "made_after": [],
+      "made_without": []
+    }
+  ],
+  "sessions": [
+    {
+      "pass": 1,
+      "task": "t01-heading-max-level",
+      "fired": false,
+      "with_usd": 0.39972300000000005,
+      "without_usd": 0.4272869999999999,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 1,
+      "task": "t02-code-block-max-lines",
+      "fired": false,
+      "with_usd": 0.5148682,
+      "without_usd": 0.44750820000000013,
+      "with_passed": true,
+      "without_passed": false
+    },
+    {
+      "pass": 1,
+      "task": "t03-md024-ignore-case",
+      "fired": false,
+      "with_usd": 0.20175940000000003,
+      "without_usd": 0.2336258,
+      "with_passed": true,
+      "without_passed": false
+    },
+    {
+      "pass": 1,
+      "task": "t04-list-max-depth",
+      "fired": true,
+      "with_usd": 0.29169239999999996,
+      "without_usd": 0.24121200000000004,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 1,
+      "task": "t05-get-rules",
+      "fired": true,
+      "with_usd": 0.29621280000000005,
+      "without_usd": 0.1628796,
+      "with_passed": true,
+      "without_passed": false
+    },
+    {
+      "pass": 1,
+      "task": "t06-rename-doc-src",
+      "fired": false,
+      "with_usd": 0.0553516,
+      "without_usd": 0.05731200000000001,
+      "with_passed": true,
+      "without_passed": false
+    },
+    {
+      "pass": 1,
+      "task": "t07-link-url-scheme",
+      "fired": true,
+      "with_usd": 0.2818546,
+      "without_usd": 0.31112999999999996,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 1,
+      "task": "t08-todo-comments-example",
+      "fired": false,
+      "with_usd": 0.1582898,
+      "without_usd": 0.33914079999999996,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 1,
+      "task": "t09-md014-prompts",
+      "fired": false,
+      "with_usd": 0.4810168,
+      "without_usd": 0.28254080000000004,
+      "with_passed": true,
+      "without_passed": false
+    },
+    {
+      "pass": 1,
+      "task": "t10-ol-delimiter-style",
+      "fired": true,
+      "with_usd": 0.3545767999999999,
+      "without_usd": 0.3807164,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 1,
+      "task": "t11-circular-extends",
+      "fired": false,
+      "with_usd": 0.22374480000000002,
+      "without_usd": 0.2242024,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 1,
+      "task": "t12-no-empty-headings",
+      "fired": true,
+      "with_usd": 0.3594890000000001,
+      "without_usd": 0.3754936000000001,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t01-heading-max-level",
+      "fired": false,
+      "with_usd": 0.3315102,
+      "without_usd": 0.2898658,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t02-code-block-max-lines",
+      "fired": false,
+      "with_usd": 0.25824440000000004,
+      "without_usd": 0.4047179999999999,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t03-md024-ignore-case",
+      "fired": false,
+      "with_usd": 0.18741359999999996,
+      "without_usd": 0.1978714,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t04-list-max-depth",
+      "fired": true,
+      "with_usd": 0.18999819999999998,
+      "without_usd": 0.22825059999999997,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t05-get-rules",
+      "fired": false,
+      "with_usd": 0.2737670000000001,
+      "without_usd": 0.4751636,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t06-rename-doc-src",
+      "fired": false,
+      "with_usd": 0.0560212,
+      "without_usd": 0.061327000000000007,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t07-link-url-scheme",
+      "fired": true,
+      "with_usd": 0.29495499999999997,
+      "without_usd": 0.33329700000000007,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t08-todo-comments-example",
+      "fired": false,
+      "with_usd": 0.4466373999999999,
+      "without_usd": 0.2996604,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t09-md014-prompts",
+      "fired": false,
+      "with_usd": 0.5855782,
+      "without_usd": 0.43940179999999995,
+      "with_passed": true,
+      "without_passed": false
+    },
+    {
+      "pass": 2,
+      "task": "t10-ol-delimiter-style",
+      "fired": false,
+      "with_usd": 0.281106,
+      "without_usd": 0.41898480000000005,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t11-circular-extends",
+      "fired": false,
+      "with_usd": 0.22324760000000002,
+      "without_usd": 0.1847382,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 2,
+      "task": "t12-no-empty-headings",
+      "fired": true,
+      "with_usd": 0.41438860000000005,
+      "without_usd": 0.29548559999999996,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t01-heading-max-level",
+      "fired": false,
+      "with_usd": 0.43010399999999993,
+      "without_usd": 0.3963086,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t02-code-block-max-lines",
+      "fired": false,
+      "with_usd": 0.27515059999999997,
+      "without_usd": 0.3673992,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t03-md024-ignore-case",
+      "fired": false,
+      "with_usd": 0.1863052,
+      "without_usd": 0.2253406,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t04-list-max-depth",
+      "fired": true,
+      "with_usd": 0.21266360000000004,
+      "without_usd": 0.2075924,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t05-get-rules",
+      "fired": false,
+      "with_usd": 0.33468300000000006,
+      "without_usd": 0.31746760000000007,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t06-rename-doc-src",
+      "fired": false,
+      "with_usd": 0.0546508,
+      "without_usd": 0.057733,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t07-link-url-scheme",
+      "fired": true,
+      "with_usd": 0.2961582,
+      "without_usd": 0.29641559999999995,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t08-todo-comments-example",
+      "fired": false,
+      "with_usd": 0.21072039999999997,
+      "without_usd": 0.4410352,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t09-md014-prompts",
+      "fired": false,
+      "with_usd": 0.3194246,
+      "without_usd": 0.37672400000000006,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t10-ol-delimiter-style",
+      "fired": true,
+      "with_usd": 0.5273985999999999,
+      "without_usd": 0.4804804,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t11-circular-extends",
+      "fired": false,
+      "with_usd": 0.23352219999999999,
+      "without_usd": 0.1881322,
+      "with_passed": true,
+      "without_passed": true
+    },
+    {
+      "pass": 3,
+      "task": "t12-no-empty-headings",
+      "fired": true,
+      "with_usd": 0.29242519999999994,
+      "without_usd": 0.27336520000000003,
+      "with_passed": true,
+      "without_passed": true
+    }
+  ]
+}

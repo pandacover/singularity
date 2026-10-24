@@ -529,3 +529,73 @@ Replayed on past sessions, with memory as it stood at each call
   mistake. In 5 the session made that mistake later: 4 test plan counts and
   1 missing snapshot. A count mismatch is what a test run reports anyway
   (above), so whether naming it saves anything needs a paid run.
+
+## The hand-over by commit, paid, in daily use (2026-10-17)
+
+Main at `daa5146` (the hand-over by commit, PR #34) against no memory, the
+markdownlint daily-use suite of 2026-10-16 unchanged: twelve tasks, each in
+a fresh session, three passes, the arms side by side, Claude Code 2.1.295
+(the same pinned copy), `--setting-sources project,local`
+(`PREREGISTRATION-git-show-2026-10-17.md`; data in
+`results/git-show-2026-10-17/`). Spent: $21.27. No session hit a rate limit.
+
+### Harm first
+
+Five tasks passed without memory and failed with it, all in pass 2 and
+all from one miss: t05 committed `lib/markdownlint.d.mts` stale, and t06,
+t07, t08 and t10 carried it (t09, t11 and t12 failed without memory too).
+Memory handed that t05 session nothing: no start, file or commit hand-over.
+It's the same task and the same miss as on 10-16. Counting
+with the declarations compared in both arms (`check-declarations.mjs`),
+memory had fewer runs of failures than no memory, not more: 3 against 5.
+
+| | without | with |
+|---|---|---|
+| passed, the driver's checks | 30 of 36 | 36 of 36 |
+| passed, declarations compared in both arms | 15 of 36 | 18 of 36 |
+| runs of failures, declarations compared | 5 | 3 |
+| dollars | $10.74 | $10.53 (-1.9%; 95% interval -11.7% to +7.7%) |
+| tokens | 23.30M | 22.87M (-1.8%; -15.9% to +12.3%) |
+| dollars, tasks 3-12 | $8.41 | $8.33 (-1.0%; -13.2% to +11.3%) |
+| reference: 10-16, main at `a7ede11` | $10.86 | $10.19 (-6%; -13% to +1%) |
+
+By the pre-registered bars: **no clear difference**. It isn't -10% with the
+interval below zero, and it isn't +10% or more runs of failures. The
+intervals are a bootstrap over the 36 task pairs (`score-git-show.mjs`).
+The 10-16 row is another day's pair of arms, for reference only.
+
+### What the add-on did
+
+It fired 12 times, in 12 of the 36 sessions with memory: on t04, t07 and
+t12 in every pass, t10 in passes 1 and 3, and t05 in pass 1. Each added
+1.2k-2.8k characters, at the session's first or second shell call every time
+(`git show <previous rule's commit> --stat`). This matches the free replay (15 in 13).
+
+| | |
+|---|---|
+| fires that named a mistake | 8 of 12 |
+| the session made a mistake of that kind after the fire | 6 of 8 |
+| the paired session without memory made it | 4 of 8 |
+| dollars, sessions with a fire, against their pairs | $3.81 against $3.59 (+6%) |
+| dollars, sessions without one, against their pairs | $6.72 against $7.15 (-6%) |
+
+Naming a mistake didn't stop it. Five of the eight named the test plan's
+assertion count (`plan-count`), and all five sessions failed on it anyway.
+The count changes with every rule, so a warning that it changed last time
+doesn't tell the agent the new number; a test run does, as the replay
+expected. The other three named coverage, none repeated; one also named a
+file count, which that session then hit. The sessions with a fire cost 6%
+more than their pairs, those without one 6% less; at 12 and 24 pairs
+neither is outside the noise.
+
+Start hand-overs: 21, plus 3 by file, as many as on 10-16. No agent ran
+`singularity recall` (0 of 36).
+
+### What it says
+
+The add-on reaches agents: it fires where predicted, at the moment they
+read the earlier change, and it costs little (under a cent a hand-over, by
+the replay's estimate). It doesn't pay here, because what it warns about most in this repository is
+a mistake the test run reports at once and cheaply. Bars and data:
+`PREREGISTRATION-git-show-2026-10-17.md`, `score-markdownlint.txt`,
+`score-git-show.txt` (`score-git-show.mjs`).
