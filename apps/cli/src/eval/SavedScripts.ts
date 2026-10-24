@@ -6,9 +6,9 @@
  * worked (no error, and no failure in their output: a pipe into `tail` hides a
  * failed exit status) and the mistakes it made. Before a run, pick the saved
  * run most like the new task with the daily search (src/scripts/Search.ts:
- * none below its score) and hand it over in the system prompt, shown as the
- * daily hook shows a stored commit (src/scripts/Render.ts, within one hook's
- * room).
+ * none below its score) and hand it over in the system prompt, in full with
+ * its diff, as daily use showed a stored change until 2026-10-24
+ * (SavedRunText.ts, within one hook's room).
  *
  * Retrieval uses the prompt text only, never the task id or family, so the
  * setup has no information the agent wouldn't have in real use.
@@ -24,8 +24,9 @@ import type { Injection, MemorySetup, Outcome, SetupServices } from "./Setups.ts
 import { MemoryError } from "./Setups.ts"
 import { isoNow } from "./Time.ts"
 import { extractMechanical } from "../records/Extract.ts"
-import { commandsToShow, countLines, diffChunks, mistakesNearby, mistakesToShow, renderScript } from "../scripts/Render.ts"
-import { MIN_SCORE, rank, tellingFiles } from "../scripts/Search.ts"
+import { commandsToShow, diffChunks } from "../scripts/Render.ts"
+import { MIN_SCORE, rank } from "../scripts/Search.ts"
+import { countLines, mistakesNearby, mistakesToShow, renderSavedRun, tellingFiles } from "./SavedRunText.ts"
 
 export const MAX_COMMANDS = 8
 
@@ -40,7 +41,7 @@ export const Entry = Schema.Struct({
   commands: Schema.Array(Schema.String),
   tool_calls: Schema.NullOr(Schema.Number),
   created_at: Schema.String,
-  /** Failed commands with what worked instead (src/scripts/Render.ts); entries saved before it lack it. */
+  /** Failed commands with what worked instead (SavedRunText.ts); entries saved before it lack it. */
   mistakes: Schema.optionalKey(Schema.Array(Schema.String))
 })
 export type Entry = typeof Entry.Type
@@ -72,7 +73,7 @@ export const makeScripts = (memoryDir: string, frozen = false): SavedScripts => 
     if (top === undefined || top.score < MIN_SCORE) {
       return { systemPrompt: undefined, info: { ...info, retrieved: null } } satisfies Injection
     }
-    const text = renderEntry(top.doc, top.score, all.filter((e) => e.id !== top.doc.id).reverse())
+    const text = renderEntry(top.doc, all.filter((e) => e.id !== top.doc.id).reverse())
     return {
       systemPrompt: text,
       info: { ...info, retrieved: { id: top.doc.id, task_id: top.doc.task_id }, chars: text.length }
@@ -97,18 +98,16 @@ export const makeScripts = (memoryDir: string, frozen = false): SavedScripts => 
   return { name: "scripts", beforeRun, afterRun, entries }
 }
 
-/** A saved run as the daily hook shows a stored commit. */
-export const renderEntry = (entry: Entry, score: number, others: ReadonlyArray<Entry> = []): string => {
+/** A saved run as the setup hands it over (SavedRunText.ts), with the mistakes `others` made in its files. */
+export const renderEntry = (entry: Entry, others: ReadonlyArray<Entry> = []): string => {
   const chunks = diffChunks(entry.source_diff)
   const links = tellingFiles([entry, ...others].map((e) => ({ files: e.files_changed })), 2)
   const counts = new Map(chunks.map((c) => [c.path, countLines(c.text)] as const))
-  return renderScript({
+  return renderSavedRun({
     prompt: entry.prompt,
-    commit: null,
-    score,
     files: [
-      ...entry.files_changed.map((path) => ({ path, status: "modified" as const, ...(counts.get(path) ?? { added: 0, removed: 0 }), snapshot: false, now: path })),
-      ...entry.snapshots_changed.map((path) => ({ path, status: "modified" as const, added: 0, removed: 0, snapshot: true, now: path }))
+      ...entry.files_changed.map((path) => ({ path, ...(counts.get(path) ?? { added: 0, removed: 0 }), snapshot: false })),
+      ...entry.snapshots_changed.map((path) => ({ path, added: 0, removed: 0, snapshot: true }))
     ],
     commands: commandsToShow(entry.commands.map((command) => ({ command, ok: true }))),
     mistakes: entry.mistakes ?? [],

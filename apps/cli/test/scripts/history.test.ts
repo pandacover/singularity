@@ -8,7 +8,7 @@ import { identifyRepo } from "../../src/local/Git.ts"
 import { buildRecord, commitRecordId } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { addGiven, commitsRead, givenPath, listedCommits, namedCommits, readGiven, readsCommits } from "../../src/scripts/History.ts"
+import { addGiven, commitsRead, givenPath, listedCommits, namedCommits, readGiven, readsCommits, shellRuns } from "../../src/scripts/History.ts"
 import { inlineCode, renderBehind } from "../../src/scripts/Render.ts"
 import { HOOK_SCRIPT } from "../../src/setup/Wiring.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
@@ -48,6 +48,22 @@ describe("which commits a call read", () => {
     expect(namedCommits(`git log -p --author=me@example.com HEAD@{1} @{u}`)).toEqual({ hashes: [], revs: [] })
   })
 
+  it("reads what a command runs, not what it mentions", () => {
+    // A pull request or a commit message that names `git show` and a hash reads nothing (2026-10-24).
+    const pr = "gh pr create --base main --title \"Lean hand-over\" --body-file - <<'EOF'\nThe `git show` add-on: `changes 4318912` printed 9,734 characters.\nEOF"
+    expect(commitsRead(pr, "https://github.com/pandacover/singularity/pull/45\n")).toBeUndefined()
+    expect(commitsRead("git commit -m \"see git show 4318912\"", "[main 1a2b3c4] see git show 4318912\n 1 file changed, 2 insertions(+)\n")).toBeUndefined()
+    expect(commitsRead("git commit -m \"$(cat <<'EOF'\nUse git show 4318912 to read it\nEOF\n)\"", " 1 file changed, 2 insertions(+)\n")).toBeUndefined()
+    expect(commitsRead("echo 'run git show 4318912' > notes.md", "")).toBeUndefined()
+    // The commit comes from the git command's own arguments, not from anything else on the line.
+    expect(commitsRead("echo 1234567 && git show HEAD~1 -- lib/md062.mjs | tail -3", "+x\n")).toEqual({ hashes: [], revs: ["HEAD~1"] })
+    // A run beside a mention is still a reading, and a quoted path for git -C is still an argument.
+    expect(commitsRead("git log --oneline -1 --grep 'git show' && git show 8a4ba047a3 -- a.md | tail -3", "+x\n")).toEqual({ hashes: ["8a4ba047a3"], revs: [] })
+    expect(commitsRead("git -C 'my repo' show 8a4ba047a3 -- a.md | tail -3", "+x\n")).toEqual({ hashes: ["8a4ba047a3"], revs: [] })
+    // A heredoc's body ends at its word, tabs before it with `<<-`; what comes after runs.
+    expect(shellRuns("cat > a.sh <<-EOF\n\tgit show HEAD\n\tEOF\ngit show 8a4ba047a3")).toBe("cat > a.sh <<''\ngit show 8a4ba047a3")
+  })
+
   it("reads a command continued over lines as one", () => {
     // bash's backslash and PowerShell's backtick at a line's end.
     expect(commitsRead("git \\\n  log -1 --stat", header(A, "Add MD062.") + "\n" + stat)).toEqual({ hashes: [A], revs: [] })
@@ -85,26 +101,29 @@ describe("which commits a call read", () => {
 
 describe("what git doesn't show", () => {
   const RULE = "Add a new built-in rule MD061, alias `heading-max-level`, with one parameter `maximum`. Do it the way the existing rules are done."
-  it("gives the request, the commands and the mistakes, never the diff, and nothing when there is none of them", () => {
-    const text = renderBehind({ commit: A, prompt: RULE, commands: ["npm test", "npm run lint"], mistakes: ["- `npm test` failed: expected 2 errors."], nearby: [] })!
+  it("gives the commands, and the request only when the commit message says too little; never the diff or mistakes", () => {
+    const text = renderBehind({ commit: A, prompt: RULE, message: "MD061", commands: ["npm test", "npm run lint"] })!
     expect(text).toContain(`# What git doesn't show about ${A.slice(0, 10)}`)
-    expect(text).toContain(`Memory kept the session that made ${A.slice(0, 10)}, which you just read in git: what it was asked, the project commands it ran and the mistakes it made.`)
+    expect(text).toContain(`Memory kept the session that made ${A.slice(0, 10)}, which you just read in git: what it was asked and the project commands it ran.`)
     expect(text).toContain("## What it was asked\n\n" + RULE)
     expect(text).toContain("## Project commands it ran, in order\n\n`npm test`, `npm run lint`")
-    expect(text).toContain("## Mistakes it made\n\n- `npm test` failed: expected 2 errors.")
-    expect(text).not.toContain("diff")
-    // Filed under "yes": its commit message was its task, and git has that.
-    const yes = renderBehind({ commit: A, prompt: "yes", commands: ["npm test"], mistakes: [], nearby: [] })!
-    expect(yes).not.toContain("## What it was asked")
-    expect(yes).toContain("which you just read in git: the project commands it ran.")
-    expect(renderBehind({ commit: A, prompt: "commit and open a PR", commands: [], mistakes: [], nearby: [] })).toBeUndefined()
+    expect(text).not.toMatch(/diff|Mistakes/)
+    // Its commit message says what it was for, and git shows that.
+    const SAID = "Add the heading-max-level rule MD061, with its docs, schema and tests"
+    const said = renderBehind({ commit: A, prompt: RULE, message: SAID, commands: ["npm test"] })!
+    expect(said).not.toContain("## What it was asked")
+    expect(said).toContain("which you just read in git: the project commands it ran.")
+    // Filed under "yes": nothing was asked.
+    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test"] })).not.toContain("## What it was asked")
+    expect(renderBehind({ commit: A, prompt: "commit and open a PR", commands: [] })).toBeUndefined()
+    expect(renderBehind({ commit: A, prompt: RULE, message: SAID, commands: [] })).toBeUndefined()
   })
 
   it("fences a command with backticks in it with more of them", () => {
     expect(inlineCode("npm test")).toBe("`npm test`")
     expect(inlineCode("Write-Output \"a`tb\"")).toBe("``Write-Output \"a`tb\"``")
     expect(inlineCode("echo `date`")).toBe("`` echo `date` ``")
-    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test", "echo `date`"], mistakes: [], nearby: [] }))
+    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test", "echo `date`"] }))
       .toContain("## Project commands it ran, in order\n\n`npm test`, `` echo `date` ``")
   })
 })
@@ -194,9 +213,10 @@ describe("reading a stored commit, through the hooks", () => {
     const context = JSON.parse(out).hookSpecificOutput as { hookEventName: string; additionalContext: string }
     expect(context.hookEventName).toBe("PostToolUse")
     expect(context.additionalContext).toContain(`# What git doesn't show about ${head.slice(0, 10)}`)
-    expect(context.additionalContext).toContain(RULE)
-    expect(context.additionalContext).toContain("## Mistakes it made\n\n- `npm test` failed")
-    expect(context.additionalContext).not.toContain("diff --git")
+    expect(context.additionalContext).toContain("## Project commands it ran, in order\n\n`npm test`")
+    // Its commit message says what it was for: what was asked isn't said again, nor the failed `npm test`.
+    expect(context.additionalContext).not.toContain(RULE)
+    expect(context.additionalContext).not.toMatch(/Mistakes|diff --git/)
     // Once a session.
     expect(read(s, `git show --stat ${head.slice(0, 10)}`)).toBe("")
     // A commit memory didn't store, a list of subjects, and a failed call: nothing.

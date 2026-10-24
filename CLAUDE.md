@@ -50,8 +50,9 @@ picked by a model the person chose at setup, in a background hook
 (`src/scripts/Pick.ts`), read from git, with no learning step, then adds the repo's card of check scripts earlier sessions
 ran, still on disk, once a session (`src/facts/Lookup.ts`); and when the agent
 reads a stored commit with `git show` or `git log`, the tool-call hook adds
-what git doesn't show about it, once a session: the request, the project
-commands its session ran, its mistakes (`src/scripts/History.ts`). On this branch everything else was
+what git doesn't show about it, once a session: the project commands its
+session ran, and the request when the commit message says too little
+(`src/scripts/History.ts`); never a diff or past mistakes. On this branch everything else was
 removed: memory v0 (`src/memory/`, `src/search/`, most of `src/handover/`,
 `src/hook.ts`; tag `memory-v0`), memory v1's learning and hand-over (the rest
 of `src/workflows/`; tag `memory-local-first`), the graph setup (`src/graph/`
@@ -186,8 +187,9 @@ records use those keys.
 - Claude Code cuts a hook's text at 10,000 characters and hands the agent a
   file path instead. The task-start hand-over is a pointer and a card
   of at most 700 characters of facts; a change shown in full (`recall`,
-  `changes`) stays under `MAX_HANDOVER_CHARS` (`src/scripts/Render.ts`), and
-  anything added to it takes room from the diff it shows.
+  `changes`) is that pointer with what git doesn't show (about 1,100
+  characters on real memory, never a diff), cut at `MAX_HANDOVER_CHARS`
+  (`src/scripts/Render.ts`).
 - Tests never run setup against the real
   home or the real agents' settings: they pass a temporary home and an
   environment without agents on PATH.

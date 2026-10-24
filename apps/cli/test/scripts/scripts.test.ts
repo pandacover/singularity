@@ -5,10 +5,11 @@ import { join } from "node:path"
 import { identifyRepo } from "../../src/local/Git.ts"
 import { buildRecord } from "../../src/records/Build.ts"
 import * as JsonRecordStore from "../../src/records/JsonRecordStore.ts"
-import type { CommandRun, Detour } from "../../src/records/Models.ts"
+import type { CommandRun } from "../../src/records/Models.ts"
 import { RecordStore } from "../../src/records/RecordStore.ts"
-import { commandsToShow, mistakesNearby, mistakesToShow, renderPointer, renderScript } from "../../src/scripts/Render.ts"
-import { MIN_SCORE, pick, rank, rankRecall, score, tellingFiles } from "../../src/scripts/Search.ts"
+import { askedShown } from "../../src/records/Task.ts"
+import { commandsToShow, renderFull, renderPointer } from "../../src/scripts/Render.ts"
+import { MIN_SCORE, pick, rank, rankRecall, score } from "../../src/scripts/Search.ts"
 import { startScripts } from "../../src/scripts/Start.ts"
 import { bash, session } from "../records/fixtures.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
@@ -68,38 +69,6 @@ describe("render", () => {
     ])).toEqual(["npm build-docs", "npm test"])
   })
 
-  it("names a failed command with what worked instead", () => {
-    const call = (command: string) => ({ call: 0, turn: 0, tool: "Bash", command, file: null })
-    const d: Detour = {
-      kind: "command_error",
-      failed: call("yarn test:update --watch=false"),
-      symptom: "Expected a single value for option --watch",
-      keys: [],
-      fixed: call("yarn test:update"),
-      removed: [],
-      added: [],
-      files_edited: [],
-      failures: 1,
-      cost: { tokens: 0, calls: 1, turns: 1 }
-    }
-    expect(mistakesToShow([d])).toEqual(["- `yarn test:update --watch=false` failed: Expected a single value for option --watch. What worked instead: `yarn test:update`"])
-  })
-
-  it("says other changes' mistakes only through a file few stored changes touch", () => {
-    const stored = [
-      { files: ["README.md", "test/rules.test.mjs", "lib/md061.mjs"], mistakes: ["- mine"] },
-      { files: ["README.md", "test/rules.test.mjs", "lib/md062.mjs"], mistakes: ["- `npm run build-declaration` failed"] },
-      { files: ["test/rules.test.mjs", "lib/md061.mjs"], mistakes: ["- `npm test` failed: MD061 expected 2 errors"] }
-    ]
-    const links = tellingFiles(stored, 2)
-    expect(["README.md", "test/rules.test.mjs", "lib/md061.mjs", "lib/md062.mjs"].map(links)).toEqual([false, false, true, true])
-    const [first, ...others] = stored
-    expect(mistakesNearby(first.files.filter(links), others, first.mistakes)).toEqual(["- `npm test` failed: MD061 expected 2 errors"])
-    // A file only one change touched tells something, but can't link two.
-    expect(tellingFiles(stored)("lib/md061.mjs")).toBe(false)
-    expect(tellingFiles(stored)("lib/md062.mjs")).toBe(true)
-  })
-
   it("points to a change by its commit, the first line of its task and its files, with no diff", () => {
     const file = (path: string, more: object = {}) => ({ path, status: "modified" as const, added: 2, removed: 1, snapshot: false, now: path, ...more })
     const text = renderPointer({
@@ -124,36 +93,30 @@ describe("render", () => {
     expect(many).toContain("- locales/11.json (+2 -1)\n- and 3 more")
   })
 
-  it("shows the commit message as the task when the prompt asked for nothing", () => {
-    const view = { commit: "0123456789abcdef", score: 0.6, files: [], commands: [], mistakes: [], nearby: [], diff: [] }
-    const text = renderScript({ ...view, prompt: "yes", message: "Show the installer's steps one per line" })
-    expect(text).toContain("## Its task, as its commit message says\n\nShow the installer's steps one per line")
-    expect(renderScript({ ...view, prompt: RULE, message: "Add MD061" })).toContain(`## Its task\n\n${RULE}`)
+  it("shows what the person asked only when the commit message says too little", () => {
+    const PATH = "Put the singularity command back on PATH on update, with no setup step"
+    expect(askedShown({ prompt: "this is what I am seeing - i just ran singularity uninstall --purge", message: PATH })).toBeUndefined()
+    expect(askedShown({ prompt: RULE, message: "Add MD061" })).toBe(RULE)
+    expect(askedShown({ prompt: RULE })).toBe(RULE)
+    expect(askedShown({ prompt: "yes", message: "wip" })).toBeUndefined()
   })
 
-  it("gives every file of the change a share of the room", () => {
-    const chunk = (path: string, n: number) => ({ path, text: `diff --git a/${path} b/${path}\n${"+x\n".repeat(n)}` })
-    const text = renderScript({
-      prompt: RULE,
-      commit: "0123456789abcdef",
-      score: 0.6,
-      files: [
-        { path: "lib/md061.mjs", status: "added", added: 10, removed: 0, snapshot: false, now: "lib/md061.mjs" },
-        { path: "doc-build/md061.md", status: "added", added: 5, removed: 0, snapshot: false, now: "doc-src/md061.md" },
-        { path: "old.js", status: "modified", added: 1, removed: 1, snapshot: false, now: null }
-      ],
-      commands: ["npm test"],
-      mistakes: [],
-      nearby: [],
-      diff: [chunk("lib/md061.mjs", 10), chunk("doc-build/md061.md", 2000)]
-    }, 2000)
-    expect(text.length).toBeLessThanOrEqual(2000)
-    expect(text).toContain("- doc-src/md061.md (+5 -0; was doc-build/md061.md then)")
-    expect(text).toContain("- old.js (+1 -1; no longer exists)")
-    expect(text).toContain("diff --git a/lib/md061.mjs")
-    expect(text).toContain("diff --git a/doc-build/md061.md")
-    expect(text).toMatch(/… \(\d+ more lines\)/)
-    expect(text).toContain("`git show 0123456789`")
+  it("shows a change in full as its pointer, what git doesn't show, and never its diff or mistakes", () => {
+    const view = { commit: "0123456789abcdef", files: [], commands: ["npm test", "npm run lint"] }
+    const text = renderFull({ ...view, prompt: "this is what I am seeing", message: "Put the singularity command back on PATH on update\n\nThe installer adds it too." })
+    expect(text).toContain("committed as 0123456789: \"Put the singularity command back on PATH on update\".")
+    expect(text).toContain("`git show 0123456789` shows its change (add `-- <file>` for one file).\n")
+    expect(text).not.toContain("memory then adds")
+    expect(text).toContain("## Project commands it ran, in order\n\n`npm test`, `npm run lint`")
+    expect(text).not.toContain("What it was asked")
+    expect(text).not.toContain("this is what I am seeing")
+    expect(text).not.toMatch(/diff --git|Mistakes/)
+    // A request the message says too little about: its first line is the pointer's, the rest comes in full.
+    const asked = `${RULE}\nKeep the rule's tests next to the others.`
+    expect(renderFull({ ...view, prompt: asked, message: "MD061" })).toContain(`committed as 0123456789: "${RULE}".`)
+    expect(renderFull({ ...view, prompt: asked, message: "MD061" })).toContain(`## What it was asked\n\n${asked}\n`)
+    // A one-line request is all in the pointer's line already.
+    expect(renderFull({ ...view, prompt: RULE, message: "MD061" })).not.toContain("## What it was asked")
   })
 })
 
@@ -198,7 +161,7 @@ describe("task start", () => {
         const got = yield* startScripts({ sessionId: "s2", prompt: OTHER_RULE, cwd: repo }, { tenantDir })
         expect(got.picked?.commit).toBe(head)
         expect(got.text).toContain("doc-src/md061.md (+1 -0; was doc-build/md061.md then)")
-        expect(got.text).toContain("+- MD061")
+        expect(got.text).not.toContain("+- MD061")
         expect(got.text).toContain("`npm test`")
         const none = yield* startScripts({ sessionId: "s3", prompt: RENAME, cwd: repo }, { tenantDir })
         expect(none.text).toBeUndefined()

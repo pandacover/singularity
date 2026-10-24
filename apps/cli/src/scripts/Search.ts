@@ -28,7 +28,6 @@
 import { cosine, words } from "../graph/Similarity.ts"
 import { taskKeys } from "../records/Task.ts"
 import { isRequest } from "../traces/Requests.ts"
-import { fileKind, isSnapshot } from "./Render.ts"
 
 /** A saved script, as the search sees it. */
 export interface SearchDoc {
@@ -112,24 +111,4 @@ export const rankRecall = <D extends RecallDoc>(query: string, docs: ReadonlyArr
     const matches = asTask >= MIN_SCORE || (covered >= QUERY_MIN && (held.length >= 2 || q.length === 1))
     return { doc, score: Math.max(asTask, covered), matches }
   }).sort((x, y) => Number(y.matches) - Number(x.matches) || y.score - x.score)
-}
-
-/**
- * At most this share of the stored changes may have touched a file for it to
- * link two of them (`tellingFiles`): a file most changes touch (a test file
- * every change extends, an app's main component) says little about a change.
- */
-export const MAX_FILE_SHARE = 0.2
-
-/**
- * Whether a file says something about the changes to it: code or a test
- * (not `fileKind` "rest", nor a snapshot) that at most `MAX_FILE_SHARE` of
- * the stored changes touched, `least` at least. Linking two changes by a file
- * they share (Start.ts, other changes' mistakes) takes two.
- */
-export const tellingFiles = (docs: ReadonlyArray<{ readonly files: ReadonlyArray<string> }>, least = 1): (file: string) => boolean => {
-  const changes = new Map<string, number>()
-  for (const d of docs) for (const f of new Set(d.files)) changes.set(f, (changes.get(f) ?? 0) + 1)
-  const most = Math.max(least, Math.floor(MAX_FILE_SHARE * docs.length))
-  return (f) => fileKind(f) !== "rest" && !isSnapshot(f) && (changes.get(f) ?? 0) <= most
 }

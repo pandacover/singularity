@@ -1,8 +1,8 @@
 /**
  * Whether a saved script still holds, checked at use time with git and no
- * model call: a script shows its change as true, so a file whose code has
- * since been rewritten is left out with a pointer to read it as it is now,
- * rather than shown with a hedge.
+ * model call: a hand-over names each file as it is today, so a file whose
+ * code has since been rewritten says so, with the commit that rewrote it,
+ * rather than being named with a hedge.
  *
  * For each file the script's commit changed (snapshots aside):
  *
@@ -14,9 +14,9 @@
  *   are searched for with `git grep -F`; when one other file holds at least
  *   `MOVED_SHARE` of them (and two at least), and the added lines found in
  *   the file and that one together reach `STALE_BELOW`, the code moved there.
- * - stale: still below, it was rewritten; the hand-over leaves its change
- *   out and names the commit that rewrote it (`lastChange`). A file deleted
- *   since, and not moved, is gone, and its change is left out too.
+ * - stale: still below, it was rewritten; the hand-over says it has changed
+ *   since and names the commit that rewrote it (`lastChange`). A file deleted
+ *   since, and not moved, is gone, and the hand-over says it no longer exists.
  *
  * A script all of whose files are stale or gone isn't handed over (Start.ts).
  *

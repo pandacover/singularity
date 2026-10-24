@@ -82,10 +82,10 @@ export const Collapse = () => {
           <h4>A past change like your task</h4>
           <ol>
             <li>Its commit, for git show</li>
-            <li>Its task, as the person wrote it</li>
+            <li>What it was for, from its commit message</li>
             <li>Its files, as they are named today</li>
             <li>Check scripts earlier sessions ran</li>
-            <li>On git show: its commands and mistakes</li>
+            <li>On git show: the commands its session ran</li>
           </ol>
           <div className="wf-f">picked by the words of the two tasks</div>
         </div>

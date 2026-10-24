@@ -94,3 +94,16 @@ export const changeTitle = (task: { readonly prompt: string; readonly message?: 
 /** What the change was for, in a line or a paragraph: its task when that asks for something, else its commit message. */
 export const taskShown = (task: { readonly prompt: string; readonly message?: string | undefined }): string =>
   isRequest(task.prompt) || task.message === undefined || task.message === "" ? task.prompt : task.message
+
+/**
+ * What the person asked, as a hand-over shows it beside the change: its
+ * task, when that asks for something and the commit message says too little
+ * (`telling`) or there is none; else nothing, since the message says what the
+ * change was for. In a conversation the prompt a change is filed under passes
+ * as a request far more often than it states the task: 66 of the 69 changes
+ * stored in this repo by 2026-10-24 were filed under one, among them "wait
+ * before we proceed, what is v1 and how does it different from v0?" and
+ * "this is what I am seeing" (about a screenshot).
+ */
+export const askedShown = (task: { readonly prompt: string; readonly message?: string | undefined }): string | undefined =>
+  isRequest(task.prompt) && (task.message === undefined || !telling(task.message)) ? task.prompt.trim() : undefined
