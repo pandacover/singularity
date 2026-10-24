@@ -3,11 +3,11 @@ import { reduced, useOnceVisible } from "../lib.ts"
 
 // top to bottom
 const LAYERS = [
-  { name: "Your agent", note: ["Gets a pointer, not a diff.", "Still writes every line itself."], side: "r" },
-  { name: "Hooks", note: ["Never break a session.", "Errors go to a log; about 0.1 s a call."], side: "l" },
-  { name: "Memory", note: ["Keeps records of commits;", "the code stays in git."], side: "r" },
-  { name: "Your sessions", note: ["Stored at each commit,", "with whether its check passed."], side: "l" },
-  { name: "Your machine", note: ["Records stay here; a model picks", "in Claude Code unless you say no."], side: "r", base: true }
+  { name: "Your agent", note: ["It gets a pointer, not a diff,", "and writes every line itself."], side: "r" },
+  { name: "Hooks", note: ["They never break a session,", "and take about 0.1 s a call."], side: "l" },
+  { name: "Memory", note: ["It keeps records of commits.", "The code stays in git."], side: "r" },
+  { name: "Your sessions", note: ["Memory stores each commit,", "and whether its check passed."], side: "l" },
+  { name: "Your machine", note: ["Records stay here. In Claude Code,", "a model picks unless you say no."], side: "r", base: true }
 ] as const
 
 const CX = 550, W = 200, H = 108, GAP = 64, TOP = 120, T = 26

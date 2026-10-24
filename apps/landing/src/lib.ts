@@ -1,6 +1,8 @@
 import { type RefObject, useEffect, useRef } from "react"
 
-export const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches
+// The page drawn at build time (prerender.tsx) has no window and runs no script, so there nothing moves and every
+// figure is drawn whole.
+export const reduced = typeof matchMedia === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches
 
 export const fmtK = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : `${Math.round(n / 1e3)}k`)
 

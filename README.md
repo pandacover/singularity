@@ -1,10 +1,19 @@
 # singularity
 
 **Memory for coding agents.** When an agent commits a change, singularity
-records the task, the files it changed, the commands it ran and the mistakes
-it made. When a later session starts a similar task in the same repository,
-singularity reads that change from git as the code is now and adds it to the
-agent's first prompt. The agent can also look up a past change mid-task.
+records the task, the files it changed and the commands it ran. When a later
+session starts a similar task in the same repository, singularity points the
+agent to that commit and lists the check scripts earlier sessions ran. The
+agent can also look up a past change mid-task.
+
+singularity helps with tasks like ones agents committed before in the same
+repository. Its help comes from what the repository doesn't hold, such as a
+check script a past session wrote outside the repository, or the commands
+that session ran. An agent with its own memory of the repository may know
+those already. So singularity should help most when the agent starts without
+one, as Codex and Gemini CLI do by default, or Claude Code with its auto
+memory turned off. Our results below come from Claude Code with auto memory
+off.
 
 ## Install
 
@@ -64,21 +73,21 @@ still skips them.
    ran, what failed and what fixed it, and whether the last test, typecheck,
    build or lint before the commit passed.
 2. **Hand over.** At the start of a task, singularity finds the stored change
-   most like the new task. By default in Claude Code a small model picks it
-   (Haiku; you can choose another model, or none, in setup): it reads your
-   task and the repository's stored changes and picks one, or none. It runs
-   in the background, so nothing waits for it; the agent gets its answer a
-   few seconds in, at its next step. Without a model, singularity matches
-   the words of your task against each change's commit message. Either way
-   it tells the agent that change's commit, its commit message, and its
-   files as they are called today, without the diff: git has it. Then it
-   lists the check scripts earlier sessions ran before committing (a
-   screenshot or end-to-end script, say) that are still on disk, once a
-   session. When the agent reads a stored change in git, with `git show` or
-   `git log`, singularity adds what the commit doesn't hold: the project
-   commands its session ran (`npm test`, say), and what you asked for when
-   the commit message says too little. It never hands over a diff or past
-   mistakes.
+   most like the new task. In Claude Code a small model picks it by default.
+   That model is Haiku unless you choose another one, or none, in setup. It
+   reads your task and the repository's stored changes, and picks one change
+   or none. It runs in the background, so nothing waits for it, and the agent
+   gets its answer a few seconds in, at its next step. Without a model,
+   singularity matches the words of your task against each change's commit
+   message. Either way, it tells the agent that change's commit, its commit
+   message, and its files as they are named today. It leaves out the diff,
+   which git has. Once a session, it also lists the check scripts that earlier
+   sessions ran before committing and that are still on disk, such as a
+   screenshot or end-to-end script. When the agent reads a stored change with
+   `git show` or `git log`, singularity adds what the commit doesn't hold:
+   the project commands its session ran, such as `npm test`, and what you
+   asked for when the commit message says too little. It never hands over a
+   diff or past mistakes.
 3. **Recall mid-task.** Setup adds a short note to your agents'
    instructions, between `<!-- singularity:start ... -->` and
    `<!-- singularity:end -->`. It tells the agent to run
@@ -87,9 +96,10 @@ still skips them.
    prints the most similar past change, the same pointer with what git
    doesn't show, or says there is none.
 
-Apart from that pick, singularity never calls a model; the pick costs about
-$0.002 a task with Haiku, on your Claude plan. Run `singularity recall "<task>"` yourself
-to see what an agent would be handed for a task in the current repository.
+Apart from that pick, singularity never calls a model. The pick costs about
+$0.002 a task with Haiku, on your Claude plan. Run
+`singularity recall "<task>"` yourself to see what an agent would be handed
+for a task in the current repository.
 
 ## Commands
 
@@ -103,7 +113,7 @@ singularity status --json       # the same as JSON, for agents and scripts (chan
 singularity store               # store what this repo's earlier sessions committed
 singularity setup               # set up again, or change your answers
 singularity update              # get the latest version, keeping your answers
-singularity uninstall [--purge] # take memory out of every agent; --purge deletes it too
+singularity uninstall [--purge] # take memory out of every agent (--purge deletes it too)
 ```
 
 ## Privacy
@@ -124,8 +134,8 @@ singularity uninstall [--purge] # take memory out of every agent; --purge delete
 - A hand-over arrives with the first prompt that asks for something, and
   again with the first one after each commit, so each new task in a long
   session can get one. Prompts like "yes" or "commit it" get none.
-- singularity helps with tasks like ones earlier sessions committed in the
-  same repository. Clones of a repository on one machine share its memory.
+- Memory stays on the machine that stored it. Clones of a repository on that
+  machine share its memory.
 - `singularity visualise` draws a repository's memory in the terminal: the
   days changes were committed, the latest ones with their size and check,
   the folders memory knows most, and the changes it handed over most.
@@ -138,27 +148,47 @@ singularity uninstall [--purge] # take memory out of every agent; --purge delete
 
 ## Results
 
-We ran 12 markdownlint tasks in sequence, five times with singularity and
-three times without, on Claude Code 2.1.295.
+**Fresh clones of chat-v2.** On 2026-10-22 we gave Claude Code two tasks
+related to earlier work in [chat-v2](https://github.com/pandacover/chat-v2),
+an Electron app of ours. Every run started from a fresh clone, with Claude
+Code's auto memory off. Runs with singularity had a copy of the memory our
+own sessions had built in chat-v2. Each one ran at the same time as a run
+without singularity, on the same machine.
 
-- Pass counts swing. One task that leaves a check failing fails every later
-  task until an agent fixes it. With singularity, 4 of 60 tasks started such
-  a run of failures. Without it, 2 of 36 did.
-- A hand-over can cause a mistake. Across all our markdownlint runs, when a
-  hand-over listed a build command that had failed before, agents ran that
-  command in 8 of 10 tasks, and in none of the 78 other tasks. Two of those runs failed the task. Hand-overs no
-  longer list past mistakes.
-- Agents almost never ran `singularity recall` on their own. One did, in 60
-  runs that had the recall note.
-- On the 7 tasks with a hand-over at the start, cost fell 16% and tokens 24%.
-  The other 5 tasks cost the same with and without singularity.
+- Opus cost 26% less over 12 pairs of runs, and 10 of the 12 pairs were
+  cheaper with singularity. Every run passed, with singularity and without.
+- Sonnet cost the same, $3.50 with singularity and $3.51 without. It passed
+  12 of 12 runs with singularity and 10 of 12 without.
+- The help came from the check scripts and the project commands, not from
+  the past change singularity pointed to. Opus reused the browser install
+  that a past session had left on disk, wrote its own check from that
+  session's scripts, and tested its change in the running app. The two
+  Sonnet runs that failed without singularity committed a type error after
+  trying `npx tsc`, which chat-v2 doesn't install. With singularity, Sonnet
+  ran `bun run typecheck`, and several runs got that command from what
+  singularity adds to `git show`.
+- We measured this on the machine where those past sessions ran.
+  singularity lists a check script only while it is still on disk, so on a
+  new machine the list would be empty.
+- No task passed less often with singularity.
 
-On two long excalidraw tasks, one used 43% to 53% fewer tokens than no
-memory over two batches of 4 runs. The other, over 8 runs, was within the
-noise.
+**Daily use on markdownlint.** These runs used an earlier version, whose
+hand-over included the past change's diff. Sonnet did 12 tasks in order, each
+in a fresh session, three times with singularity and three times without.
+Cost fell 6% (95% interval −13% to +1%), which is inside the noise. A second
+run of the same three passes, on a version that also added notes when an
+agent ran `git show`, cost 1.9% less (−12% to +8%). The earlier changes were
+in the repository's git history, and agents read them there with
+singularity and without.
 
-These are small samples on two repositories. The runs, tables and caveats
-are in [`apps/cli/examples/scripts/RESULTS.md`](apps/cli/examples/scripts/RESULTS.md).
+**Recall.** Sonnet seldom runs `singularity recall` on its own. Across 177
+sessions with the recall note on markdownlint, excalidraw and validator, it
+ran recall once, and in its 12 runs on chat-v2 it never did. Opus ran it in 5
+of its 12 runs on chat-v2.
+
+These are small samples, on two repositories. The markdownlint runs, tables
+and caveats are in
+[`apps/cli/examples/scripts/RESULTS.md`](apps/cli/examples/scripts/RESULTS.md).
 
 ## Develop
 

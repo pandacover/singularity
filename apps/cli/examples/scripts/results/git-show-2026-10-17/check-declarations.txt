@@ -1,0 +1,53 @@
+pass 1 without t07-link-url-scheme: stale exports.d.mts, markdownlint.d.mts
+pass 1 without t08-todo-comments-example: stale exports.d.mts, markdownlint.d.mts
+pass 1 without t09-md014-prompts: stale exports.d.mts, markdownlint.d.mts (failed anyway)
+pass 1 without t10-ol-delimiter-style: stale exports.d.mts, markdownlint.d.mts
+pass 1 without t11-circular-extends: stale exports.d.mts, markdownlint.d.mts
+pass 1 without t12-no-empty-headings: stale exports.d.mts, markdownlint.d.mts
+pass 1 with t02-code-block-max-lines: declarations match
+pass 1 with t03-md024-ignore-case: declarations match
+pass 1 with t04-list-max-depth: declarations match
+pass 1 with t09-md014-prompts: declarations match
+pass 1 with t10-ol-delimiter-style: declarations match
+pass 1 with t11-circular-extends: stale markdownlint.d.mts
+pass 1 with t12-no-empty-headings: stale markdownlint.d.mts
+pass 2 without t04-list-max-depth: declarations match
+pass 2 without t05-get-rules: declarations match
+pass 2 without t06-rename-doc-src: declarations match
+pass 2 without t07-link-url-scheme: declarations match
+pass 2 without t08-todo-comments-example: declarations match
+pass 2 without t09-md014-prompts: declarations match (failed anyway)
+pass 2 without t10-ol-delimiter-style: declarations match
+pass 2 without t11-circular-extends: stale markdownlint.d.mts
+pass 2 without t12-no-empty-headings: stale markdownlint.d.mts
+pass 2 with t04-list-max-depth: declarations match
+pass 2 with t05-get-rules: stale markdownlint.d.mts
+pass 2 with t06-rename-doc-src: stale markdownlint.d.mts
+pass 2 with t07-link-url-scheme: stale markdownlint.d.mts
+pass 2 with t08-todo-comments-example: stale markdownlint.d.mts
+pass 2 with t09-md014-prompts: stale markdownlint.d.mts
+pass 2 with t10-ol-delimiter-style: stale markdownlint.d.mts
+pass 2 with t11-circular-extends: stale markdownlint.d.mts
+pass 2 with t12-no-empty-headings: stale markdownlint.d.mts
+pass 3 without t02-code-block-max-lines: declarations match
+pass 3 without t03-md024-ignore-case: declarations match
+pass 3 without t04-list-max-depth: declarations match
+pass 3 without t05-get-rules: stale markdownlint.d.mts
+pass 3 without t06-rename-doc-src: stale markdownlint.d.mts
+pass 3 without t07-link-url-scheme: stale markdownlint.d.mts
+pass 3 without t08-todo-comments-example: stale markdownlint.d.mts
+pass 3 without t09-md014-prompts: stale markdownlint.d.mts
+pass 3 without t10-ol-delimiter-style: stale markdownlint.d.mts
+pass 3 without t11-circular-extends: stale markdownlint.d.mts
+pass 3 without t12-no-empty-headings: stale markdownlint.d.mts
+pass 3 with t02-code-block-max-lines: declarations match
+pass 3 with t03-md024-ignore-case: declarations match
+pass 3 with t04-list-max-depth: declarations match
+pass 3 with t05-get-rules: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t06-rename-doc-src: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t07-link-url-scheme: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t08-todo-comments-example: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t09-md014-prompts: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t10-ol-delimiter-style: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t11-circular-extends: stale exports.d.mts, markdownlint.d.mts
+pass 3 with t12-no-empty-headings: stale exports.d.mts, markdownlint.d.mts

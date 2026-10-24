@@ -182,18 +182,20 @@ figcaption { font-size: 15.5px; line-height: 1.5; color: var(--muted); margin-to
 #res .base { stroke: var(--ink); }
 #res .stem { stroke: var(--red); stroke-width: 2; }
 #res .dot { fill: var(--red); stroke: var(--paper); stroke-width: 2; }
-#res .ref { fill: var(--paper); stroke: var(--ink); stroke-width: 1.2; }
+#res .pair { fill: var(--paper); stroke: var(--ink-2); stroke-width: 1.2; }
+#res .ci { stroke: var(--ink); stroke-width: 1.5; }
 #res .v { font: 500 11.5px var(--mono); fill: var(--ink); }
 #res .sep { stroke: var(--ink); }
 #res .hit { fill: transparent; }
 #res .rowband { fill: transparent; }
 #res .hitrow:hover .rowband { fill: rgba(26, 24, 21, 0.035); }
-#f5table { overflow-x: auto; }
+#f4table { overflow-x: auto; }
 table.res { width: 100%; min-width: 680px; border-collapse: collapse; margin-top: 14px; font: 12.5px/1.5 var(--mono); }
 table.res th, table.res td { padding: 7px 8px; border-bottom: 1px solid var(--rule); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.res th { font-weight: 500; color: var(--muted); }
 table.res td:first-child, table.res th:first-child { text-align: left; }
 table.res td:first-child { font: 15px var(--serif); }
+table.res td small { display: block; font: 11px var(--mono); color: var(--muted); }
 
 /* rules: an isometric stack, from your machine up to your agent */
 #stack { width: 100%; height: auto; display: block; overflow: visible; }

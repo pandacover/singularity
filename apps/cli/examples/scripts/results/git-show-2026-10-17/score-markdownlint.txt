@@ -1,0 +1,72 @@
+# markdownlint, daily use
+
+Passes with both arms complete: 1, 2, 3
+
+## Harm first: passed without memory, failed with it (same pass)
+none
+
+## Per pass
+| pass | arm | passed | first failures | cost | tokens | turns |
+|---|---|---|---|---|---|---|
+| 1 | without | 7 of 12 | 3 | $3.48 | 7.21M | 205 |
+| 1 | with | 12 of 12 | 0 | $3.62 | 7.77M | 215 |
+| 2 | without | 11 of 12 | 1 | $3.63 | 8.16M | 230 |
+| 2 | with | 12 of 12 | 0 | $3.54 | 7.89M | 211 |
+| 3 | without | 12 of 12 | 0 | $3.63 | 7.93M | 227 |
+| 3 | with | 12 of 12 | 0 | $3.37 | 7.20M | 208 |
+
+## With the type declarations compared in both arms (check-declarations.mjs; not pre-registered)
+The driver compares the committed declarations with a fresh build only when the build type-checks; here they are compared for every task, type errors or not.
+
+| pass | arm | passed | first failures | tasks with stale declarations |
+|---|---|---|---|---|
+| 1 | without | 2 of 12 | 2 | t07 t08 t09 t10 t11 t12 |
+| 1 | with | 10 of 12 | 1 | t11 t12 |
+| 2 | without | 9 of 12 | 2 | t11 t12 |
+| 2 | with | 4 of 12 | 1 | t05 t06 t07 t08 t09 t10 t11 t12 |
+| 3 | without | 4 of 12 | 1 | t05 t06 t07 t08 t09 t10 t11 t12 |
+| 3 | with | 4 of 12 | 1 | t05 t06 t07 t08 t09 t10 t11 t12 |
+
+Harm, compared this way: pass 2 t05-get-rules (first); pass 2 t06-rename-doc-src; pass 2 t07-link-url-scheme; pass 2 t08-todo-comments-example; pass 2 t10-ol-delimiter-style
+
+## Bars (complete passes 1, 2, 3)
+(a) first failures: without 4, with 0: holds
+(b) tasks 3-12: tokens 18.25M -> 17.89M (-2%, bar -20%), dollars $8.41 -> $8.33 (-1%, bar -10%): fails
+(c) all tasks: dollars $10.74 -> $10.53 (-2%): holds
+passed: without 30 of 36, with 36 of 36; tokens 23.30M -> 22.87M (-2%); turns 662 -> 634
+
+## Tasks with a start hand-over and without one (same pass, same task in both arms)
+- start hand-over: 21 task runs; cost $6.82 -> $6.81 (-0%), tokens 14.96M -> 14.99M (+0%), passed 17 -> 21
+- none at start: 15 task runs; cost $3.92 -> $3.73 (-5%), tokens 8.34M -> 7.88M (-6%), passed 13 -> 15
+
+## Per task (medians over complete passes)
+| # | task | without $ | with $ | Δ$ | without tokens | with tokens | Δtokens | passed w/o | passed with | hand-overs (pass: picked score chars) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | t01-heading-max-level | $0.40 | $0.40 | +1% | 800k | 766k | -4% | 3/3 | 3/3 | p1: none; p2: none; p3: none |
+| 2 | t02-code-block-max-lines | $0.40 | $0.28 | -32% | 974k | 545k | -44% | 2/3 | 3/3 | p1: t01-heading-max-level 0.57 7898; p2: t01-heading-max-level 0.57 8260; p3: t01-heading-max-level 0.57 8156 |
+| 3 | t03-md024-ignore-case | $0.23 | $0.19 | -17% | 449k | 340k | -24% | 2/3 | 3/3 | p1: t01-heading-max-level 0.423 9548; p2: t01-heading-max-level 0.423 9314; p3: t01-heading-max-level 0.423 9297 |
+| 4 | t04-list-max-depth | $0.23 | $0.21 | -7% | 444k | 348k | -22% | 3/3 | 3/3 | p1: t01-heading-max-level 0.614 9548; p2: t01-heading-max-level 0.614 9314; p3: t01-heading-max-level 0.614 9297 |
+| 5 | t05-get-rules | $0.32 | $0.30 | -7% | 657k | 649k | -1% | 2/3 | 3/3 | p1: none; file lib/md062.mjs -> t02-code-block-max-lines; p2: none; p3: none |
+| 6 | t06-rename-doc-src | $0.06 | $0.06 | -4% | 116k | 115k | -1% | 2/3 | 3/3 | p1: none; p2: none; p3: none |
+| 7 | t07-link-url-scheme | $0.31 | $0.29 | -5% | 590k | 571k | -3% | 3/3 | 3/3 | p1: t01-heading-max-level 0.416 9329; p2: t01-heading-max-level 0.416 9316; p3: t01-heading-max-level 0.416 9229 |
+| 8 | t08-todo-comments-example | $0.34 | $0.21 | -38% | 778k | 396k | -49% | 3/3 | 3/3 | p1: none; p2: none; p3: none |
+| 9 | t09-md014-prompts | $0.38 | $0.48 | +28% | 829k | 1,204k | +45% | 1/3 | 3/3 | p1: t03-md024-ignore-case 0.489 9356; p2: t03-md024-ignore-case 0.489 9402; p3: t03-md024-ignore-case 0.489 9505 |
+| 10 | t10-ol-delimiter-style | $0.42 | $0.35 | -15% | 1,029k | 791k | -23% | 3/3 | 3/3 | p1: t01-heading-max-level 0.471 9329; p2: t01-heading-max-level 0.471 9316; p3: t01-heading-max-level 0.471 9229 |
+| 11 | t11-circular-extends | $0.19 | $0.22 | +19% | 344k | 388k | +13% | 3/3 | 3/3 | p1: none; file lib/markdownlint.mjs -> t05-get-rules; p2: none; p3: none; file lib/markdownlint.mjs -> t05-get-rules |
+| 12 | t12-no-empty-headings | $0.30 | $0.36 | +22% | 657k | 860k | +31% | 3/3 | 3/3 | p1: t01-heading-max-level 0.526 9329; p2: t01-heading-max-level 0.526 9316; p3: t01-heading-max-level 0.526 9229 |
+
+## Failures
+- pass 1 without t02-code-block-max-lines: regenerate (first)
+- pass 1 without t03-md024-ignore-case: regenerate
+- pass 1 without t05-get-rules: regenerate (first)
+- pass 1 without t06-rename-doc-src: regenerate
+- pass 1 without t09-md014-prompts: test (first)
+- pass 2 without t09-md014-prompts: test (first)
+
+## Read out
+- recall calls: with 0 in 36 sessions; without 0
+- file hand-overs: 3 (p1 t05-get-rules: lib/md062.mjs -> t02-code-block-max-lines; p1 t11-circular-extends: lib/markdownlint.mjs -> t05-get-rules; p3 t11-circular-extends: lib/markdownlint.mjs -> t05-get-rules)
+- ran build-declaration (t05 aside): without 2, with 1; with arm sessions whose start hand-over named it: 0, of which ran it 0
+- committed dts/: without 0, with 0
+- types (declaration build, not counted) ok: without 10, with 9
+

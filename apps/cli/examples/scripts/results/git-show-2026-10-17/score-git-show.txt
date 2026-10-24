@@ -1,0 +1,23 @@
+hand-overs by moment: start 21, git 12, file 3
+sessions that ran singularity recall: 0 of 36
+
+git fires: 12, in 12 of 36 sessions; chars 1155, 1166, 1169, 1478, 1478, 1630, 1636, 2154, 2168, 2240, 2253, 2780
+p1 t04-list-max-depth call 0: 207515b896, 2780 chars; named coverage; made after -; paired without made - | git show ab8e932586 --stat | cat; git show ab8e932586 -- README.md doc-build test/heading-
+p1 t05-get-rules call 0: 4cc0d52ba8, 1478 chars; named plan-count; made after plan-count; paired without made - | cd C:/singularity-workspaces/eval-1017/ml/arm-with-p1 && git show --stat HEAD | head -30 &
+p1 t07-link-url-scheme call 0: 4cc0d52ba8, 1478 chars; named plan-count; made after plan-count; paired without made plan-count | git show 4cc0d52b --stat | cat; cat lib/md063.mjs; cat package.json | grep -n '"' | sed -n
+p1 t10-ol-delimiter-style call 1: fb086a6a15, 2240 chars; named plan-count; made after plan-count; paired without made plan-count | git show fb086a6a --stat; cat lib/md064.mjs doc-src/md064.md; grep -n "md064\|MD064" -r li
+p1 t12-no-empty-headings call 0: 443598e9fd, 1169 chars; named -; made after -; paired without made - | git show --stat HEAD~1 | head -40; ls doc-src doc-build 2>&1 | tail -5; cat package.json |
+p2 t04-list-max-depth call 0: 63043440f4, 2154 chars; named plan-count; made after plan-count; paired without made - | git show 63043440 --stat; git show ce90fd31d0 -- README.md doc-build doc/md061.md schema/.
+p2 t07-link-url-scheme call 1: 0fa3b5c868, 1166 chars; named -; made after -; paired without made - | git show 0fa3b5c8 -- . ':!schema/*.json' ':!test/*.snapshot' ':!lib/configuration-strict.d
+p2 t12-no-empty-headings call 1: 1d4a1f4598, 1155 chars; named -; made after -; paired without made - | git show 1d4a1f45 --stat | cat; git show 1d4a1f45 -- README.md lib/rules.mjs test/markdown
+p3 t04-list-max-depth call 0: 508585e2c3, 2253 chars; named file-count,coverage; made after file-count; paired without made file-count | git show 508585e2 --stat | cat; git show 508585e2 -- README.md lib test/markdownlint-test.
+p3 t07-link-url-scheme call 0: dc2d8aeecd, 1636 chars; named plan-count,file-count; made after plan-count,file-count; paired without made plan-count | git show dc2d8aee --stat; cat lib/md063.mjs; cat doc-src/md063.md; git show dc2d8aee -- sc
+p3 t10-ol-delimiter-style call 0: 0463cf4519, 1630 chars; named -; made after -; paired without made - | git show --stat HEAD~2 | head -40; ls lib | grep md06; cat lib/md064.mjs; grep -n "md06\|M
+p3 t12-no-empty-headings call 1: 44ed48263f, 2168 chars; named coverage; made after -; paired without made - | git show 44ed4826 --stat --format=%s | cat; cat lib/md065.mjs | head -20; git show 44ed482
+
+8 fires named a mistake; in 6 the session made one of those kinds after it (replay ceiling, 10-16: 5 of 12); the paired session without memory made one in 4
+sessions with a git fire: 12, with $3.81 against without $3.59 (6%); passed 12 against 11 (driver's checks)
+sessions without one: 24, with $6.72 against without $7.15 (-6%); passed 24 against 19 (driver's checks)
+
+with against without, 36 task pairs: dollars -1.9% (95% interval -11.7% to 7.7%), tokens -1.8% (95% interval -15.9% to 12.3%)
+tasks 3-12, 30 pairs: dollars -1.0% (95% interval -13.2% to 11.3%)
