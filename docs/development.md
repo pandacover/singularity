@@ -218,10 +218,17 @@ show about the first one memory stored (`History.ts`, plain node, then
 request that asked for it when its commit message says too little (else git
 has what it was for) (`Render.renderBehind`, nothing when it has neither). A
 call reads commits when it runs `git show`, or `git log` printing a diff or
-a stat. They're the commits its output heads with `commit <hash>`, else the
-lines it starts with a hash, else the hashes and `HEAD~n` or `@~n`
-revisions its command names (resolved in the repo; not `<commit>:<path>`,
-`HEAD@{1}` or `@{u}`), a command continued over lines read as one. A
+a stat. Runs, not mentions: what quotes hold and heredoc bodies (a commit
+message, a pull request's description, an `echo`'s text) are left out first
+(`History.shellRuns`); a pull request whose description named `git show` and
+a stored commit's hash brought that commit's hand-over on 2026-10-24. They're
+the commits its output heads with `commit <hash>`, else the lines it starts
+with a hash, else the hashes and `HEAD~n` or `@~n` revisions the git command
+itself is given (up to the next `;`, `&`, `|`, `)` or line end; resolved in
+the repo; not `<commit>:<path>`, `HEAD@{1}` or `@{u}`), a command continued
+over lines read as one. Replayed over the 28 hand-overs by commit in
+transcripts then, that drops the pull request and two loops over four
+commits whose hashes came from the loop's list, not from git show. A
 commit inside a stored change of several (one command made them, so the
 record is the last one's) brings that change: the first stored change after
 it on the way to HEAD whose base is before it. More
