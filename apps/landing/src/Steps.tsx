@@ -32,7 +32,7 @@ export const Steps = () => (
       <div className="n">3</div>
       <h3>Or later, mid-task</h3>
       <p>
-        Reading a stored commit in git brings what git doesn't show: the task, the commands, the mistakes. The agent
+        Reading a stored commit in git brings what git doesn't show, such as the commands its session ran. The agent
         can also ask.
       </p>
       <div className="vis">

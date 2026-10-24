@@ -9,12 +9,13 @@
  * files; Render.ts `renderPointer`), then the repo's card: the check scripts
  * earlier sessions ran, still on disk, that the session wasn't given yet
  * (`facts`; facts/Lookup.ts `cardFacts`). `singularity recall` and
- * `singularity changes` show a change in full, its diff included.
+ * `singularity changes` show a change in full: the pointer, then what git
+ * doesn't show about it (Render.ts `renderFull`), never its diff.
  *
  * Reading the change from git at use time keeps it exact, and lets the
  * hand-over say which of its files were renamed, moved, rewritten or deleted
- * since (Fresh.ts): a rewritten file's change is left out with a pointer to
- * the file as it is now. The candidates above the bar are examined best
+ * since (Fresh.ts): a rewritten file's line says so, with the commit that
+ * changed it last. The candidates above the bar are examined best
  * first, never one the session itself made, and passed over when:
  * - their commit is missing (a rebase, another clone): only this time;
  * - they are retired (Retired.ts), or found now to be reverted, superseded
@@ -41,22 +42,10 @@ import { RecordStore } from "../records/RecordStore.ts"
 import { changeMessage } from "../records/Task.ts"
 import { logHandover } from "../workflows/Session.ts"
 import { isAncestor, judgeFile, liveCommands, revertedBy, sameChange, type Today, type Verdict } from "./Fresh.ts"
-import {
-  commandsToShow,
-  diffChunks,
-  fileKind,
-  type FileNow,
-  isSnapshot,
-  MAX_HANDOVER_CHARS,
-  mistakesNearby,
-  mistakesToShow,
-  renderBehind,
-  renderPointer,
-  renderScript
-} from "./Render.ts"
+import { commandsToShow, diffChunks, fileKind, type FileNow, isSnapshot, MAX_HANDOVER_CHARS, renderBehind, renderFull, renderPointer } from "./Render.ts"
 import type { Picks } from "../local/Home.ts"
 import { readRetired, retire, type Retirement } from "./Retired.ts"
-import { MIN_SCORE, rank, rankRecall, tellingFiles } from "./Search.ts"
+import { MIN_SCORE, rank, rankRecall } from "./Search.ts"
 
 export interface ScriptsStart {
   readonly text: string | undefined
@@ -93,8 +82,9 @@ export const readableChunks = (diff: string) =>
 type Stored = WorkflowRecord & { run: { head_commit: string } }
 
 /**
- * A stored change's files as they stand today (`t`), each with its verdict:
- * the diff, today's paths, and `judgeFile` for each file the diff shows.
+ * A stored change's files as they stand today (`t`): each with today's path
+ * and its verdict, `judgeFile` on its chunk of the change, for each file the
+ * change shows.
  */
 export const judgeScript = Effect.fn("scripts.judgeScript")(function*(t: Today, record: Stored) {
   const head = record.run.head_commit
@@ -121,7 +111,7 @@ export const judgeScript = Effect.fn("scripts.judgeScript")(function*(t: Today, 
     const fate = verdict?.kind === "moved" ? { kind: "moved", to: verdict.to } as const : verdict?.kind === "stale" ? { kind: "stale", last: verdict.last } as const : undefined
     return { ...f, now: verdict?.kind === "gone" ? null : path, fate, verdict }
   })
-  return { diff: chunks, files }
+  return { files }
 })
 
 /** Files below the bar searched for (a git grep and two logs each) per script: a change of sixty translation files stays quick. */
@@ -159,13 +149,17 @@ const openStore = Effect.fn("scripts.openStore")(function*(cwd: string, tenantDi
   const retired = yield* readRetired(tenantDir)
   const found = (yield* records.find({ subject: subject.id, outcome: "success" }))
     .filter((r): r is Stored => r.run.head_commit !== null && !retired.has(r.id))
-  // Records stored before commit messages were kept get their head commit's from git: two calls for all of them.
-  const messages = yield* commitMessages(repo.root, found.filter((r) => r.task.message === undefined).map((r) => r.run.head_commit))
-  const stored = found.map((r): Stored => {
+  const stored = yield* withMessages(repo.root, found)
+  return { root: repo.root, subject: subject.id, stored, today: { root: repo.root }, now: DateTime.formatIso(yield* DateTime.now) } satisfies Store
+})
+
+/** Records stored before commit messages were kept, with their head commit's from git: two calls for all of them. */
+const withMessages = Effect.fn("scripts.withMessages")(function*(root: string, records: ReadonlyArray<Stored>) {
+  const messages = yield* commitMessages(root, records.filter((r) => r.task.message === undefined).map((r) => r.run.head_commit))
+  return records.map((r): Stored => {
     const message = r.task.message === undefined ? messages.get(r.run.head_commit) : undefined
     return message === undefined ? r : { ...r, task: { ...r.task, message: changeMessage([message]) } }
   })
-  return { root: repo.root, subject: subject.id, stored, today: { root: repo.root }, now: DateTime.formatIso(yield* DateTime.now) } satisfies Store
 })
 
 interface Candidate {
@@ -222,38 +216,23 @@ const choose = Effect.fn("scripts.choose")(function*(s: Store, candidates: Reado
   return { picked: undefined, passed, retiring }
 })
 
-/** What memory has of a stored change that its commit doesn't: the project commands it ran, its mistakes, and other changes' in its files. */
-const extrasOf = Effect.fn("scripts.extrasOf")(function*(s: Store, record: Stored) {
-  const own = mistakesToShow(record.detours)
-  // Other changes' mistakes come through a file the two share only when few changes touch it: a README or a
-  // test file most changes edit linked every change to every other, and with it every trap seen anywhere.
-  const links = tellingFiles(s.stored.map((r) => ({ files: r.files.map((f) => f.path) })), 2)
-  return {
-    commands: yield* liveCommands(s.today, record.run.head_commit, commandsToShow(record.commands), record.files.map((f) => f.path)),
-    mistakes: own,
-    nearby: mistakesNearby(
-      record.files.map((f) => f.path).filter(links),
-      [...s.stored].reverse().filter((r) => r.id !== record.id).map((r) => ({ files: r.files.map((f) => f.path), mistakes: mistakesToShow(r.detours) })),
-      own
-    )
-  }
-})
+/** The project commands a stored change's session ran, which its commit doesn't show: the ones still live here (Fresh.ts). */
+const commandsOf = (s: Store, record: Stored) =>
+  liveCommands(s.today, record.run.head_commit, commandsToShow(record.commands), record.files.map((f) => f.path))
 
-/** The chosen change as the agent reads it in full, its diff included. */
+/** The chosen change in full: the pointer, then what git doesn't show about it. */
 const show = Effect.fn("scripts.show")(function*(
   s: Store,
   picked: Candidate & { readonly judged: Effect.Success<ReturnType<typeof judgeScript>> },
   budget: number
 ) {
   const record = picked.record
-  return renderScript({
+  return renderFull({
     prompt: record.task.prompt,
     message: record.task.message,
     commit: record.run.head_commit,
-    score: picked.score,
     files: picked.judged.files.map(({ verdict: _, ...f }) => f),
-    ...(yield* extrasOf(s, record)),
-    diff: picked.judged.diff
+    commands: yield* commandsOf(s, record)
   }, budget)
 })
 
@@ -297,7 +276,8 @@ export const renderStored = Effect.fn("scripts.renderStored")(function*(cwd: str
   const s = yield* openStore(cwd, tenantDir)
   const head = record.run.head_commit
   if (s === undefined || head === null || !(yield* hasCommit(s.root, head))) return undefined
-  const stored = { ...record, run: { ...record.run, head_commit: head } }
+  // Its commit message as the hand-overs have it (`openStore`), which a record stored before messages were kept lacks.
+  const [stored] = yield* withMessages(s.root, [{ ...record, run: { ...record.run, head_commit: head } }])
   return yield* show(s, { record: stored, score: 1, judged: yield* judgeScript(s.today, stored) }, MAX_HANDOVER_CHARS)
 })
 
@@ -434,7 +414,7 @@ export const commitHandover = Effect.fn("scripts.commitHandover")(function*(
     }
   }
   if (record === undefined) return nothing
-  const behind = renderBehind({ commit: record.run.head_commit, prompt: record.task.prompt, ...(yield* extrasOf(s, record)) })
+  const behind = renderBehind({ commit: record.run.head_commit, prompt: record.task.prompt, message: record.task.message, commands: yield* commandsOf(s, record) })
   const text = behind === undefined ? undefined : rehome(options.tenantDir, s.subject, s.root)(behind)
   const result: ScriptsStart = {
     text,

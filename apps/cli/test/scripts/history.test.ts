@@ -85,26 +85,29 @@ describe("which commits a call read", () => {
 
 describe("what git doesn't show", () => {
   const RULE = "Add a new built-in rule MD061, alias `heading-max-level`, with one parameter `maximum`. Do it the way the existing rules are done."
-  it("gives the request, the commands and the mistakes, never the diff, and nothing when there is none of them", () => {
-    const text = renderBehind({ commit: A, prompt: RULE, commands: ["npm test", "npm run lint"], mistakes: ["- `npm test` failed: expected 2 errors."], nearby: [] })!
+  it("gives the commands, and the request only when the commit message says too little; never the diff or mistakes", () => {
+    const text = renderBehind({ commit: A, prompt: RULE, message: "MD061", commands: ["npm test", "npm run lint"] })!
     expect(text).toContain(`# What git doesn't show about ${A.slice(0, 10)}`)
-    expect(text).toContain(`Memory kept the session that made ${A.slice(0, 10)}, which you just read in git: what it was asked, the project commands it ran and the mistakes it made.`)
+    expect(text).toContain(`Memory kept the session that made ${A.slice(0, 10)}, which you just read in git: what it was asked and the project commands it ran.`)
     expect(text).toContain("## What it was asked\n\n" + RULE)
     expect(text).toContain("## Project commands it ran, in order\n\n`npm test`, `npm run lint`")
-    expect(text).toContain("## Mistakes it made\n\n- `npm test` failed: expected 2 errors.")
-    expect(text).not.toContain("diff")
-    // Filed under "yes": its commit message was its task, and git has that.
-    const yes = renderBehind({ commit: A, prompt: "yes", commands: ["npm test"], mistakes: [], nearby: [] })!
-    expect(yes).not.toContain("## What it was asked")
-    expect(yes).toContain("which you just read in git: the project commands it ran.")
-    expect(renderBehind({ commit: A, prompt: "commit and open a PR", commands: [], mistakes: [], nearby: [] })).toBeUndefined()
+    expect(text).not.toMatch(/diff|Mistakes/)
+    // Its commit message says what it was for, and git shows that.
+    const SAID = "Add the heading-max-level rule MD061, with its docs, schema and tests"
+    const said = renderBehind({ commit: A, prompt: RULE, message: SAID, commands: ["npm test"] })!
+    expect(said).not.toContain("## What it was asked")
+    expect(said).toContain("which you just read in git: the project commands it ran.")
+    // Filed under "yes": nothing was asked.
+    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test"] })).not.toContain("## What it was asked")
+    expect(renderBehind({ commit: A, prompt: "commit and open a PR", commands: [] })).toBeUndefined()
+    expect(renderBehind({ commit: A, prompt: RULE, message: SAID, commands: [] })).toBeUndefined()
   })
 
   it("fences a command with backticks in it with more of them", () => {
     expect(inlineCode("npm test")).toBe("`npm test`")
     expect(inlineCode("Write-Output \"a`tb\"")).toBe("``Write-Output \"a`tb\"``")
     expect(inlineCode("echo `date`")).toBe("`` echo `date` ``")
-    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test", "echo `date`"], mistakes: [], nearby: [] }))
+    expect(renderBehind({ commit: A, prompt: "yes", commands: ["npm test", "echo `date`"] }))
       .toContain("## Project commands it ran, in order\n\n`npm test`, `` echo `date` ``")
   })
 })
@@ -194,9 +197,10 @@ describe("reading a stored commit, through the hooks", () => {
     const context = JSON.parse(out).hookSpecificOutput as { hookEventName: string; additionalContext: string }
     expect(context.hookEventName).toBe("PostToolUse")
     expect(context.additionalContext).toContain(`# What git doesn't show about ${head.slice(0, 10)}`)
-    expect(context.additionalContext).toContain(RULE)
-    expect(context.additionalContext).toContain("## Mistakes it made\n\n- `npm test` failed")
-    expect(context.additionalContext).not.toContain("diff --git")
+    expect(context.additionalContext).toContain("## Project commands it ran, in order\n\n`npm test`")
+    // Its commit message says what it was for: what was asked isn't said again, nor the failed `npm test`.
+    expect(context.additionalContext).not.toContain(RULE)
+    expect(context.additionalContext).not.toMatch(/Mistakes|diff --git/)
     // Once a session.
     expect(read(s, `git show --stat ${head.slice(0, 10)}`)).toBe("")
     // A commit memory didn't store, a list of subjects, and a failed call: nothing.

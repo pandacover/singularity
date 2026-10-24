@@ -21,7 +21,7 @@ export const recallText = Effect.fn("eval.recallText")(function*(memoryDir: stri
   const all = yield* makeScripts(memoryDir, true).entries
   const top = rankRecall(task, all.map((e) => ({ ...e, files: e.files_changed })))[0]
   if (top === undefined || !top.matches) return "singularity: memory has nothing for this in this repository yet."
-  return renderEntry(top.doc, top.score, all.filter((e) => e.id !== top.doc.id).reverse())
+  return renderEntry(top.doc, all.filter((e) => e.id !== top.doc.id).reverse())
 })
 
 /** The `singularity` command of a run: POSIX shell and Windows batch, both only `recall`. */

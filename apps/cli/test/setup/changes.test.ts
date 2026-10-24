@@ -104,8 +104,11 @@ describe("singularity changes", () => {
 
         const [b] = findChange(report.changes, t.commits[0].head)
         const text = yield* renderStored(t.repo, t.tenantDir, yield* (yield* RecordStore).get(b.id))
-        expect(text).toContain("please add file 0")
-        expect(text).toContain("+b.txt")
+        // Filed under a prompt that asks for nothing: its commit message says what it was for.
+        expect(text).toContain(`committed as ${t.commits[0].head.slice(0, 10)}: "Add b"`)
+        expect(text).toContain("- b.txt (+1 -0)")
+        expect(text).toContain("## Project commands it ran, in order\n\n`npm test`")
+        expect(text).not.toMatch(/please add file 0|diff --git/)
         const shown = renderChange(b, text, { color: false, subject }).join("\n")
         expect(shown).toContain("Add b")
         expect(shown).toContain("1 file +1 -0 · 1 check passed")

@@ -53,7 +53,7 @@ Claude Code, such as a pinned copy of an earlier version
 | Setup | What the agent gets |
 |---|---|
 | `no-memory` | nothing: the baseline |
-| `scripts` | the closest past successful run (its prompt, files, source diff, working commands and mistakes), picked and shown as the daily hook shows a stored commit (`src/scripts/`) |
+| `scripts` | the closest past successful run (its prompt, files, source diff, working commands and mistakes), picked by the daily search (`src/scripts/`) and shown in full with its diff, as daily use showed a stored change until 2026-10-24 (`src/eval/SavedRunText.ts`): a saved run was never committed, so there is no commit to point to |
 
 The `graph`, `saved-scripts-warnings`, `hooks` and `workflows*` setups were
 removed with the memory designs they measured, and so were the first

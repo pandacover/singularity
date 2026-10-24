@@ -209,7 +209,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               ran that are still on disk. When the agent reads a stored commit in git, memory adds what the commit doesn't hold. In runs of
               an earlier version, whose hand-over included the diff, the 7 of 12 markdownlint tasks that got one cost 16%
               less and used 24% fewer tokens. A hand-over can also carry a mistake forward. When one listed a build
-              command that had failed before, agents ran it in 8 of 10 tasks.
+              command that had failed before, agents ran it in 8 of 10 tasks. Hand-overs no longer list past mistakes.
             </p>
             <dl className="glance">
               <div><dt>−16%</dt><dd>cost, tasks with a hand-over</dd></div>
@@ -261,7 +261,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             </p>
             <p>
               When the agent reads a stored change in git, with <code>git show</code> or <code>git log</code>, memory
-              adds what the commit doesn't hold: the task, the commands its session ran, and its mistakes. Each change
+              adds what the commit doesn't hold: the commands its session ran, and the task when the commit message says
+              too little. Never a diff or past mistakes. Each change
               comes once a session, and never the session's own. Setup also adds a note to the agent's instructions
               saying it can run <code>singularity recall</code> before work it may have done before.
             </p>
@@ -311,8 +312,8 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
               With memory, 4 of 60 tasks started such a run of failures; without it, 2 of 36 did. Two of memory's came
               after a hand-over that listed a failing build command among past mistakes. Across all our markdownlint
               runs, agents ran that command in 8 of the 10 tasks whose hand-over named it, and in none of the other 78.
-              The pointer at task start lists no commands now. Past commands and mistakes come only when the agent reads
-              a stored commit in git.
+              No hand-over lists past mistakes now, and the project commands that worked come only when the agent reads
+              a stored commit in git or runs recall.
             </p>
           </section>
 
@@ -320,7 +321,7 @@ const Page = ({ view, go, still = false }: { readonly view: View; readonly go: G
             <H2 id="limits">Limitations</H2>
             <ul className="limits">
               <li><b>It helps with what it has seen.</b> The savings come from tasks like ones already committed in the same repository. With no close past change, a task costs what it costs without memory.</li>
-              <li><b>Past commands can carry a mistake.</b> Agents run the commands a past change lists, including ones that failed. Memory shows them only when the agent reads a stored commit in git.</li>
+              <li><b>Past commands can carry a mistake.</b> Agents run the commands a past change lists. Memory lists only the project commands that worked, and only when the agent reads a stored commit in git or runs recall.</li>
               <li><b>Measured on an older hand-over.</b> The results above come from a hand-over that included the diff, and a word search that matched by the request, not the pointer, card and picking memory has now.</li>
               <li><b>A model's pick comes a step in.</b> It reaches the agent with its first tool result after the pick, a few seconds in, so the agent starts without it. Picking was judged on 62 real task starts, not on paid runs.</li>
               <li><b>Agents rarely ask.</b> Agents ran <code>singularity recall</code> on their own once in 60 runs that had the note.</li>

@@ -19,7 +19,7 @@ import {
   scriptsOf,
   survivalOf
 } from "../../src/scripts/Fresh.ts"
-import { fileKind, renderScript } from "../../src/scripts/Render.ts"
+import { fileKind, renderFull } from "../../src/scripts/Render.ts"
 import { countRetired, readRetired } from "../../src/scripts/Retired.ts"
 import { startScripts } from "../../src/scripts/Start.ts"
 import { git, run, tempDir } from "../eval/helpers.ts"
@@ -87,55 +87,25 @@ describe("what counts as still there", () => {
   })
 })
 
-describe("cutting the change to fit", () => {
-  const chunk = (path: string, n: number) => ({ path, text: `diff --git a/${path} b/${path}\n${`+line ${path}\n`.repeat(n)}` })
-  const file = (path: string, fate?: Parameters<typeof renderScript>[0]["files"][number]["fate"]) =>
+describe("what became of each file, as a hand-over says it", () => {
+  const file = (path: string, fate?: Parameters<typeof renderFull>[0]["files"][number]["fate"]) =>
     ({ path, status: "modified" as const, added: 1, removed: 0, snapshot: false, now: path, fate })
 
-  it("shows source first and whole, then tests, and names what got no room", () => {
-    const text = renderScript({
+  it("says a file was rewritten since, naming the commit, and where moved code is", () => {
+    const text = renderFull({
       prompt: RULE,
       commit: "0123456789abcdef",
-      score: 0.6,
-      files: [file("doc/md061.md"), file("test/md061.test.mjs"), file("lib/md061.mjs"), file("lib/rules.mjs")],
-      commands: [],
-      mistakes: [],
-      nearby: [],
-      diff: [chunk("doc/md061.md", 300), chunk("test/md061.test.mjs", 300), chunk("lib/md061.mjs", 40), chunk("lib/rules.mjs", 30)]
-    }, 3000)
-    expect(text.length).toBeLessThanOrEqual(3000)
-    const at = (p: string) => text.indexOf(`diff --git a/${p}`)
-    expect(at("lib/md061.mjs")).toBeGreaterThan(0)
-    expect(at("lib/rules.mjs")).toBeGreaterThan(at("lib/md061.mjs"))
-    // Source whole, the test cut to what's left, the docs only named.
-    expect(text).toContain(`+line lib/md061.mjs\n`.repeat(40))
-    expect(at("test/md061.test.mjs")).toBeGreaterThan(at("lib/rules.mjs"))
-    expect(text).toMatch(/… \(\d+ more lines\)/)
-    expect(at("doc/md061.md")).toBe(-1)
-    expect(text).toContain("Not shown for room: doc/md061.md (`git show 0123456789 -- <file>`)")
-  })
-
-  it("leaves out a file rewritten since and says so, and names where moved code is", () => {
-    const text = renderScript({
-      prompt: RULE,
-      commit: "0123456789abcdef",
-      score: 0.6,
       files: [
         file("lib/md061.mjs", { kind: "stale", last: { hash: "abc1234", title: "Rewrite the rule engine" } }),
         file("lib/old.mjs", { kind: "moved", to: "lib/new.mjs" }),
         { ...file("lib/gone.mjs"), now: null }
       ],
-      commands: [],
-      mistakes: [],
-      nearby: [],
-      diff: [chunk("lib/md061.mjs", 5), chunk("lib/old.mjs", 5), chunk("lib/gone.mjs", 5)]
+      commands: []
     })
     expect(text).toContain("- lib/gone.mjs (+1 -0; no longer exists)")
-    expect(text).not.toContain("diff --git a/lib/gone.mjs")
-    expect(text).toContain(`- lib/md061.mjs (+1 -0; it has changed since, last in abc1234 "Rewrite the rule engine": its change isn't shown, read the file as it is now)`)
+    expect(text).toContain(`- lib/md061.mjs (+1 -0; it has changed since, last in abc1234 "Rewrite the rule engine")`)
     expect(text).toContain("- lib/old.mjs (+1 -0; its code is in lib/new.mjs now)")
-    expect(text).not.toContain("diff --git a/lib/md061.mjs")
-    expect(text).toContain("diff --git a/lib/old.mjs")
+    expect(text).not.toContain("diff --git")
     expect(text).not.toMatch(/may be outdated/i)
   })
 })
@@ -198,7 +168,7 @@ const storeChange = (repo: string, prompt: string, base: string, head: string, o
   })
 
 describe("task start, with what changed since", () => {
-  it("leaves out a file rewritten since, naming the commit, and shows the rest; drops a script that's gone", async () => {
+  it("says a file was rewritten since, naming the commit, with no diff; drops a script that's gone", async () => {
     const { repo, tenantDir } = newRepo()
     const base = git(repo, "rev-parse", "HEAD")
     write(repo, "lib/md061.mjs", RULE_CODE)
@@ -211,9 +181,9 @@ describe("task start, with what changed since", () => {
       yield* storeChange(repo, RULE, base, head, { commands: ["npm test", "npm run build-docs", "npm ci"] })
       const got = yield* startScripts({ sessionId: "s", prompt: OTHER_RULE, cwd: repo }, { tenantDir })
       expect(got.picked?.commit).toBe(head)
-      expect(got.text).toContain(`- lib/md061.mjs (+6 -0; it has changed since, last in ${later.slice(0, 7)} "Rewrite the rule engine": its change isn't shown, read the file as it is now)`)
-      expect(got.text).not.toContain("diff --git a/lib/md061.mjs")
-      expect(got.text).toContain("diff --git a/lib/rules.mjs")
+      expect(got.text).toContain(`- lib/md061.mjs (+6 -0; it has changed since, last in ${later.slice(0, 7)} "Rewrite the rule engine")`)
+      expect(got.text).toContain("- lib/rules.mjs (+2 -1)")
+      expect(got.text).not.toContain("diff --git")
       expect(got.text).toContain("`npm test`, `npm ci`")
       expect(got.text).not.toContain("build-docs")
     }).pipe(Effect.provide(JsonRecordStore.layer(tenantDir, "local"))))
@@ -232,7 +202,6 @@ describe("task start, with what changed since", () => {
       yield* storeChange(repo, RULE, base, head)
       const got = yield* startScripts({ sessionId: "s", prompt: OTHER_RULE, cwd: repo }, { tenantDir })
       expect(got.text).toContain("- lib/md061.mjs (+6 -0; its code is in lib/headings.mjs now)")
-      expect(got.text).toContain("diff --git a/lib/md061.mjs")
       // The working tree is today: code moved back without a commit is fresh again.
       write(repo, "lib/md061.mjs", RULE_CODE)
       const again = yield* startScripts({ sessionId: "s2", prompt: OTHER_RULE, cwd: repo }, { tenantDir })

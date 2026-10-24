@@ -2,8 +2,10 @@
  * `singularity changes`: what memory stored in a repo, one line per change,
  * newest first: when it was committed, its commit and title (read from git),
  * the files it changed, and whether memory retired it. `changes <commit>`
- * prints one in full, as an agent would read it now. With --json, the same
- * as data for agents and scripts.
+ * prints one in full, as an agent would read it now: what `recall` would hand
+ * over, the pointer a task's start gives and what reading its commit adds
+ * (scripts/Render.ts `renderFull`). With --json, the same as data for agents
+ * and scripts.
  */
 import { Console, Effect, FileSystem, Path, Schema } from "effect"
 import { git, identifyRepo } from "../local/Git.ts"

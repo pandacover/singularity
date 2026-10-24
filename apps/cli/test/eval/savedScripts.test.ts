@@ -136,7 +136,7 @@ describe("scripts", () => {
   })
 
   it("lists snapshots in the notes without their content", () => {
-    const text = renderEntry(makeEntry(outcome(true)), 1)
+    const text = renderEntry(makeEntry(outcome(true)))
     assert.include(text, "x.test.tsx.snap")
     assert.notInclude(text, "+new")
     assert.include(text, "M: \"m\"")

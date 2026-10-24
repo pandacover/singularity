@@ -75,19 +75,21 @@ still skips them.
    lists the check scripts earlier sessions ran before committing (a
    screenshot or end-to-end script, say) that are still on disk, once a
    session. When the agent reads a stored change in git, with `git show` or
-   `git log`, singularity adds what the commit doesn't hold: what you asked
-   for, the commands that ran, and what failed and what fixed it.
+   `git log`, singularity adds what the commit doesn't hold: the project
+   commands its session ran (`npm test`, say), and what you asked for when
+   the commit message says too little. It never hands over a diff or past
+   mistakes.
 3. **Recall mid-task.** Setup adds a short note to your agents'
    instructions, between `<!-- singularity:start ... -->` and
    `<!-- singularity:end -->`. It tells the agent to run
    `singularity recall "<what it is about to do>"` before a kind of change, a
    fix or a command it may have done before in the repository. The command
-   prints the most similar past change, or says there is none.
+   prints the most similar past change, the same pointer with what git
+   doesn't show, or says there is none.
 
 Apart from that pick, singularity never calls a model; the pick costs about
 $0.002 a task with Haiku, on your Claude plan. Run `singularity recall "<task>"` yourself
-to see, in full, the stored change a task would be pointed to in the current
-repository.
+to see what an agent would be handed for a task in the current repository.
 
 ## Commands
 
@@ -144,8 +146,8 @@ three times without, on Claude Code 2.1.295.
   a run of failures. Without it, 2 of 36 did.
 - A hand-over can cause a mistake. Across all our markdownlint runs, when a
   hand-over listed a build command that had failed before, agents ran that
-  command in 8 of 10 tasks, and in none of the 78 other tasks. Two of those runs failed the task. A fix is in the code but
-  not yet measured in runs.
+  command in 8 of 10 tasks, and in none of the 78 other tasks. Two of those runs failed the task. Hand-overs no
+  longer list past mistakes.
 - Agents almost never ran `singularity recall` on their own. One did, in 60
   runs that had the recall note.
 - On the 7 tasks with a hand-over at the start, cost fell 16% and tokens 24%.

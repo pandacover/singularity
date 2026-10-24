@@ -1,17 +1,17 @@
 // Which other changes' mistakes the hand-overs of markdownlint runs showed,
 // and which they show when two changes are linked only through a file few
-// stored changes touched (src/scripts/Search.ts tellingFiles), replayed on
-// each run's stored records as they were at each hand-over. Also counts the
-// hand-overs whose mistakes name `npm run build-declaration`, which agents
-// ran when a hand-over named it (RESULTS.md).
+// stored changes touched (src/eval/SavedRunText.ts tellingFiles, which daily
+// use had until 2026-10-24), replayed on each run's stored records as they
+// were at each hand-over. Also counts the hand-overs whose mistakes name
+// `npm run build-declaration`, which agents ran when a hand-over named it
+// (RESULTS.md).
 //
 //   node examples/scripts/check-other-mistakes.ts <run dir> ...
 //
 // A run dir is a markdownlint arm with memory (launch.sh): home/ and out/.
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { mistakesNearby, mistakesToShow } from "../../src/scripts/Render.ts"
-import { tellingFiles } from "../../src/scripts/Search.ts"
+import { mistakesNearby, mistakesToShow, tellingFiles } from "../../src/eval/SavedRunText.ts"
 
 const jsonl = (path: string) => readFileSync(path, "utf-8").trim().split("\n").map((l) => JSON.parse(l))
 

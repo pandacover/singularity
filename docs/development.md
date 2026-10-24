@@ -138,9 +138,9 @@ costs a few git calls (30 to 100 ms on markdownlint and excalidraw, under
   looked for with `git grep -F`; one other file holding two or more and 60%
   of them, with the change surviving at 0.5 in both files together, means
   the code moved there (the file line names it). Otherwise the file is stale:
-  its diff chunk is left out and its file line names the commit that took
-  its lines out (`git log -S`) and says to read the file as it is now. A file
-  deleted since, its code nowhere else, is gone and its chunk left out too.
+  its file line says it has changed since and names the commit that took its
+  lines out (`git log -S`). A file deleted since, its code nowhere else, is
+  gone: its line says it no longer exists.
   Searches are spent on source files first, six per script.
 - **Gone**: every file stale or gone. Passed over; retired only when the
   commit is on HEAD's history (on another branch it may come back).
@@ -166,11 +166,10 @@ what became of them (moved, renamed, changed since, gone). No diff: git has
 it, `git show <sha>` shows it, and reading it brings what git doesn't show
 (below). A session is never pointed to a change it made. After it comes
 the repo's card (Facts, below). `singularity recall` and `singularity
-changes <commit>` show a change in full (`Render.renderScript`), diff
-included, for which `Render.ts` gives hand-written source the room first (whole when it fits,
-else each source file an equal share), then tests, then docs, examples,
-fixtures, snapshots and config (`fileKind`); a file left under 200
-characters is only named, with `git show <sha> -- <file>`.
+changes <commit>` show a change in full (`Render.renderFull`): the pointer,
+then what git doesn't show about it, the same as a reading adds (below),
+and never its diff. So `changes <commit>` prints exactly what an agent can
+be handed of that change.
 `singularity visualise` (`src/setup/Visualise.ts`) draws what `changes`
 lists (`gatherChanges`), with the sessions each commit was handed to
 (`scripts/sessions/*.given`): a calendar of the days changes were
@@ -191,11 +190,22 @@ The task-start hook takes about 0.9 s, as before (most of it git, judging
 the change's files); the tool-call hook about 75 ms a call, a little less
 than before, with no watch to look for.
 
-Mistakes other stored changes made come along only when the two changes
-share a code or test file few stored changes touched (`Search.tellingFiles`,
-with two at least). Linked through any shared file (most changes edit
-`README.md`), one session's failed `npm run build-declaration` reached every
-later hand-over in two markdownlint passes, and agents ran it.
+No hand-over shows a diff or past mistakes (2026-10-24). Read on the 69
+changes then stored for this repo, `recall` and `changes` gave 9,547
+characters at the median, 46% of them the diff git has; a reading gave
+2,887, 55% of them mistakes other changes made in its files, linked through
+a shared code file (`tellingFiles`, now only the eval's): one session's
+scratch failures (a SQLite query, a test run mid-change, two experiments)
+reached every change sharing a file with it. A change's own mistakes were
+mostly checks that failed mid-change and scratch scripts. After: 1,054 and
+226 characters. The person's request comes only when the commit message
+says too little (`Task.askedShown`): 66 of the 69 were filed under prompts
+that pass as requests, among them questions and replies to a screenshot,
+while all 69 commit messages say what the change was for. Before that,
+mistakes were linked only through a code or test file few stored changes
+touched: through any shared file (most changes edit `README.md`), one
+session's failed `npm run build-declaration` reached every later hand-over
+in two markdownlint passes, and agents ran it.
 
 ### A hand-over by commit
 
@@ -204,10 +214,9 @@ note test of 2026-10-17, the first command of every session that added a
 rule like an earlier one). Git has that change's diff; memory has the rest.
 After a call that reads commits, the tool-call hook adds what git doesn't
 show about the first one memory stored (`History.ts`, plain node, then
-`Start.commitHandover`): the request that asked for it (when one did, else
-its commit message was its task, and git has that), the project commands its
-session ran, its mistakes, and other changes' mistakes in its files, as at
-task start (`Render.renderBehind`, nothing when it has none of these). A
+`Start.commitHandover`): the project commands its session ran, and the
+request that asked for it when its commit message says too little (else git
+has what it was for) (`Render.renderBehind`, nothing when it has neither). A
 call reads commits when it runs `git show`, or `git log` printing a diff or
 a stat. They're the commits its output heads with `commit <hash>`, else the
 lines it starts with a hash, else the hashes and `HEAD~n` or `@~n`

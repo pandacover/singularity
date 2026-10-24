@@ -1,9 +1,9 @@
 /**
  * The hand-over mid-task, by commit, as the tool-call hook sees it: when an
  * agent reads a past commit with `git show` or `git log`, memory adds what
- * git doesn't show about it (Start.ts `commitHandover`): the request that
- * asked for it, the project commands its session ran, and the mistakes it
- * made. Agents read the change before theirs this way unprompted: in the
+ * git doesn't show about it (Start.ts `commitHandover`): the project commands
+ * its session ran, and what the person asked when the commit message says
+ * too little. Agents read the change before theirs this way unprompted: in the
  * note test of 2026-10-17 (examples/scripts/RESULTS.md), the first command of
  * every session that added a rule like an earlier one was `git show` of that
  * earlier rule's commit, under either recall note. The diff they read is
