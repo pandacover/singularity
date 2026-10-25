@@ -176,9 +176,31 @@
   $updating = $args.Count -eq 0 -and (Test-Path (Join-Path $root 'bin\singularity'))
 
   # The layout singularity's commands print in (apps/cli/src/setup/Ui.ts): the
-  # title, then a section, a tree of steps.
+  # title, then a section, a tree of steps. The title is the logo, its lines
+  # as there (# a full block, ^ its top half, _ its bottom half, o the red
+  # point), or the name where it wouldn't fit.
+  $logo = @(
+    '#_ #_ #_      ^             #         o  _',
+    '## ^#  ^  _^^ # #^_ _^# # # # ^^_ #_^ # ^#^ # #',
+    '^#        __^ # # #  ^# ^_# # _## #   #  #   ^#',
+    '                    __^                     __^'
+  )
+  $width = 0
+  try { if (-not [Console]::IsOutputRedirected) { $width = [Console]::WindowWidth } } catch {}
   Write-Host ''
-  Write-Host '  singularity  ' -NoNewline
+  if ($width -ge 50) {
+    foreach ($line in $logo) {
+      Write-Host '  ' -NoNewline
+      foreach ($part in ($line -split '(o+)')) {
+        if ($part -match '^o+$') { Write-Host (([string][char]0x2580) * $part.Length) -ForegroundColor Red -NoNewline }
+        else { Write-Host $part.Replace('#', [char]0x2588).Replace('^', [char]0x2580).Replace('_', [char]0x2584) -NoNewline }
+      }
+      Write-Host ''
+    }
+    Write-Host '  ' -NoNewline
+  } else {
+    Write-Host '  singularity  ' -NoNewline
+  }
   Write-Host $(if ($updating) { 'updating' } else { 'installing' }) -ForegroundColor DarkGray
   Write-Host ''
   Write-Host '  Download'

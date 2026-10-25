@@ -49,8 +49,23 @@ WHAT=installing
 if [ $# -eq 0 ] && [ -f "$ROOT/bin/singularity" ]; then WHAT=updating; fi
 
 # The layout singularity's commands print in (apps/cli/src/setup/Ui.ts): the
-# title, then a section, a tree of steps.
-printf '\n  %ssingularity%s  %s%s%s\n' "$B" "$X" "$D" "$WHAT" "$X"
+# title, then a section, a tree of steps. The title is the logo, its lines as
+# there (# a full block, ^ its top half, _ its bottom half, o the red dot),
+# or the name where it wouldn't fit.
+cols=0
+if [ -t 1 ]; then cols="$(tput cols 2>/dev/null || echo 0)"; fi
+if [ "$cols" -ge 50 ] 2>/dev/null; then
+  printf '\n'
+  printf '  %s\n' \
+    '#_ #_ #_      ^             #         o  _' \
+    '## ^#  ^  _^^ # #^_ _^# # # # ^^_ #_^ # ^#^ # #' \
+    '^#        __^ # # #  ^# ^_# # _## #   #  #   ^#' \
+    '                    __^                     __^' |
+    sed "s/#/█/g; s/\\^/▀/g; s/_/▄/g; s/o/${R}▀${X}/"
+  printf '  %s%s%s\n' "$D" "$WHAT" "$X"
+else
+  printf '\n  %ssingularity%s  %s%s%s\n' "$B" "$X" "$D" "$WHAT" "$X"
+fi
 printf '\n  %sDownload%s\n' "$B" "$X"
 
 command -v git >/dev/null 2>&1 || fail "git isn't installed: get it from https://git-scm.com (Ubuntu and WSL: sudo apt install git), then run this again."
