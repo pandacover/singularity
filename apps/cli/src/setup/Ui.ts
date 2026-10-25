@@ -7,7 +7,7 @@
  * sections, each a tree of items (a mark, then the text) with notes under
  * them, and the end, a section of its own.
  *
- *       singularity  installing
+ *       singularity  installing        (the logo, in a wide enough terminal)
  *
  *       Your agents
  *       ├─ ✓ Claude Code  memory at task start, stores its changes
@@ -50,8 +50,28 @@ export const makeStyle = (color: boolean): Style => ({
 export const wantsColor = (env: Readonly<Record<string, string | undefined>> = process.env): boolean =>
   process.stdout.isTTY === true && env.NO_COLOR === undefined && env.TERM !== "dumb"
 
-/** The title: the name, and what is happening ("installing", "setup", "updating"). */
-export const title = (s: Style, what: string): string => `\n  ${s.bold("singularity")}  ${s.dim(what)}`
+/**
+ * The logo: the landing page's (apps/landing/src/Logo.tsx) drawn in half
+ * blocks, # a full one, ^ its top half, _ its bottom half, o the dot of the
+ * second i, the one red point. The installers print the same lines.
+ */
+const LOGO = [
+  "#_ #_ #_      ^             #         o  _",
+  "## ^#  ^  _^^ # #^_ _^# # # # ^^_ #_^ # ^#^ # #",
+  "^#        __^ # # #  ^# ^_# # _## #   #  #   ^#",
+  "                    __^                     __^"
+]
+const BLOCKS: Record<string, string> = { "#": "█", "^": "▀", "_": "▄" }
+
+/**
+ * The title: the logo, or the name where it wouldn't fit (a narrow terminal,
+ * output that isn't a terminal), and what is happening ("installing",
+ * "setup", "updating").
+ */
+export const title = (s: Style, what: string, columns = process.stdout.isTTY ? process.stdout.columns : 0): string =>
+  columns >= 50
+    ? `\n${LOGO.map((l) => `  ${l.replace(/[#^_]/g, (c) => BLOCKS[c] ?? c).replace(/o+/g, (p) => s.red("▀".repeat(p.length)))}`).join("\n")}\n  ${s.dim(what)}`
+    : `\n  ${s.bold("singularity")}  ${s.dim(what)}`
 
 /** Lines that go in a tree, as an item's or a note's text. */
 export const marks = (s: Style) => ({
