@@ -2,13 +2,14 @@
  * Daily use of local memory, for anyone:
  *
  *     singularity setup [--yes] [--agent ID ...] [--no-path]   set memory up in this machine's coding agents
+ *     singularity setup computer-use [--no-claude-desktop]      set computer-use memory up, apart (src/computer/Setup.ts)
  *     singularity status [--json]                              what memory knows, and where it is set up
  *     singularity changes [COMMIT] [--json]                    what memory stored in this repo, or one change in full
  *     singularity visualise [--repo NAME] [--json]             what memory stored, drawn: calendar, latest changes, folders, checks
  *     singularity recall TASK... [--json]                      the past change most like a task here (mid-task too)
  *     singularity store [--repo DIR]                           store what this repo's past sessions committed
  *     singularity update [--no-fetch]                          the latest code, and setup brought up to date with it
- *     singularity uninstall [--purge]                          take memory out of every agent
+ *     singularity uninstall [computer-use] [--purge]           take memory out of every agent, or computer use alone
  *
  * Memory is saved scripts (src/scripts/): the changes sessions committed,
  * one picked at task start (or at a file's first edit, or a commit read in
@@ -35,6 +36,7 @@ import { confirm, makeStyle, plural, tilde, wantsColor, withSpinner } from "../s
 import { unwireAll } from "../setup/Wiring.ts"
 import { storePast } from "../workflows/Commits.ts"
 import { safeId } from "../workflows/Session.ts"
+import { runComputerSetup, unwireComputerUse } from "../computer/Setup.ts"
 import { homeFlag } from "./Common.ts"
 
 /** A recall asked for in a folder that isn't there. */
@@ -48,14 +50,27 @@ const interactive = () => process.stdin.isTTY === true && process.stdout.isTTY =
 
 const dirsOf = (): AgentDirs => ({ home: homedir(), env: process.env })
 
+/** The part of memory a command is about, when it isn't coding memory: computer use. */
+const part = Argument.Literals("part", ["computer-use"] as const).pipe(
+  Argument.optional,
+  Argument.withDescription("computer-use: memory for agents that drive a browser, set up or taken out on its own")
+)
+
 const setup = Command.make(
   "setup",
   {
+    part,
+    noClaudeDesktop: Flag.Boolean("no-claude-desktop").pipe(Flag.withDefault(false), Flag.withDescription("computer use: leave Claude desktop's config alone")),
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("take every default and ask nothing")),
     agent: Flag.Literals("agent", AGENT_IDS).pipe(Flag.atLeast(0), Flag.withDescription("only this agent (repeatable; default: every agent found)")),
     noPath: Flag.Boolean("no-path").pipe(Flag.withDefault(false), Flag.withDescription("don't put the singularity command on PATH"))
   },
   Effect.fn(function*(args) {
+    if (Option.isSome(args.part)) {
+      const done = yield* runComputerSetup({ dirs: dirsOf(), yes: args.yes, desktop: !args.noClaudeDesktop, interactive: interactive() && !args.yes, color: wantsColor() })
+      if (!done) process.exitCode = 1
+      return
+    }
     const ok = yield* runSetup({
       yes: args.yes,
       only: args.agent,
@@ -68,7 +83,7 @@ const setup = Command.make(
     })
     if (!ok) process.exitCode = 1
   })
-).pipe(Command.withDescription("set memory up in this machine's coding agents: hooks, skill, recall note, the singularity command"))
+).pipe(Command.withDescription("set memory up in this machine's coding agents: hooks, skill, recall note, the singularity command; `setup computer-use` sets up memory for browser agents, apart"))
 
 const status = Command.make(
   "status",
@@ -203,6 +218,7 @@ const update = Command.make(
 const uninstall = Command.make(
   "uninstall",
   {
+    part,
     purge: Flag.Boolean("purge").pipe(Flag.withDefault(false), Flag.withDescription("also delete the memory home: records and the installed code")),
     yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("don't ask before deleting memory"))
   },
@@ -212,6 +228,14 @@ const uninstall = Command.make(
     const say = (line: string) => Console.log(`  ${line}`)
     const home = yield* loadHome()
     const user = homedir()
+    // Computer use: its hooks and Claude desktop's server, alone or with everything else.
+    const computer = yield* unwireComputerUse(dirsOf(), home)
+    for (const f of computer.changed) yield* say(`${s.green("✓")} computer use taken out of ${tilde(f, user)}`)
+    if (computer.desktopRunning) yield* say(`${s.yellow("!")} Claude desktop is open, so its server stays registered: quit it and run ${s.cyan("singularity uninstall computer-use")} again`)
+    if (Option.isSome(args.part)) {
+      if (computer.changed.length === 0 && !computer.desktopRunning) yield* say(s.dim("Computer use wasn't set up."))
+      return yield* say(s.dim(`What it stored stays in ${tilde(home.root, user)}; coding memory is untouched.`))
+    }
     const removed = yield* unwireAll(dirsOf())
     for (const f of removed.hookFiles) yield* say(`${s.green("✓")} hooks taken out of ${tilde(f, user)}`)
     for (const d of removed.plugins) yield* say(`${s.green("✓")} plugin ${tilde(d, user)} removed`)
@@ -229,6 +253,6 @@ const uninstall = Command.make(
     yield* fs.remove(home.root, { recursive: true, force: true })
     yield* say(`${s.green("✓")} ${tilde(home.root, user)} deleted`)
   })
-).pipe(Command.withDescription("take memory out of every agent and remove the singularity command (memory stays unless --purge)"))
+).pipe(Command.withDescription("take memory out of every agent and remove the singularity command (memory stays unless --purge); `uninstall computer-use` takes out computer use alone"))
 
 export const setupCommands = [setup, status, changes, visualise, recall, store, update, uninstall] as const

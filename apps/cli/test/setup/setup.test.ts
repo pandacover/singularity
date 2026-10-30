@@ -184,7 +184,8 @@ describe("the singularity command", () => {
     expect(slashes(COMMAND)).toMatch(/\/src\/singularity\.ts$/)
     expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "changes", "visualise", "recall", "store", "update", "uninstall"])
     expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["store", "record", "eval"]))
-  })
+    // Two CLIs started, about a second each alone, longer while other test files run.
+  }, 30_000)
 
   it("fails a recall in a folder that isn't there, and says nothing is handed over as JSON in one with no memory", () => {
     const env = { ...process.env, SINGULARITY_HOME: join(tempDir(), "home") }

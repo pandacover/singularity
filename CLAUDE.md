@@ -58,7 +58,13 @@ removed: memory v0 (`src/memory/`, `src/search/`, most of `src/handover/`,
 of `src/workflows/`; tag `memory-local-first`), the graph setup (`src/graph/`
 keeps only `Similarity.ts` and the store errors), `src/layer/`, `src/web/`,
 and learning in daily use. A second repository's suite is
-`examples/validator/`. Tests mirror it under `test/`.
+`examples/validator/`. Tests mirror it under `test/`. Computer-use memory
+is `src/computer/`, set up apart (`singularity setup computer-use`): its own
+hook (`src/computer/hook.ts`, plain node: Effect's import alone is 0.4 s)
+and a Claude desktop server in front of Playwright MCP (`Proxy.ts`); the
+design and the build decisions are in `docs/research/computer-use-design/`
+(`computer-use-memory.md`, `build.md`), the module map in
+`docs/development.md`.
 
 Daily use, for anyone (`singularity setup | status | changes | visualise |
 recall | store | update | uninstall`, `src/commands/Setup.ts`; what memory

@@ -2,7 +2,8 @@
  * `singularity status`: which agents have memory and how (hooks or plugin,
  * skill, the recall note in their instruction file), what memory knows
  * in each repo (the changes it stored) and which of its sessions' commits it
- * left out and why, and whether hooks have been failing.
+ * left out and why, computer use (src/computer/Setup.ts), and whether hooks
+ * have been failing.
  * One screen, or with --json the same as data for agents and scripts.
  */
 import { Console, DateTime, Effect, FileSystem, Path } from "effect"
@@ -15,6 +16,7 @@ import { readRetired } from "../scripts/Retired.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { matchSubject } from "../records/Subjects.ts"
 import { isMiss, readSkips, type Skip } from "../workflows/Commits.ts"
+import { type ComputerState, computerState, renderComputerStatus } from "../computer/Setup.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
 import { codexHooks } from "./CodexHooks.ts"
 import { makeStyle, plural, tilde } from "./Ui.ts"
@@ -92,6 +94,8 @@ export interface StatusReport {
   readonly hook_errors: { readonly this_week: number; readonly last: string | null; readonly log: string }
   /** Who picks the past change at a task's start in Claude Code (scripts/Pick.ts): a model, or the word search. */
   readonly picks: { readonly by: "model" | "words"; readonly model: string | null }
+  /** Computer use: where it is set up, and the apps it knows. */
+  readonly computer_use: ComputerState
 }
 
 export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly memoryHome?: string | undefined }) {
@@ -148,6 +152,8 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
     return { repos, hereStored: here !== undefined }
   }).pipe(Effect.provide(JsonRecordStore.layer(home.tenantDir, home.tenant)))
 
+  const computer = yield* computerState(dirs, home)
+
   // Hooks.
   const errors = yield* recentHookErrors(home)
   const report: StatusReport = {
@@ -157,7 +163,8 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
     here: repo === undefined ? null : { name: path.basename(repo.root), root: repo.root, stored: hereStored },
     repos,
     hook_errors: { this_week: errors.count, last: errors.last ?? null, log: path.join(home.root, "hook-errors.log") },
-    picks: home.picks === null ? { by: "words", model: null } : { by: "model", model: home.picks.model }
+    picks: home.picks === null ? { by: "words", model: null } : { by: "model", model: home.picks.model },
+    computer_use: computer
   }
   return report
 })
@@ -203,6 +210,7 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
     say(`    ${s.dim("see them with")} ${s.cyan(r.here?.stored === true ? "singularity changes" : "singularity changes --repo NAME")}`)
   }
 
+  out.push(...renderComputerStatus(r.computer_use, o))
 
   const e = r.hook_errors
   say(`\n  ${s.bold("Hooks")}  ${e.this_week === 0

@@ -1,7 +1,7 @@
 /**
  * Where local memory lives: `~/.singularity`, or `$SINGULARITY_HOME`.
  *
- *     <home>/config.json                                 { "tenant": "local", "picks": { "agent": "claude", "model": "haiku" }, "path": true }
+ *     <home>/config.json                                 { "tenant": "local", "picks": { "agent": "claude", "model": "haiku" }, "path": true, "computer_use": true }
  *     <home>/tenants/<tenant>/subjects.json              the repos memory is about
  *     <home>/tenants/<tenant>/records/<subject>/<id>.json one workflow record per run
  *     <home>/tenants/<tenant>/memory/                    the graph built from the records
@@ -49,7 +49,8 @@ export type Picks = typeof Picks.Type
 const ConfigFile = Schema.Struct({
   tenant: Schema.String,
   picks: Schema.optionalKey(Schema.NullOr(Picks)),
-  path: Schema.optionalKey(Schema.Boolean)
+  path: Schema.optionalKey(Schema.Boolean),
+  computer_use: Schema.optionalKey(Schema.Boolean)
 })
 
 export interface Home {
@@ -64,6 +65,8 @@ export interface Home {
    * PATH unless it is false.
    */
   readonly path: boolean | null
+  /** Whether computer use was set up (`singularity setup computer-use`): update then refreshes it too. */
+  readonly computerUse: boolean
 }
 
 /** `$SINGULARITY_HOME`, or `~/.singularity`. */
@@ -85,6 +88,7 @@ export const loadHome = Effect.fn("loadHome")(function*(root?: string) {
   let tenant = DEFAULT_TENANT
   let picks: Picks | null = null
   let onPath: boolean | null = null
+  let computerUse = false
   if (yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false))) {
     const text = yield* fs.readFileString(file).pipe(Effect.mapError((e) => fail(e.message)))
     const config = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ConfigFile))(text).pipe(
@@ -93,12 +97,13 @@ export const loadHome = Effect.fn("loadHome")(function*(root?: string) {
     tenant = config.tenant
     picks = config.picks ?? null
     onPath = config.path ?? null
+    computerUse = config.computer_use ?? false
   } else {
     yield* fs.makeDirectory(dir, { recursive: true }).pipe(Effect.mapError((e) => fail(e.message)))
     yield* fs.writeFileString(file, JSON.stringify({ tenant }, null, 2) + "\n").pipe(Effect.mapError((e) => fail(e.message)))
   }
   if (!ID.test(tenant)) return yield* fail(`invalid tenant id ${JSON.stringify(tenant)}`)
-  return { root: dir, tenant, tenantDir: path.join(dir, "tenants", tenant), picks, path: onPath } satisfies Home
+  return { root: dir, tenant, tenantDir: path.join(dir, "tenants", tenant), picks, path: onPath, computerUse } satisfies Home
 })
 
 /** Save who picks at a task's start in the home's config.json, the rest of it as it was. */
@@ -111,6 +116,12 @@ export const savePicks = Effect.fn("savePicks")(function*(home: Home, picks: Pic
 export const savePath = Effect.fn("savePath")(function*(home: Home, onPath: boolean) {
   yield* saveConfig(home, { path: onPath })
   return { ...home, path: onPath } satisfies Home
+})
+
+/** Save whether computer use is set up in the home's config.json, the rest of it as it was. */
+export const saveComputerUse = Effect.fn("saveComputerUse")(function*(home: Home, on: boolean) {
+  yield* saveConfig(home, { computer_use: on })
+  return { ...home, computerUse: on } satisfies Home
 })
 
 const saveConfig = Effect.fnUntraced(function*(home: Home, values: Readonly<Record<string, unknown>>) {

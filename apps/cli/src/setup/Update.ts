@@ -28,6 +28,7 @@ import { loadHome } from "../local/Home.ts"
 import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
 import { addToPath, binDir, COMMAND, pathOffLimits, writeLaunchers } from "./Launcher.ts"
+import { refreshComputerUse } from "../computer/Setup.ts"
 import { codexTrust, noteLines, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
 import { listWords, makeStyle, makeTree, marks, tilde, title, TITLED_ENV, withSpinner } from "./Ui.ts"
@@ -242,6 +243,17 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
     .map((st) => st.agent)
   if (leftOut.length > 0) {
     yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))}: no memory · singularity setup adds ${leftOut.length === 1 ? "it" : "them"}`))
+  }
+  // Computer use, when it was set up (`singularity setup computer-use`).
+  const computer = yield* refreshComputerUse(dirs)
+  if (computer !== undefined) {
+    const d = computer.desktop
+    if ("problem" in computer.claude) {
+      ok = false
+      yield* T.item(M.fail(`computer use  ${computer.claude.problem}`))
+    } else yield* T.item(M.ok("computer use", "hooks for browser and computer-use tools"))
+    if (d.kind === "running") yield* T.note(M.warn(`Claude desktop is open, so its server wasn't updated: quit it and run ${s.cyan("singularity setup computer-use")}`))
+    else if (d.kind === "failed") yield* T.note(M.fail(`Claude desktop: ${d.problem}`))
   }
 
   yield* T.head(ok

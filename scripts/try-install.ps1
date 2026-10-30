@@ -58,6 +58,8 @@ $env:LOCALAPPDATA = Join-Path $home2 'AppData\Local'
 $env:APPDATA = Join-Path $home2 'AppData\Roaming'
 foreach ($name in 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'HERMES_HOME', 'XDG_CONFIG_HOME') { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
 $env:SINGULARITY_HOME = $memory
+# Claude desktop's config, for `setup computer-use`: a copy of the sandbox's own, never the app's.
+$env:SINGULARITY_CLAUDE_DESKTOP_CONFIG = Join-Path $home2 'AppData\Local\Claude-Data\claude_try\claude_desktop_config.json'
 # The registry is the user's own, whatever the home: neither setup nor update may touch PATH.
 $env:SINGULARITY_NO_PATH = '1'
 $env:SINGULARITY_REPO = "file:///$($served -replace '\\', '/')"
