@@ -27,6 +27,29 @@ export const blankNumbers = (s: string): string =>
 export const fingerprint = (salt: string, s: string): string =>
   createHash("sha256").update(`${salt}\u0000${blankNumbers(s).toLowerCase()}`).digest("hex").slice(0, 16)
 
+/** Words too common to name an app. */
+const COMMON = new Set(
+  ("the and for with this that from into onto your you our their them they there then than what when where which who whom whose why how " +
+    "can could would should will shall may might must have has had are was were been being not but all any each every some its it's " +
+    "please thanks thank just also only very more most less same other another new old get got make made let need needs want wants " +
+    "use using open opens go goes see look find show tell give take put set check done do does did one two three first last next")
+    .split(" ")
+)
+
+/**
+ * The words of a prompt that may name an app, as fingerprints, never in
+ * plain text: a word that came before two sessions in one app and in no
+ * other's brings that app's card at a task's start (computer-use-memory.md).
+ * Addresses are left out: the hand-over reads them itself.
+ */
+export const promptWords = (salt: string, text: string): Array<string> => {
+  const words = new Set<string>()
+  for (const m of text.replace(/\bhttps?:\/\/\S+/g, " ").toLowerCase().matchAll(/[a-z][a-z0-9'-]{2,}/g)) {
+    if (!COMMON.has(m[0])) words.add(fingerprint(salt, `word:${m[0]}`))
+  }
+  return [...words]
+}
+
 export const MAX_SHOWN = 40
 
 /** Words that open an order to the reader, whatever follows. */

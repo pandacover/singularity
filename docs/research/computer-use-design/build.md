@@ -70,8 +70,14 @@ Built on 2026-10-31, uncommitted on `t3/computer-use-memory`; the module map is 
 - **Where a result was checked** is named by the address's path, without its query keys: a form that sends `restock` only when ticked gave two addresses for one page.
 - **A session's file never holds an address.** It keeps the page the session is on as memory keeps addresses (the host, the path by fingerprint, query keys without values): a form sent by GET puts what was typed in the address. A test sends one through the hand-over and checks memory's files.
 - **A screen's notes need all its stored fields on the live screen.** A screen with no stored fields gets notes (traps, keys, checks) when its address and named region match.
-- **Not built yet:** words in prompts that name an app (only its address brings the card at a task's start); hub screens ("where past sessions went next"); desktop capture beyond the app and menu paths, until Step 0 shows what those tools hand over.
-- **The proxy stores without `store.lock`.** Two stores at once (the Chat and Code-mode servers, say) can write one app's index from different trails; the next store of that app writes it whole again.
+- **Built on 10-31, the rest of the design:**
+  - **Words that name an app:** a prompt word that came before two sessions in one app and none in another brings its card at a task's start. Kept by fingerprint only (`Text.ts` `promptWords`, `computer/words.json`).
+  - **Hub screens:** a screen sessions left for two or more screens gets "Past sessions went on to …", naming those two sessions went to.
+  - **App tools,** claude.ai's connectors (`mcp__claude_ai_<App>__*`): rules, and the errors failed calls answered with, seen twice, on the app's card. Stored at session end when the log has such calls; the tool-call hook still matches browser tools only. Other MCP servers aren't apps.
+  - **Trails in `singularity changes`:** `--apps` lists the apps, `--app <app>` an app's sessions and its card now.
+  - **The proxy stores under `store.lock`,** waiting up to 30 s; the next call stores the whole session again.
+  - The hook after these: 108 ms a browser read (node alone: 47 ms on this run), 75 ms a tool it skips.
+- **Still not built:** desktop capture beyond the app and menu paths, until Step 0 shows what those tools hand over.
 - **The built-in browser's and Claude in Chrome's translators** are written from their tool descriptions; no session on this machine has called them. Step 0 checks them.
 
 ### The offline replay (design step 3), first numbers

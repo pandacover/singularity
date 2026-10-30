@@ -4,7 +4,7 @@
  *     singularity setup [--yes] [--agent ID ...] [--no-path]   set memory up in this machine's coding agents
  *     singularity setup computer-use [--no-claude-desktop]      set computer-use memory up, apart (src/computer/Setup.ts)
  *     singularity status [--json]                              what memory knows, and where it is set up
- *     singularity changes [COMMIT] [--json]                    what memory stored in this repo, or one change in full
+ *     singularity changes [COMMIT] [--apps | --app APP] [--json]  what memory stored in this repo, or one change in full; or in apps
  *     singularity visualise [--repo NAME] [--json]             what memory stored, drawn: calendar, latest changes, folders, checks
  *     singularity recall TASK... [--json]                      the past change most like a task here (mid-task too)
  *     singularity store [--repo DIR]                           store what this repo's past sessions committed
@@ -36,6 +36,7 @@ import { confirm, makeStyle, plural, tilde, wantsColor, withSpinner } from "../s
 import { unwireAll } from "../setup/Wiring.ts"
 import { storePast } from "../workflows/Commits.ts"
 import { safeId } from "../workflows/Session.ts"
+import { runAppChanges } from "../computer/Changes.ts"
 import { runComputerSetup, unwireComputerUse } from "../computer/Setup.ts"
 import { homeFlag } from "./Common.ts"
 
@@ -98,10 +99,16 @@ const changes = Command.make(
   {
     change: Argument.String("commit").pipe(Argument.optional, Argument.withDescription("one change to print in full: its commit (4 characters or more) or record id")),
     repo: Flag.String("repo").pipe(Flag.optional, Flag.withDescription("the repo: a name status shows, or a folder in it (default: here)")),
+    apps: Flag.Boolean("apps").pipe(Flag.withDefault(false), Flag.withDescription("the apps computer-use memory stored, instead of a repo's changes")),
+    app: Flag.String("app").pipe(Flag.optional, Flag.withDescription("one app computer-use memory stored (its address, as --apps lists it): its sessions, and the card an agent gets now")),
     home: homeFlag,
     json: jsonFlag
   },
   Effect.fn(function*(args) {
+    if (args.apps || Option.isSome(args.app)) {
+      const home = yield* loadHome(Option.getOrUndefined(args.home))
+      return yield* runAppChanges({ tenantDir: home.tenantDir, app: Option.getOrUndefined(args.app), color: wantsColor(), json: args.json })
+    }
     yield* runChanges({
       cwd: process.cwd(),
       change: Option.getOrUndefined(args.change),

@@ -16,12 +16,15 @@
  *   called them yet).
  * - **Desktop computer use** (`mcp__computer-use__*`): the app and menu paths
  *   only. Clicks are points on screenshots, with nothing to anchor a note to.
+ * - **App tools**, claude.ai's connectors (`mcp__claude_ai_<App>__*`, Gmail's
+ *   or Slack's): the app, and the error a failed call answered with. Memory
+ *   keeps their rules and traps only.
  *
  * Nothing typed or chosen is kept: an action says which controls it used,
  * never the text.
  */
 
-export type Family = "playwright" | "builtin" | "chrome" | "desktop"
+export type Family = "playwright" | "builtin" | "chrome" | "desktop" | "app"
 
 export interface Call {
   /** The tool's full name as the agent called it. */
@@ -59,9 +62,11 @@ export interface Observation {
   /** Or Playwright's snapshot file, as the answer linked it. */
   readonly file: string | undefined
   readonly failed: boolean
-  /** Desktop: the app the call named, and a menu path it used. */
+  /** Desktop: the app the call named, and a menu path it used. App tools: the connector's app. */
   readonly app?: string | undefined
   readonly menu?: ReadonlyArray<string> | undefined
+  /** App tools: the first line of a failed call's answer, its error. */
+  readonly error?: string | undefined
 }
 
 /** The tool's server and short name: `mcp__playwright__browser_click` → playwright, browser_click. */
@@ -76,6 +81,7 @@ export const familyOf = (name: string): Family | undefined => {
   if (p.server === "Claude_Browser") return "builtin"
   if (p.server === "claude-in-chrome") return "chrome"
   if (p.server === "computer-use") return "desktop"
+  if (p.server.startsWith("claude_ai_") && p.server.length > 10) return "app"
   if (p.tool.startsWith("browser_")) return "playwright"
   return undefined
 }
@@ -171,6 +177,11 @@ const desktop = (tool: string, c: Call): Observation => {
   return { family: "desktop", tool, act: undefined, url: undefined, yaml: undefined, file: undefined, failed: c.failed, app, menu }
 }
 
+const appTool = (server: string, tool: string, c: Call): Observation => {
+  const error = c.failed ? (c.result ?? "").split(/\r?\n/).map((l) => l.trim()).find((l) => l !== "") : undefined
+  return { family: "app", tool, act: undefined, url: undefined, yaml: undefined, file: undefined, failed: c.failed, app: server.slice("claude_ai_".length), error }
+}
+
 /** What a call did and showed; a batch gives one observation per action in it. Empty for other tools. */
 export const observe = (c: Call): Array<Observation> => {
   const family = familyOf(c.name)
@@ -178,6 +189,7 @@ export const observe = (c: Call): Array<Observation> => {
   if (family === undefined || p === undefined) return []
   if (family === "playwright") return [playwright(p.tool, c)]
   if (family === "desktop") return [desktop(p.tool, c)]
+  if (family === "app") return [appTool(p.server, p.tool, c)]
   if (p.tool === "browser_batch" && Array.isArray(c.input.actions)) {
     // The batch's answer can't be split by action: only the last action is given it.
     const items = (c.input.actions as Array<unknown>).map(obj)

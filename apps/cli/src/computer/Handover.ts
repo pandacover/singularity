@@ -6,9 +6,9 @@
  */
 import { Effect } from "effect"
 import type { Observation } from "./Calls.ts"
-import { afterCall, cardsAtStart, handOverWith, hostsIn } from "./HandoverCore.ts"
+import { afterCall, appsNamedIn, cardsAtStart, handOverWith } from "./HandoverCore.ts"
 import type { AppIndex } from "./Model.ts"
-import { readGiven, readIndex, readSalt, writeGiven } from "./Store.ts"
+import { readGiven, readIndex, readSalt, readWords, writeGiven } from "./Store.ts"
 
 export { handoverOff } from "./HandoverCore.ts"
 
@@ -29,9 +29,9 @@ export const handOverAfter = Effect.fn("computer.handOverAfter")(function*(
   return texts.length === 0 ? undefined : texts.join("\n\n")
 })
 
-/** The card at a task's start, when the prompt names the address of an app memory knows; once a session. */
+/** The card at a task's start, when the prompt names an app memory knows (its address or a learned word); once a session. */
 export const handOverAtStart = Effect.fn("computer.handOverAtStart")(function*(tenantDir: string, session: string, prompt: string) {
-  const hosts = hostsIn(prompt)
+  const hosts = appsNamedIn(prompt, yield* readSalt(tenantDir), yield* readWords(tenantDir))
   if (hosts.length === 0) return undefined
   const indexes: Array<AppIndex> = []
   for (const host of hosts) {

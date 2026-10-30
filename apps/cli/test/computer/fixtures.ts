@@ -16,7 +16,8 @@ export const orderPage = (o: { readonly status?: string; readonly refund?: strin
     `- main [ref=e4]:`,
     ...(o.status === undefined ? [] : [`  - status [ref=e9]: ${o.status}`]),
     `  - heading "Order" [level=1] [ref=e5]`,
-    `  - link "${o.refund ?? "Refund order"}" [ref=e6]`
+    `  - link "${o.refund ?? "Refund order"}" [ref=e6]`,
+    `  - link "Edit address" [ref=e7]`
   ].join("\n")
 
 export const refundForm = (o: { readonly restock?: string; readonly extra?: string; readonly error?: string }) =>
@@ -38,13 +39,15 @@ export interface ChoreOptions {
   readonly extra?: string
   readonly error?: string
   readonly start: string
+  /** Another app: the same pages at another address. */
+  readonly base?: string
 }
 
 const at = (start: string, i: number) => new Date(Date.parse(start) + i * 1000).toISOString()
 
 /** A refund chore: open the order, open the refund form, maybe untick restock, type a note, send it, see the order. */
 export const refundChore = (o: ChoreOptions): Array<TimedCall> => {
-  const order = `${BASE}/orders/${o.order}`
+  const order = `${o.base ?? BASE}/orders/${o.order}`
   const calls: Array<TimedCall> = []
   const add = (name: string, input: Record<string, unknown>, result: string) => calls.push({ call: { name: `mcp__playwright__${name}`, input, result, failed: false }, at: at(o.start, calls.length) })
   add("browser_navigate", { url: order }, answer(order, orderPage({ refund: o.refund })))
@@ -56,7 +59,26 @@ export const refundChore = (o: ChoreOptions): Array<TimedCall> => {
   return calls
 }
 
-export const session = (id: string, calls: ReadonlyArray<TimedCall>, prompts: SessionInput["prompts"] = []): SessionInput => ({
+export const addressForm = [
+  `- main [ref=e4]:`,
+  `  - form "Address" [ref=e20]:`,
+  `    - textbox "Street" [ref=e21]`,
+  `    - button "Save address" [ref=e22]`
+].join("\n")
+
+/** An address chore: open the order, open the address form, type a street, save it. */
+export const addressChore = (o: { readonly order: number; readonly start: string }): Array<TimedCall> => {
+  const order = `${BASE}/orders/${o.order}`
+  const calls: Array<TimedCall> = []
+  const add = (name: string, input: Record<string, unknown>, result: string) => calls.push({ call: { name: `mcp__playwright__${name}`, input, result, failed: false }, at: at(o.start, calls.length) })
+  add("browser_navigate", { url: order }, answer(order, orderPage({})))
+  add("browser_click", { element: "Edit address", target: "e7" }, answer(`${order}/address`, addressForm))
+  add("browser_type", { element: "Street", target: "e21", text: "12 Quay Lane" }, answer(`${order}/address`, addressForm))
+  add("browser_click", { element: "Save address", target: "e22" }, answer(order, orderPage({ status: "Address saved" })))
+  return calls
+}
+
+export const session =(id: string, calls: ReadonlyArray<TimedCall>, prompts: SessionInput["prompts"] = []): SessionInput => ({
   session: id,
   agent: "claude-code",
   calls,

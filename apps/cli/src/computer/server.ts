@@ -88,6 +88,7 @@ const main = async () => {
     childCwd: tmpdir(),
     now: () => Date.now(),
     processId: `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`,
+    lockRoot: root,
     logMeta: step0
       ? (meta) => {
         try {

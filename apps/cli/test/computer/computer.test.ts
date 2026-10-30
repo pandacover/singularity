@@ -16,7 +16,7 @@ import { loadHome } from "../../src/local/Home.ts"
 import { hookEvents, isMemoryHookCommand } from "../../src/setup/Agents.ts"
 import { installHooks } from "../../src/setup/HookFiles.ts"
 import { run, tempDir } from "../eval/helpers.ts"
-import { BASE, refundChore, session } from "./fixtures.ts"
+import { addressChore, BASE, refundChore, session } from "./fixtures.ts"
 
 const json = (file: string) => JSON.parse(readFileSync(file, "utf-8"))
 
@@ -158,6 +158,53 @@ describe("capture and hand-over", () => {
       const handed = yield* replay(tenantDir, "s3", refundChore({ order: 47, start: "2026-10-30T12:00:00Z" }), `Refund order 47 at ${BASE}/orders/47`)
       expect(handed[0]).toContain(`Your rules here: "Never restock damaged goods." (2026-10-30).`)
       expect(handed.filter((t) => t.startsWith("singularity: 127.0.0.1:5199,"))).toHaveLength(1)
+    })))
+
+  it("hands the card over at a task's start when the prompt names the app by a word learned from two sessions there and none elsewhere", () =>
+    run(Effect.gen(function*() {
+      const home = tempDir()
+      const { tenantDir } = yield* loadHome(home)
+      const other = "http://127.0.0.1:5198"
+      yield* replay(tenantDir, "s1", refundChore({ order: 12, start: "2026-10-30T10:00:00Z" }), "Refund order 12 in Larkspur, damaged. Wexford asked.")
+      yield* replay(tenantDir, "s2", refundChore({ order: 31, start: "2026-10-30T11:00:00Z" }), "Larkspur: refund order 31.")
+      yield* replay(tenantDir, "s3", refundChore({ order: 5, base: other, start: "2026-10-30T11:30:00Z" }), "Refund order 5 for Wexford.")
+      // Twice in one app, never elsewhere: a name for it.
+      const named = yield* handOverAtStart(tenantDir, "s4", "Please refund order 47 in Larkspur")
+      expect(named).toContain("singularity: 127.0.0.1:5199,")
+      // Once in each of two apps: a name for neither.
+      expect(yield* handOverAtStart(tenantDir, "s5", "Wexford wants a refund")).toBeUndefined()
+      // Words are kept only as fingerprints.
+      expect(allFiles(home).toLowerCase()).not.toMatch(/larkspur|wexford/)
+    })))
+
+  it("keeps an app tool's rules and the errors its calls answered with, and hands them over when the prompt names the app", () =>
+    run(Effect.gen(function*() {
+      const { tenantDir } = yield* loadHome(tempDir())
+      const failing = (start: string): Array<TimedCall> => [{
+        call: { name: "mcp__claude_ai_Gmail__send_message", input: { to: "ottoline@example.com", body: "Hi" }, result: "Error: daily sending limit reached\nTry tomorrow", failed: true },
+        at: start
+      }]
+      yield* replay(tenantDir, "s1", failing("2026-10-30T10:00:00Z"), "Always CC the manager. Send the Gmail update.")
+      yield* replay(tenantDir, "s2", failing("2026-10-30T11:00:00Z"), "Gmail: send the update to the team.")
+      const card = yield* handOverAtStart(tenantDir, "s3", "Send the weekly Gmail note")
+      expect(card).toContain("singularity: app:gmail,")
+      expect(card).toContain(`"Always CC the manager."`)
+      expect(card).toContain(`"Error: daily sending limit reached" from send_message`)
+      expect(card).not.toContain("ottoline")
+    })))
+
+  it("on a hub screen, names the screens past sessions went on to from it", () =>
+    run(Effect.gen(function*() {
+      const { tenantDir } = yield* loadHome(tempDir())
+      yield* replay(tenantDir, "s1", refundChore({ order: 12, start: "2026-10-30T10:00:00Z" }))
+      yield* replay(tenantDir, "s2", addressChore({ order: 13, start: "2026-10-30T10:30:00Z" }))
+      yield* replay(tenantDir, "s3", refundChore({ order: 31, start: "2026-10-30T11:00:00Z" }))
+      yield* replay(tenantDir, "s4", addressChore({ order: 32, start: "2026-10-30T11:30:00Z" }))
+      const handed = yield* replay(tenantDir, "s5", addressChore({ order: 47, start: "2026-10-30T12:00:00Z" }))
+      const hub = handed.find((t) => t.includes("went on to"))
+      expect(hub).toBeDefined()
+      expect(hub).toContain(`"Refund" form (2)`)
+      expect(hub).toContain(`"Address" form (2)`)
     })))
 
   it("never writes down or hands over a string that reads as an instruction, even seen twice", () =>

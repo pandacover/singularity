@@ -128,13 +128,21 @@ singularity uninstall computer-use    # take it out again; coding memory stays
 
 - When the agent opens an app memory knows, it gets the app's card: your
   rules for it, and the routes past sessions took to the screens they worked
-  on. A route never names a send, pay or confirm button.
+  on. A route never names a send, pay or confirm button. The card comes at
+  the task's start instead when your prompt names the app: its address, or
+  a word you used before two sessions there and none elsewhere.
 - When it reaches a known screen, it gets short notes: fields that start
-  set, such as a box that starts ticked, ending "decide from the task", and
-  errors past sessions saw there. When the screen has changed, memory says
-  nothing.
+  set, such as a box that starts ticked, ending "decide from the task",
+  errors past sessions saw there, where they checked their result, and on
+  a screen they left for different places, where they went. When the screen
+  has changed, memory says nothing.
 - To teach it a rule, say it in your prompt as an instruction: "Never
-  restock damaged goods", "From now on, CC the manager on refunds".
+  restock damaged goods", "From now on, CC the manager on refunds". Rules
+  are learned from Claude Code sessions; in Claude desktop memory doesn't
+  see your prompts.
+- `singularity changes --apps` lists the apps memory stored, and
+  `singularity changes --app <app>` an app's sessions and the card an agent
+  gets now.
 - In Claude desktop, setup adds a server named `singularity-browser`: the
   browser tools of Playwright, through memory. Quit the app before setup;
   it rewrites its own config.

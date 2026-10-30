@@ -7,8 +7,8 @@
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { randomBytes } from "node:crypto"
 import { writeFileWhole } from "../local/Files.ts"
-import { buildIndex } from "./Index.ts"
-import { AppIndex, Given, Trail } from "./Model.ts"
+import { appWords, buildIndex } from "./Index.ts"
+import { AppIndex, AppWords, Given, Trail } from "./Model.ts"
 import { fileName } from "./Paths.ts"
 
 export { fileName }
@@ -89,7 +89,24 @@ export const storeTrail = Effect.fn("computer.storeTrail")(function*(tenantDir: 
   yield* writeFileWhole(fs, path.join(dir, "trails", `${fileName(trail.session)}.json`), JSON.stringify(trail) + "\n")
   const index = buildIndex(trail.app, yield* readTrails(tenantDir, trail.app))
   yield* writeFileWhole(fs, path.join(dir, "index.json"), JSON.stringify(index) + "\n")
+  // The prompt words that name an app, across apps: read at a task's start.
+  const indexes: Array<AppIndex> = []
+  for (const app of yield* listApps(tenantDir)) {
+    const i = app === trail.app ? index : yield* readIndex(tenantDir, app)
+    if (i !== undefined) indexes.push(i)
+  }
+  yield* writeFileWhole(fs, path.join(computerDir(tenantDir, path), "words.json"), JSON.stringify(appWords(indexes)) + "\n")
   return index
+})
+
+const decodeWords = Schema.decodeUnknownOption(Schema.fromJsonString(AppWords))
+
+/** The prompt words that name an app (Index.ts `appWords`), by fingerprint. */
+export const readWords = Effect.fn("computer.readWords")(function*(tenantDir: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const text = yield* readText(fs, path.join(computerDir(tenantDir, path), "words.json"))
+  return (Option.isSome(text) ? Option.getOrUndefined(decodeWords(text.value)) : undefined) ?? {}
 })
 
 const givenFile = (tenantDir: string, session: string, path: Path.Path) => path.join(computerDir(tenantDir, path), "sessions", `${fileName(session)}.json`)

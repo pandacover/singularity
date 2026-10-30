@@ -10,8 +10,9 @@
  *   characters, only when the screen's stored fields are on the live screen:
  *   fields that start set, by state only, ending "Decide from the task";
  *   traps; keys that did something there; where past sessions checked their
- *   result. Names come from the live screen, so a field one past session saw
- *   is named the second time it is seen.
+ *   result; on a hub, the screens past sessions went on to. Names come
+ *   from the live screen, so a field one past session saw is named the
+ *   second time it is seen.
  *
  * Every page string is quoted, cut to 40 characters, and dropped when it
  * reads as an instruction (Text.ts `showable`).
@@ -73,12 +74,17 @@ export const shownRoutes = (index: AppIndex) => {
 export const renderCard = (index: AppIndex): string | undefined => {
   const rules = index.rules.map((r) => `${quote(r.text)} (${day(r.at)})`)
   const routes = shownRoutes(index).map((r) => r.line)
-  if (rules.length === 0 && routes.length === 0) return undefined
+  // App tools' traps: the errors their calls answered with, by tool.
+  const toolTraps = Object.values(index.screens)
+    .filter((s) => s.key.startsWith("tool:"))
+    .flatMap((s) => s.traps.map((t) => shown(index, t.fp)).filter((t): t is string => t !== undefined).map((t) => `${quote(t)} from ${s.key.slice(5)}`))
+  if (rules.length === 0 && routes.length === 0 && toolTraps.length === 0) return undefined
   const n = index.sessions.length
   const head = [`singularity: ${index.app}, from ${n} past session${n === 1 ? "" : "s"}.`]
   const body: Array<string> = []
   if (rules.length > 0) body.push(`Your rules here: ${rules.join("; ")}.`)
   if (routes.length > 0) body.push("Screens past sessions worked on, and how they got there:", ...routes)
+  if (toolTraps.length > 0) body.push(`Past sessions got ${toolTraps.join("; ")}.`)
   return fit(head, body, ["Read each screen as you go: the app may have changed since."], MAX_CARD)
 }
 
@@ -120,6 +126,21 @@ export const renderNotes = (index: AppIndex, screen: IndexScreen, live: Readonly
   if (keys.length > 0) lines.push(`${lines.length === 0 ? `singularity: ${where}, ` : ""}Enter in a field sent this form in ${keys[0].sessions} past sessions.`)
   const checks = screen.checked_at.map((c) => showAddress(c.address, known(index))).filter((c): c is string => c !== undefined)
   if (checks.length > 0) lines.push(`${lines.length === 0 ? `singularity: ${where}, a` : "A"}fter a change here, past sessions checked ${checks.slice(0, 2).join(" or ")}.`)
+  // A hub: sessions went on from here to different screens. The ones two sessions went to, the most first.
+  const row = Object.entries(index.next?.[screen.key] ?? {}).filter(([to]) => to !== screen.key)
+  if (row.length >= 2) {
+    const went = row
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([to, n]) => {
+        const s = index.screens[to]
+        const l = s === undefined ? undefined : screenLabel(index, s)
+        return l === undefined ? undefined : `${l} (${n})`
+      })
+      .filter((x): x is string => x !== undefined)
+      .slice(0, 3)
+    if (went.length > 0) lines.push(`${lines.length === 0 ? `singularity: ${where}, p` : "P"}ast sessions went on to ${went.join(", ")}.`)
+  }
   if (lines.length === 0) return undefined
   return fit([], lines, [], MAX_NOTES) ?? lines.slice(0, 2).join("\n").slice(0, MAX_NOTES)
 }

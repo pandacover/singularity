@@ -22,7 +22,7 @@
  */
 import type { Observation } from "./Calls.ts"
 import type { Address, ControlRef, FieldState, Trail, TrailField, TrailRoute, TrailScreen } from "./Model.ts"
-import { addressKey, addressOf, fingerprint, pathKey, rulesIn } from "./Text.ts"
+import { addressKey, addressOf, fingerprint, pathKey, promptWords, rulesIn } from "./Text.ts"
 import {
   ancestors,
   byRef,
@@ -99,6 +99,10 @@ interface AppAcc {
   ended: string
   desktopCalls: number
   menus: Array<Array<string>>
+  /** The step of its first action: the prompts before it may name the app. */
+  firstStep: number
+  /** Moves between its screens, `from` and `to` keys joined by a tab. */
+  next: Set<string>
 }
 
 interface Current {
@@ -125,10 +129,11 @@ export const screenKey = (salt: string, address: Address, nodes: ReadonlyArray<S
  */
 export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<PromptAt>, ctx: TrailContext): Array<Trail> => {
   const apps = new Map<string, AppAcc>()
+  let stepIndex = 0
   const appOf = (app: string, at: string): AppAcc => {
     let a = apps.get(app)
     if (a === undefined) {
-      a = { app, screens: new Map(), routes: [], rules: [], texts: new Map(), leftOut: new Map(), started: at, ended: at, desktopCalls: 0, menus: [] }
+      a = { app, screens: new Map(), routes: [], rules: [], texts: new Map(), leftOut: new Map(), started: at, ended: at, desktopCalls: 0, menus: [], firstStep: stepIndex, next: new Set() }
       apps.set(app, a)
     }
     a.ended = at
@@ -211,11 +216,30 @@ export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<P
   }
 
   steps.forEach((step, i) => {
+    stepIndex = i
     while (promptIndex < sortedPrompts.length && sortedPrompts[promptIndex].before <= i) {
       const p = sortedPrompts[promptIndex++]
       for (const text of rulesIn(p.text)) pendingRules.push({ text, at: p.at })
     }
     const o = step.obs
+    if (o.family === "app") {
+      if (o.app === undefined) return
+      const a = appOf(`app:${o.app.toLowerCase()}`, step.at)
+      if (pendingRules.length > 0) a.rules.push(...pendingRules), (pendingRules = [])
+      // A failed call's error is the tool's trap, kept on a screen of the tool's own.
+      if (o.failed && o.error !== undefined) {
+        const key = `tool:${o.tool}`
+        let s = a.screens.get(key)
+        if (s === undefined) {
+          s = { key, address: { app: a.app, path: [], query: [] }, region: null, controls: new Set(), seen: new Set(), worked: false, wrote: false, first: new Map(), changed: new Set(), traps: new Set(), keys: new Set(), checked: new Set(), readOnce: true }
+          a.screens.set(key, s)
+        }
+        const fp = fpOn(a, key, o.error.slice(0, 200))
+        s.traps.add(fp)
+        s.seen.add(fp)
+      }
+      return
+    }
     if (o.family === "desktop") {
       if (o.app === undefined) return
       const a = appOf(`desktop:${o.app.toLowerCase()}`, step.at)
@@ -299,6 +323,7 @@ export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<P
       lastWrite = { app: beforeApp.app, screen: beforeScreen.key, address: pathKey(beforeScreen.address) }
     }
 
+    if (moved && before !== undefined && before.app === a.app && !before.skip && !now.skip) a.next.add(`${before.key}\t${key}`)
     if (now.skip) {
       if (moved || fresh) leave(a, "password field")
     } else {
@@ -339,7 +364,9 @@ export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<P
       rules: a.rules,
       texts: Object.fromEntries(a.texts),
       left_out: Object.fromEntries(a.leftOut),
-      ...(a.app.startsWith("desktop:") ? { desktop: { calls: a.desktopCalls, menus: a.menus } } : {})
+      ...(a.app.startsWith("desktop:") ? { desktop: { calls: a.desktopCalls, menus: a.menus } } : {}),
+      words: [...new Set(prompts.filter((p) => p.before <= a.firstStep).flatMap((p) => promptWords(ctx.salt, p.text)))],
+      next: [...a.next].map((x) => ({ from: x.split("\t")[0], to: x.split("\t")[1] }))
     })
   }
   return out

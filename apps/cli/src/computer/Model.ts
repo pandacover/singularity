@@ -57,7 +57,11 @@ export const Trail = Schema.Struct({
   rules: Schema.Array(Rule),
   texts: Schema.Record(Schema.String, Schema.String),
   left_out: Schema.Record(Schema.String, Schema.Number),
-  desktop: Schema.optionalKey(Schema.Struct({ calls: Schema.Number, menus: Schema.Array(Schema.Array(Schema.String)) }))
+  desktop: Schema.optionalKey(Schema.Struct({ calls: Schema.Number, menus: Schema.Array(Schema.Array(Schema.String)) })),
+  /** The words of the prompts before the session's first action in the app, by fingerprint (Text.ts `promptWords`). */
+  words: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** Screens reached from each screen worked on or passed through, for hub screens' notes: `from` → `to`, both screen keys. */
+  next: Schema.optionalKey(Schema.Array(Schema.Struct({ from: Schema.String, to: Schema.String })))
 })
 export type Trail = typeof Trail.Type
 export type TrailScreen = typeof TrailScreen.Type
@@ -106,9 +110,16 @@ export const AppIndex = Schema.Struct({
   /** Routes retired since, and why: shown in status. */
   retired: Schema.Array(Schema.Struct({ to: Schema.String, why: Schema.String })),
   rules: Schema.Array(Rule),
-  left_out: Schema.Record(Schema.String, Schema.Number)
+  left_out: Schema.Record(Schema.String, Schema.Number),
+  /** For each prompt word's fingerprint, the sessions whose prompts had it before their first action here. */
+  words: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
+  /** For each screen, the screens sessions went to next from it, and in how many sessions. */
+  next: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Number)))
 })
 export type AppIndex = typeof AppIndex.Type
+
+/** `<tenant>/computer/words.json`: prompt words that name one app (two sessions there, none elsewhere), by fingerprint. */
+export const AppWords = Schema.Record(Schema.String, Schema.String)
 
 /**
  * What a session was handed: the apps whose card it got, the screens whose

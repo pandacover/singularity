@@ -13,7 +13,7 @@ import type { Observation } from "./Calls.ts"
 import type { Address, AppIndex, Given } from "./Model.ts"
 import { renderCard, renderNotes } from "./Render.ts"
 import { parseSnapshot } from "./Snapshot.ts"
-import { addressOf } from "./Text.ts"
+import { addressOf, promptWords } from "./Text.ts"
 import { screenKey } from "./Trail.ts"
 
 /** `SINGULARITY_HANDOVER=off`: capture only, nothing handed over (an eval's no-memory arm). */
@@ -89,6 +89,16 @@ export const hostsIn = (prompt: string): Array<string> => {
     if (h !== undefined) hosts.add(h)
   }
   return [...hosts]
+}
+
+/**
+ * The apps a prompt names: by address, or by a word memory has learned names
+ * one app (`words`, from words.json), matched by fingerprint.
+ */
+export const appsNamedIn = (prompt: string, salt: string | undefined, words: Readonly<Record<string, string>>): Array<string> => {
+  const apps = new Set(hostsIn(prompt))
+  if (salt !== undefined) for (const w of promptWords(salt, prompt)) if (words[w] !== undefined) apps.add(words[w])
+  return [...apps]
 }
 
 /** The cards due at a task's start, for the known apps its prompt names. */

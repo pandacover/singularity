@@ -121,6 +121,17 @@ export const buildIndex = (app: string, all: ReadonlyArray<Trail>): AppIndex => 
   for (const t of trails) for (const r of t.rules) rules.set(r.text, r.at)
   const leftOut: Record<string, number> = {}
   for (const t of trails) for (const [k, v] of Object.entries(t.left_out)) leftOut[k] = (leftOut[k] ?? 0) + v
+  // Prompt words, and the screens sessions went to next: by session, each counted once per session.
+  const words: Record<string, number> = {}
+  for (const t of trails) for (const w of new Set(t.words ?? [])) words[w] = (words[w] ?? 0) + 1
+  const next: Record<string, Record<string, number>> = {}
+  for (const t of trails) {
+    for (const m of new Set((t.next ?? []).map((x) => JSON.stringify([x.from, x.to])))) {
+      const [from, to] = JSON.parse(m) as [string, string]
+      const row = (next[from] ??= {})
+      row[to] = (row[to] ?? 0) + 1
+    }
+  }
 
   return {
     version: 1,
@@ -132,8 +143,22 @@ export const buildIndex = (app: string, all: ReadonlyArray<Trail>): AppIndex => 
     routes: routes.sort((a, b) => (screens[b.to]?.worked_in ?? 0) - (screens[a.to]?.worked_in ?? 0) || b.at.localeCompare(a.at)),
     retired,
     rules: [...rules].map(([text, at]) => ({ text, at })).sort((a, b) => b.at.localeCompare(a.at)),
-    left_out: leftOut
+    left_out: leftOut,
+    words,
+    next
   }
+}
+
+/**
+ * Prompt words that name one app: before two or more sessions in it, and
+ * before none in any other app (computer-use-memory.md, "The app card").
+ */
+export const appWords = (indexes: ReadonlyArray<AppIndex>): Record<string, string> => {
+  const apps = new Map<string, Array<{ app: string; sessions: number }>>()
+  for (const index of indexes) for (const [w, n] of Object.entries(index.words ?? {})) apps.set(w, [...(apps.get(w) ?? []), { app: index.app, sessions: n }])
+  const out: Record<string, string> = {}
+  for (const [w, list] of apps) if (list.length === 1 && list[0].sessions >= 2) out[w] = list[0].app
+  return out
 }
 
 /** Why a route no longer holds, judged by the sessions after the one that took it; undefined while it holds. */

@@ -12,4 +12,5 @@ export const saltPath = (tenantDir: string) => join(computerPath(tenantDir), "sa
 export const appPath = (tenantDir: string, app: string) => join(computerPath(tenantDir), "apps", fileName(app))
 export const indexPath = (tenantDir: string, app: string) => join(appPath(tenantDir, app), "index.json")
 export const trailPath = (tenantDir: string, app: string, session: string) => join(appPath(tenantDir, app), "trails", `${fileName(session)}.json`)
-export const givenPath = (tenantDir: string, session: string) => join(computerPath(tenantDir), "sessions", `${fileName(session)}.json`)
+export const wordsPath = (tenantDir: string) => join(computerPath(tenantDir), "words.json")
+export const givenPath =(tenantDir: string, session: string) => join(computerPath(tenantDir), "sessions", `${fileName(session)}.json`)

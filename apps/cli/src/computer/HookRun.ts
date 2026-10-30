@@ -15,9 +15,9 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { startInBackground } from "../setup/Background.ts"
 import { observe } from "./Calls.ts"
-import { afterCall, cardsAtStart, handOverWith, hostsIn } from "./HandoverCore.ts"
+import { afterCall, appsNamedIn, cardsAtStart, handOverWith } from "./HandoverCore.ts"
 import type { Address, AppIndex, Given } from "./Model.ts"
-import { givenPath, indexPath, saltPath } from "./Paths.ts"
+import { givenPath, indexPath, saltPath, wordsPath } from "./Paths.ts"
 
 type Json = Record<string, unknown>
 
@@ -162,9 +162,19 @@ export const afterToolCall = (stdin: string): string | undefined => {
   return texts.length === 0 ? undefined : context(input.hook_event_name, texts.join("\n\n"))
 }
 
-/** Store the session in the background (Capture.ts), when it used these tools. */
-const store = (tenant: string, input: Input) => {
-  if (!existsSync(givenPath(tenant, input.session_id))) return
+/** Whether a session's log has calls of claude.ai's connectors (Calls.ts, app tools), which the tool-call hook doesn't see. */
+const usedAppTools = (transcript: string | undefined): boolean => {
+  if (transcript === undefined || transcript === "") return false
+  try {
+    return /"name"\s*:\s*"mcp__claude_ai_[^"]+__/.test(readFileSync(transcript, "utf-8"))
+  } catch {
+    return false
+  }
+}
+
+/** Store the session in the background (Capture.ts), when it used these tools; at its end, app tools too. */
+const store = (tenant: string, input: Input, end = false) => {
+  if (!existsSync(givenPath(tenant, input.session_id)) && !(end && usedAppTools(input.transcript_path))) return
   if (input.transcript_path === undefined || input.transcript_path === "") return
   startInBackground(root(), ["computer-use", "store", "--background", "--session", input.session_id, "--transcript", input.transcript_path], "store.log")
 }
@@ -176,7 +186,9 @@ export const atPrompt = (stdin: string): string | undefined => {
   const tenant = tenantDir()
   store(tenant, input)
   if (input.prompt === undefined) return undefined
-  const indexes = hostsIn(input.prompt).map((h) => readIndex(tenant, h)).filter((i): i is AppIndex => i !== undefined)
+  const words = readJson(wordsPath(tenant))
+  const named = appsNamedIn(input.prompt, readSalt(tenant), isObject(words) ? (words as Record<string, string>) : {})
+  const indexes = named.map((h) => readIndex(tenant, h)).filter((i): i is AppIndex => i !== undefined)
   if (indexes.length === 0) return undefined
   const before = readGiven(tenant, input.session_id)
   const { given, texts } = cardsAtStart(before, indexes)
@@ -187,5 +199,5 @@ export const atPrompt = (stdin: string): string | undefined => {
 /** At a session's end: the session, stored. */
 export const atSessionEnd = (stdin: string): void => {
   const input = inputOf(stdin)
-  if (input !== undefined) store(tenantDir(), input)
+  if (input !== undefined) store(tenantDir(), input, true)
 }

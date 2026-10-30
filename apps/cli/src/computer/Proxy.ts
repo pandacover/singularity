@@ -21,6 +21,7 @@
  * goes back as it came, and the error goes to `hook-errors.log`.
  */
 import { Effect, FileSystem, Path } from "effect"
+import { releaseLock, takeLock } from "../setup/Background.ts"
 import { captureSession, type TimedCall } from "./Capture.ts"
 import { type Call, observe } from "./Calls.ts"
 import { handOverAfter } from "./Handover.ts"
@@ -58,7 +59,12 @@ export interface ProxyIo {
   readonly processId: string
   /** Step 0: each call's `_meta`, to learn whether the client names its conversation. */
   readonly logMeta?: ((meta: unknown) => void) | undefined
+  /** The memory home: stores take its `store.lock`, as every other store does. Tests leave it out. */
+  readonly lockRoot?: string | undefined
 }
+
+/** How long a store waits for another run's lock before it leaves the store to the next call. */
+const LOCK_WAIT_MS = 30_000
 
 interface Pending {
   readonly name: string
@@ -99,15 +105,25 @@ export const makeProxy = (io: ProxyIo) => {
     const snapshot = [...calls]
     const id = session
     const known = new Map(files)
-    storing = storing.then(() =>
-      io.run(captureSession({
-        session: `desktop-${id}`,
-        agent: "claude-desktop",
-        calls: snapshot,
-        prompts: [],
-        readFile: (file) => Effect.succeed(known.get(file))
-      }, io.tenantDir))
-    )
+    const capture = captureSession({
+      session: `desktop-${id}`,
+      agent: "claude-desktop",
+      calls: snapshot,
+      prompts: [],
+      readFile: (file) => Effect.succeed(known.get(file))
+    }, io.tenantDir)
+    const root = io.lockRoot
+    // Under the lock; when another run holds it too long, the next call stores the whole session again.
+    const locked = root === undefined ? capture : Effect.gen(function*() {
+      let waited = 0
+      while (!takeLock(root, "store.lock")) {
+        if (waited >= LOCK_WAIT_MS) return undefined
+        yield* Effect.sleep("200 millis")
+        waited += 200
+      }
+      return yield* capture.pipe(Effect.ensuring(Effect.sync(() => releaseLock(root, "store.lock"))))
+    })
+    storing = storing.then(() => io.run(locked))
   }
 
   const readLinked = (file: string) =>
