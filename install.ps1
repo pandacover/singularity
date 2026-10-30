@@ -11,7 +11,8 @@
 # with the new code instead (`singularity update` does all of this too).
 # Node.js and the code are fetched side by side; the dependencies need both.
 #
-# $env:SINGULARITY_REF picks a branch or tag (default: main);
+# $env:SINGULARITY_REF picks a branch or tag (default: main; `singularity
+# update --branch` switches later);
 # $env:SINGULARITY_OWN_NODE = '1' fetches its own Node.js even when one is on PATH.
 
 & {
@@ -71,7 +72,8 @@
     if (Test-Path (Join-Path $app '.git')) {
       $out = git -C $app fetch --quiet --depth 1 origin $ref 2>&1
       if ($LASTEXITCODE -ne 0) { return @{ ok = $false; text = "couldn't fetch $ref from $repo."; output = (& $messages $out) } }
-      $out = git -C $app reset --quiet --hard FETCH_HEAD 2>&1
+      # Checked out under its own name, so `singularity update` follows that branch.
+      $out = git -C $app checkout --quiet --force -B $ref FETCH_HEAD 2>&1
       if ($LASTEXITCODE -ne 0) { return @{ ok = $false; text = "couldn't update $app to the code fetched."; output = (& $messages $out) } }
     } else {
       New-Item -ItemType Directory -Force -Path $root | Out-Null

@@ -21,6 +21,7 @@ import type { AgentDirs, Reach } from "./Agents.ts"
 import { codexHooks } from "./CodexHooks.ts"
 import { makeStyle, plural, tilde } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable } from "./Wiring.ts"
+import { appDir, installedBranch } from "./Update.ts"
 
 export const VERSION = "0.2.0"
 
@@ -68,6 +69,8 @@ export const shortDate = (iso: string): string => {
 export interface StatusReport {
   readonly version: string
   readonly memory_home: string
+  /** The branch the installed code is on when it isn't main (`update --branch`); null on main or when not installed. */
+  readonly branch: string | null
   readonly agents: ReadonlyArray<{
     readonly id: string
     readonly name: string
@@ -156,9 +159,11 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
 
   // Hooks.
   const errors = yield* recentHookErrors(home)
+  const branch = yield* installedBranch(appDir(home.root))
   const report: StatusReport = {
     version: VERSION,
     memory_home: home.root,
+    branch: branch === undefined || branch === "main" ? null : branch,
     agents,
     here: repo === undefined ? null : { name: path.basename(repo.root), root: repo.root, stored: hereStored },
     repos,
@@ -176,6 +181,7 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
   const say = (line = "") => void out.push(line)
   say()
   say(`  ${s.magenta("◆")} ${s.bold("singularity")} ${r.version}  ${s.dim(`memory in ${tilde(r.memory_home, o.home)}`)}`)
+  if (r.branch !== null) say(`    ${s.yellow("!")} on branch ${r.branch}  ${s.dim("singularity update --branch main goes back")}`)
 
   say(`\n  ${s.bold("Agents")}`)
   if (r.agents.length === 0) say(`    ${s.dim("no coding agent found")}`)
