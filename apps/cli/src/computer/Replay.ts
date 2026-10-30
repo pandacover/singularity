@@ -40,6 +40,8 @@ export interface ReplayResult {
   readonly turns: number
   /** Turns from the first action in an app to reaching the screen worked on, both counted. */
   readonly turns_to_screen: number | undefined
+  /** Turns from reaching the screen worked on to the session's end: the work there, the write, and the check after it. */
+  readonly turns_after_screen: number | undefined
   /** Turns above a route's floor (one to open its start, one per hop), when memory has a route. */
   readonly savable_turns: number | undefined
   /** The same, had memory known the route this session took (the most routes could save), when it took one. */
@@ -66,7 +68,7 @@ const turnsOf = (trace: Trace, firstAct: number, worked: number, hops: number | 
   const from = turnOf.get(ids[firstAct] ?? "")
   const to = turnOf.get(ids[worked] ?? "")
   if (from === undefined || to === undefined || to < from || total === 0) {
-    return { turns: main.length, turns_to_screen: undefined, savable_turns: undefined, dollars, share_to_screen: undefined, share_savable: undefined }
+    return { turns: main.length, turns_to_screen: undefined, turns_after_screen: undefined, savable_turns: undefined, dollars, share_to_screen: undefined, share_savable: undefined }
   }
   const window = main.slice(from, to + 1).reduce((a, r) => a + weight(r.usage), 0)
   const turnsTo = to - from + 1
@@ -74,6 +76,7 @@ const turnsOf = (trace: Trace, firstAct: number, worked: number, hops: number | 
   return {
     turns: main.length,
     turns_to_screen: turnsTo,
+    turns_after_screen: main.length - to - 1,
     savable_turns: savable,
     dollars,
     share_to_screen: window / total,
@@ -104,6 +107,7 @@ const ceiling = (results: ReadonlyArray<ReplayResult>): Array<string> => {
     "",
     `Turns: ${turns} in ${results.length} sessions; ${toScreen} (${pct(toScreen / Math.max(1, turns))}) from the first action to the screen worked on; ${savable} (${pct(savable / Math.max(1, turns))}) above a route's floor, in the ${withRoute.length} sessions memory had a route for.`,
     `Had memory known every route sessions took: ${results.reduce((a, r) => a + (r.savable_if_known ?? 0), 0)} turns (${pct(results.reduce((a, r) => a + (r.savable_if_known ?? 0), 0) / Math.max(1, turns))}) above a route's floor; median session ${pct(median(results.map((r) => (r.savable_if_known ?? 0) / Math.max(1, r.turns))))}.`,
+    `After reaching the screen worked on: ${results.reduce((a, r) => a + (r.turns_after_screen ?? 0), 0)} turns (${pct(results.reduce((a, r) => a + (r.turns_after_screen ?? 0), 0) / Math.max(1, turns))}), the work there, the write and the check after it.`,
     `Median session: ${pct(median(results.map((r) => (r.savable_turns ?? 0) / Math.max(1, r.turns))))} of its turns above a route's floor (${pct(median(withRoute.map((r) => r.savable_turns! / Math.max(1, r.turns))))} among sessions with a route).`
   ]
   if (priced.length > 0) {
@@ -113,7 +117,9 @@ const ceiling = (results: ReadonlyArray<ReplayResult>): Array<string> => {
   if (harms.length > 0) {
     out.push("Harm chores:")
     for (const r of harms) {
-      out.push(`  ${r.chore}: ${r.turns} turns${r.turns_to_screen === undefined ? ", never reached a screen worked on" : `, ${r.turns_to_screen} to the screen${r.savable_turns === undefined ? ", no route" : `, ${r.savable_turns} above the route's floor (${r.route_hops} hops)`}`}`)
+      out.push(`  ${r.chore}: ${r.turns} turns${r.turns_to_screen === undefined ? ", never reached a screen worked on" : `, ${r.turns_to_screen} to the screen, ${r.turns_after_screen} after it${r.savable_turns === undefined ? ", no route" : `, ${r.savable_turns} above the route's floor (${r.route_hops} hops)`}`}`)
+      // What memory would have handed it, first lines only.
+      for (const h of r.handed) out.push(`    after call ${h.after_call}: ${h.text.split("\n").slice(0, 2).join(" ")}`)
     }
   }
   return out
