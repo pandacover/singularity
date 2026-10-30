@@ -59,8 +59,9 @@ export interface BenchOptions {
 
 export interface Manifest {
   readonly apps: ReadonlyArray<{ readonly id?: string; readonly url: string }>
-  readonly phases: ReadonlyArray<{ readonly id: string; readonly chores: ReadonlyArray<string> }>
-  readonly ui_for_phase: Readonly<Record<string, string>>
+  /** A phase is named by `id` (new-job) or `name`, its UI given by `ui` or the manifest's `ui_for_phase`. */
+  readonly phases: ReadonlyArray<{ readonly id?: string; readonly name?: string; readonly ui?: string; readonly chores: ReadonlyArray<string> }>
+  readonly ui_for_phase?: Readonly<Record<string, string>>
   readonly hash?: string
 }
 
@@ -177,8 +178,9 @@ export const runBench = Effect.fn("computer.runBench")(function*(o: BenchOptions
   if (o.arm === "guide") yield* fs.writeFileString(guideFile, String(runner(o.runner, o.portBase, ["guide"]).guide ?? ""))
   const tenantDir = home === undefined ? undefined : path.join(home, "tenants", "local")
 
-  for (const phase of manifest.phases) {
-    const ui = manifest.ui_for_phase[phase.id] ?? "v1"
+  for (const p of manifest.phases) {
+    const phase = { id: p.id ?? p.name ?? "", chores: p.chores }
+    const ui = p.ui ?? manifest.ui_for_phase?.[phase.id] ?? "v1"
     const chores = phase.chores.filter((c) => !done.has(`${phase.id}/${c}`) && (o.chores === undefined || o.chores.length === 0 || o.chores.includes(c)))
     if (chores.length === 0) continue
     runner(o.runner, o.portBase, ["start", "--ui", ui])
