@@ -7,12 +7,14 @@
  *     computer-use store --session ID --transcript FILE      store a Claude Code session's trails (the hooks run this)
  *     computer-use show [APP] [--json]                       the apps memory knows, or one app's index and card
  *     computer-use replay LOG... [--home DIR]                the offline replay: what each session would have been handed
+ *     computer-use bench --runner R --arm A --out DIR ...    one arm of the sealed benchmark (src/computer/Bench.ts)
  */
 import { Console, DateTime, Effect, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { homedir } from "node:os"
 import { sessionFromLog, captureSession } from "../computer/Capture.ts"
 import { renderCard, screenLabel } from "../computer/Render.ts"
+import { runBench } from "../computer/Bench.ts"
 import { runReplay } from "../computer/Replay.ts"
 import { step0IsOn, step0Off, step0On, step0Report } from "../computer/Step0.ts"
 import { listApps, readIndex } from "../computer/Store.ts"
@@ -124,7 +126,44 @@ const replay = Command.make(
   })
 ).pipe(Command.withDescription("the offline replay: store sessions oldest first, and say what each would have been handed before it was stored"))
 
+const bench = Command.make(
+  "bench",
+  {
+    runner: Flag.String("runner").pipe(Flag.withDescription("the sealed benchmark's runner.cmd")),
+    portBase: Flag.Int("port-base").pipe(Flag.withDefault(5300), Flag.withDescription("the runner instance's ports (CU_BENCH_PORT_BASE)")),
+    out: Flag.String("out").pipe(Flag.withDescription("where this arm's runs and results.jsonl go")),
+    arm: Flag.Literals("arm", ["none", "memory", "guide"] as const),
+    home: Flag.String("memory-home").pipe(Flag.optional, Flag.withDescription("the memory arm's home (never ~/.singularity)")),
+    claude: Flag.String("claude").pipe(Flag.withDescription("a pinned copy of Claude Code")),
+    model: Flag.String("model").pipe(Flag.withDefault("sonnet")),
+    effort: Flag.String("effort").pipe(Flag.withDefault("medium")),
+    maxTurns: Flag.Int("max-turns").pipe(Flag.withDefault(80)),
+    maxBudgetUsd: Flag.Finite("max-budget-usd").pipe(Flag.withDefault(2)),
+    timeoutS: Flag.Int("timeout-s").pipe(Flag.withDefault(1200)),
+    setup: Flag.String("setup").pipe(Flag.optional, Flag.withDescription("a label for the results (default: the arm)")),
+    chores: Flag.String("chore").pipe(Flag.atLeast(0), Flag.withDescription("only this chore (repeatable): a smoke run"))
+  },
+  Effect.fn(function*(args) {
+    yield* lowerPriority
+    yield* runBench({
+      runner: args.runner,
+      portBase: args.portBase,
+      out: args.out,
+      arm: args.arm,
+      home: Option.getOrUndefined(args.home),
+      claude: args.claude,
+      model: args.model,
+      effort: args.effort,
+      maxTurns: args.maxTurns,
+      maxBudgetUsd: args.maxBudgetUsd,
+      timeoutS: args.timeoutS,
+      setup: Option.getOrUndefined(args.setup),
+      chores: args.chores
+    })
+  })
+).pipe(Command.withDescription("run one arm of the sealed computer-use benchmark through its runner, chores in the manifest's order"))
+
 export const computerCommand = Command.make("computer-use").pipe(
-  Command.withDescription("computer-use memory: Step 0, storing sessions, the offline replay"),
-  Command.withSubcommands([step0, store, show, replay])
+  Command.withDescription("computer-use memory: Step 0, storing sessions, the offline replay, the benchmark"),
+  Command.withSubcommands([step0, store, show, replay, bench])
 )
