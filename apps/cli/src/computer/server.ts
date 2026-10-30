@@ -20,12 +20,26 @@ import { Effect } from "effect"
 import { spawn } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { createInterface } from "node:readline"
 import { loadHome } from "../local/Home.ts"
 import { makeProxy } from "./Proxy.ts"
 
 export const PLAYWRIGHT_MCP = ["npx", "-y", "@playwright/mcp@0.0.83", "--browser", "chrome", "--isolated"]
+
+/**
+ * npx as npm's own script, run by this node: no shell (npx is a .cmd on
+ * Windows), and no other node picked up from PATH. Other commands stay as given.
+ */
+const withoutShell = (command: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (command[0] !== "npx") return command
+  const dir = dirname(process.execPath)
+  const cli = [join(dir, "node_modules", "npm", "bin", "npx-cli.js"), join(dir, "..", "lib", "node_modules", "npm", "bin", "npx-cli.js")].find((f) => existsSync(f))
+  return cli === undefined ? command : [process.execPath, cli, ...command.slice(1)]
+}
+
+/** One word of a Windows command line, quoted when it holds spaces or quotes. */
+const quoted = (word: string) => (/[\s"]/.test(word) ? `"${word.replace(/"/g, '\\"')}"` : word)
 
 const home = () => process.env.SINGULARITY_HOME || join(homedir(), ".singularity")
 
@@ -56,11 +70,13 @@ const main = async () => {
   }
   empty()
   mkdirSync(outputDir, { recursive: true })
-  const child = spawn(command[0], [...command.slice(1), "--output-dir", outputDir], {
+  const [file, ...args] = withoutShell([...command, "--output-dir", outputDir])
+  // A script other than npx on Windows (a .cmd) still needs a shell: given one command line, quoted here.
+  const shell = process.platform === "win32" && !/\.exe$/i.test(file)
+  const child = spawn(shell ? [file, ...args].map(quoted).join(" ") : file, shell ? [] : args, {
     cwd: tmpdir(),
     stdio: ["pipe", "pipe", "inherit"],
-    // npx is a script on Windows.
-    shell: process.platform === "win32" && !/\.exe$/i.test(command[0]),
+    shell,
     windowsHide: true
   })
   const step0 = existsSync(join(root, "step0"))
