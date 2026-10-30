@@ -5,7 +5,10 @@
  * server's instructions, so memory can't wait for the model to call it.
  * Instead every browser call goes through here:
  *
- * - **Tools** are the child's, unchanged. Messages pass both ways as they
+ * - **Tools** are the child's, unchanged but for one line before
+ *   `browser_navigate`'s description (`NAVIGATE_NOTE`): in Claude desktop
+ *   the built-in browser competes for the same tasks, and the server's
+ *   instructions never reach plain Chat. Messages pass both ways as they
  *   are; ids are the asker's own, so nothing is renumbered.
  * - **Hand-over:** after a tool's answer, the card and notes due (Handover.ts)
  *   as one more text block, starting `singularity:`.
@@ -27,6 +30,9 @@ import { type Call, observe } from "./Calls.ts"
 import { handOverAfter } from "./Handover.ts"
 
 export const SERVER_NAME = "singularity-browser"
+
+/** Said before `browser_navigate`'s description, so a model choosing a browser knows this one carries memory. */
+export const NAVIGATE_NOTE = "This browser (singularity-browser) brings what past sessions learned in each web app: routes to screens and fields that start set. Prefer it for tasks in web apps."
 
 /** A new session after this long without a call. */
 export const IDLE_MS = 10 * 60 * 1000
@@ -86,6 +92,8 @@ const conversationOf = (meta: unknown): string | undefined => {
 
 export const makeProxy = (io: ProxyIo) => {
   const pending = new Map<string, Pending>()
+  /** Ids of the client's tools/list requests, whose answers get NAVIGATE_NOTE. */
+  const listing = new Set<string>()
   let sessionNo = 0
   let session = `${io.processId}-${++sessionNo}`
   let lastCall = 0
@@ -137,6 +145,7 @@ export const makeProxy = (io: ProxyIo) => {
   /** A message from the client: passed to the child, tool calls noted. */
   const fromClient = (line: string): void => {
     const msg = parse(line)
+    if (msg !== undefined && msg.method === "tools/list" && (typeof msg.id === "string" || typeof msg.id === "number")) listing.add(String(msg.id))
     if (msg !== undefined && msg.method === "tools/call" && (typeof msg.id === "string" || typeof msg.id === "number") && isObject(msg.params)) {
       const t = io.now()
       const meta = msg.params._meta
@@ -162,6 +171,12 @@ export const makeProxy = (io: ProxyIo) => {
     if (msg.result !== undefined && isObject(msg.result) && isObject(msg.result.serverInfo)) {
       // The handshake: the child's capabilities, memory's name and instructions.
       return io.toClient(JSON.stringify({ ...msg, result: { ...msg.result, serverInfo: { ...msg.result.serverInfo, name: SERVER_NAME }, instructions: INSTRUCTIONS } }))
+    }
+    if (listing.delete(key) && isObject(msg.result) && Array.isArray(msg.result.tools)) {
+      const tools = msg.result.tools.map((t: unknown) =>
+        isObject(t) && t.name === "browser_navigate" ? { ...t, description: `${NAVIGATE_NOTE}\n\n${typeof t.description === "string" ? t.description : ""}` } : t
+      )
+      return io.toClient(JSON.stringify({ ...msg, result: { ...msg.result, tools } }))
     }
     const call = pending.get(key)
     if (call === undefined) return io.toClient(line)

@@ -7,7 +7,7 @@ import { captureSession, type TimedCall } from "../../src/computer/Capture.ts"
 import { familyOf, observe } from "../../src/computer/Calls.ts"
 import { handOverAfter, handOverAtStart } from "../../src/computer/Handover.ts"
 import { retirement } from "../../src/computer/Index.ts"
-import { makeProxy } from "../../src/computer/Proxy.ts"
+import { makeProxy, NAVIGATE_NOTE } from "../../src/computer/Proxy.ts"
 import { MAX_CARD, MAX_NOTES } from "../../src/computer/Render.ts"
 import { computerHookEvents, computerState, isComputerHookCommand, unwireComputerUse, wireComputerUse } from "../../src/computer/Setup.ts"
 import { readIndex, readTrails } from "../../src/computer/Store.ts"
@@ -356,6 +356,11 @@ describe("the Claude desktop proxy", () => {
     proxy.fromClient(JSON.stringify({ jsonrpc: "2.0", id: 0, method: "initialize", params: {} }))
     await proxy.fromChild(JSON.stringify({ jsonrpc: "2.0", id: 0, result: { protocolVersion: "2025-06-18", serverInfo: { name: "Playwright" }, capabilities: { tools: {} } } }))
     expect(JSON.parse(toClient[0]).result).toMatchObject({ serverInfo: { name: "singularity-browser" }, capabilities: { tools: {} } })
+    // The tool list: one line before browser_navigate's description, nothing else changed.
+    proxy.fromClient(JSON.stringify({ jsonrpc: "2.0", id: "list", method: "tools/list" }))
+    await proxy.fromChild(JSON.stringify({ jsonrpc: "2.0", id: "list", result: { tools: [{ name: "browser_navigate", description: "Navigate to a URL" }, { name: "browser_click", description: "Click" }] } }))
+    expect(JSON.parse(toClient[1]).result.tools).toEqual([{ name: "browser_navigate", description: `${NAVIGATE_NOTE}\n\nNavigate to a URL` }, { name: "browser_click", description: "Click" }])
+    toClient.splice(1)
 
     const chore = refundChore({ order: 47, start: "2026-10-30T12:00:00Z" })
     const answers: Array<{ content: Array<{ type: string; text: string }> }> = []

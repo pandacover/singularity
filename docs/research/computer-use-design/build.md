@@ -20,7 +20,7 @@ Chat has no hooks and no log memory can read, so the MCP server has to both hand
 
 How the proxy works:
 
-- **Tools:** the child's tools, unchanged in name, description and input. Images pass through untouched and are never read.
+- **Tools:** the child's tools, unchanged in name, description and input, but for one line before `browser_navigate`'s description saying this browser brings memory of past sessions (added 10-31: on 10-31 plain Chat picked the built-in browser pane for a web task, and the server's instructions never reach Chat). Images pass through untouched and are never read.
 - **Hand-over:** a block starting `singularity:` added after the child's answer. The app card on the first answer this session whose address is in an app memory knows. Screen notes on an answer whose screen has the stored controls, once per screen per session. The same budgets (700 and about 400 characters) and the same five injection rules. Text in a tool's answer carries less weight than a hook's system reminder, so this is no riskier than the hook path.
 - **Capture:** the proxy reads each answer's address and snapshot (inline, or the file the answer links to, in the output folder the proxy gave Playwright) with the same reader the hook path uses, and keeps the session's calls in memory. It writes the session's trail as it goes, so a closed app loses nothing. What reaches disk is only what the design allows: fingerprints, blanked addresses, field states, and text two sessions have seen.
 - **Playwright's own files:** Playwright writes each snapshot to its output folder, page text included. The proxy puts that folder in the system's temp folder and empties it when the server starts and stops.
