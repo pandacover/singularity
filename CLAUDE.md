@@ -156,6 +156,9 @@ records use those keys.
   It installs this checkout, uncommitted changes included, in a sandbox home
   (`%TEMP%\singularity-try`) and keeps setup off PATH (`--no-path`): on
   Windows PATH lives in the registry, outside any home.
+- To try a branch on the user's real setup, push it and have them run
+  `singularity update --branch <name>` (back: `--branch main`); never wire
+  their real agents to code in a worktree.
 - Eval runs spend real money on the user's Claude account. Use `--dry-run`
   first and keep `max_budget_usd` set in suites.
 - Compare runs only with runs of the same Claude Code version: it updates

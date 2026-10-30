@@ -37,7 +37,13 @@ To try the install as a user gets it, with this checkout as it is
 PATH alone: `scripts/try-install.ps1` on Windows, `scripts/try-install.sh`
 elsewhere. The first run installs and runs setup; a run after that updates;
 `-Fresh` (`--fresh`) starts over and `-OwnNode` (`--own-node`) makes the
-installer fetch its own Node.js. Everything singularity prints, the
+installer fetch its own Node.js.
+
+To try a pushed branch for real, on your own machine: `singularity update
+--branch <name>` puts the installed copy (`~/.singularity/app`) on it and
+refreshes what setup put in place from there, so nothing runs from a
+worktree; later updates stay on that branch, status says so, and
+`singularity update --branch main` goes back. Everything singularity prints, the
 installers included, follows one layout, described in
 `apps/cli/src/setup/Ui.ts`.
 

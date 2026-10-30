@@ -7,7 +7,7 @@
  *     singularity visualise [--repo NAME] [--json]             what memory stored, drawn: calendar, latest changes, folders, checks
  *     singularity recall TASK... [--json]                      the past change most like a task here (mid-task too)
  *     singularity store [--repo DIR]                           store what this repo's past sessions committed
- *     singularity update [--no-fetch]                          the latest code, and setup brought up to date with it
+ *     singularity update [--no-fetch] [--branch B]             the latest code, and setup brought up to date with it
  *     singularity uninstall [--purge]                          take memory out of every agent
  *
  * Memory is saved scripts (src/scripts/): the changes sessions committed,
@@ -191,10 +191,20 @@ const store = Command.make(
 const update = Command.make(
   "update",
   {
-    noFetch: Flag.Boolean("no-fetch").pipe(Flag.withDefault(false), Flag.withDescription("don't fetch: bring what setup put in place up to date with the code installed now"))
+    noFetch: Flag.Boolean("no-fetch").pipe(Flag.withDefault(false), Flag.withDescription("don't fetch: bring what setup put in place up to date with the code installed now")),
+    branch: Flag.String("branch").pipe(
+      Flag.optional,
+      Flag.withDescription("put the installed code on this branch, to try it for real; later updates stay on it, and --branch main goes back")
+    )
   },
   Effect.fn(function*(args) {
-    const options = { home: homedir(), env: process.env, interactive: interactive(), color: wantsColor() }
+    const branch = Option.getOrUndefined(args.branch)
+    if (branch !== undefined && args.noFetch) {
+      yield* Console.error("update: --branch fetches that branch, so it doesn't go with --no-fetch.")
+      process.exitCode = 2
+      return
+    }
+    const options = { home: homedir(), env: process.env, interactive: interactive(), color: wantsColor(), branch }
     const ok = yield* (args.noFetch ? runRefresh(options) : runUpdate(options))
     if (!ok) process.exitCode = 1
   })
