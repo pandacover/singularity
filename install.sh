@@ -12,7 +12,8 @@
 # with the new code instead (`singularity update` does all of this too).
 # Node.js and the code are fetched side by side; the dependencies need both.
 #
-# SINGULARITY_REF picks a branch or tag (default: main); SINGULARITY_OWN_NODE=1
+# SINGULARITY_REF picks a branch or tag (default: main; `singularity update
+# --branch` switches later); SINGULARITY_OWN_NODE=1
 # fetches its own Node.js even when one is on PATH. Flags for setup go after
 # `sh -s --`, e.g. `curl ... | sh -s -- --yes`.
 set -eu
@@ -144,7 +145,8 @@ step_node() {
 step_code() {
   if [ -d "$APP/.git" ]; then
     git -C "$APP" fetch --quiet --depth 1 origin "$REF" || fail "couldn't fetch $REF from $REPO."
-    git -C "$APP" reset --quiet --hard FETCH_HEAD
+    # Checked out under its own name, so `singularity update` follows that branch.
+    git -C "$APP" checkout --quiet --force -B "$REF" FETCH_HEAD || fail "couldn't update $APP to the code fetched."
   else
     mkdir -p "$ROOT"
     git clone --quiet --depth 1 --branch "$REF" "$REPO" "$APP" || fail "couldn't clone $REPO."
