@@ -54,10 +54,9 @@ const fit = (head: ReadonlyArray<string>, body: ReadonlyArray<string>, tail: Rea
   return text.length <= max ? text : undefined
 }
 
-/** The app card, or undefined when memory has nothing to say about the app. */
-export const renderCard = (index: AppIndex): string | undefined => {
-  const rules = index.rules.map((r) => `${quote(r.text)} (${day(r.at)})`)
-  const routes: Array<string> = []
+/** The routes the card can show, each with its line: every word in it shown. */
+export const shownRoutes = (index: AppIndex) => {
+  const out: Array<{ readonly route: AppIndex["routes"][number]; readonly line: string }> = []
   for (const r of index.routes) {
     const screen = index.screens[r.to]
     if (screen === undefined) continue
@@ -65,8 +64,15 @@ export const renderCard = (index: AppIndex): string | undefined => {
     const start = showAddress(r.start_address, known(index))
     const hops = r.hops.map((h) => shown(index, h.fp))
     if (label === undefined || start === undefined || hops.some((h) => h === undefined)) continue
-    routes.push(`- ${label} (${screen.worked_in} session${screen.worked_in === 1 ? "" : "s"}): ${[start, ...hops.map((h) => quote(h!))].join(" › ")}`)
+    out.push({ route: r, line: `- ${label} (${screen.worked_in} session${screen.worked_in === 1 ? "" : "s"}): ${[start, ...hops.map((h) => quote(h!))].join(" › ")}` })
   }
+  return out
+}
+
+/** The app card, or undefined when memory has nothing to say about the app. */
+export const renderCard = (index: AppIndex): string | undefined => {
+  const rules = index.rules.map((r) => `${quote(r.text)} (${day(r.at)})`)
+  const routes = shownRoutes(index).map((r) => r.line)
   if (rules.length === 0 && routes.length === 0) return undefined
   const n = index.sessions.length
   const head = [`singularity: ${index.app}, from ${n} past session${n === 1 ? "" : "s"}.`]
