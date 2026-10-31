@@ -32,3 +32,14 @@ Per chore, success is the share of its three runs that passed; turns are the med
 5. **Privacy and injection audit:** none of the seed strings `reveal` lists (a password, a card number, names in list rows, one injected line) appears in any file of the memory homes or in any text memory handed over.
 
 One run per chore per replicate is a small sample; a difference of one run or one turn on a single chore is noise, and the report says so where it matters.
+
+## Amendment 1, after round 1 and before any later run (2026-10-31, about 00:40 UTC)
+
+Round 1 (Sonnet, 216 runs, `C:\singularity-workspaces\cu-bench-runs`): every arm passed 72 of 72, so bars 1, 2 and 4 can't tell the arms apart. The privacy audit (bar 5) failed: names from the apps' data, a patient picker's options, were written to memory's files in plain text once two sessions saw them. None reached a hand-over (51 hand-overs checked). Memory now keeps a choice's words (options) and words in list rows and tables as fingerprints only (`Trail.ts` `ownWords`, with a test); re-storing round 1's sessions with the fix gives an audit with nothing found.
+
+The fix changes memory's code, so what it touches runs again, and a weaker agent is added because Sonnet passed everything:
+
+1. **Sonnet, memory again** (`memory-fixed-<k>`), three replicates, fresh homes, against round 1's none and guide.
+2. **Haiku** (`--model haiku --effort medium`): none, memory and guide, three replicates each, fresh homes. Same benchmark, same bars.
+
+Instance k (port bases 5300, 5400, 5500) runs Sonnet memory replicate k, then Haiku memory, none and guide replicate k. Code: the commit in `FREEZE-2.txt`.

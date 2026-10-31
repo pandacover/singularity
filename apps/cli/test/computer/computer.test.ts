@@ -193,6 +193,36 @@ describe("capture and hand-over", () => {
       expect(card).not.toContain("ottoline")
     })))
 
+  it("never writes down a choice's words or a list row's, even when two sessions saw them", () =>
+    run(Effect.gen(function*() {
+      const home = tempDir()
+      const { tenantDir } = yield* loadHome(home)
+      const page = [
+        `- main [ref=e1]:`,
+        `  - table "Patients" [ref=e2]:`,
+        `    - row "Benedek Szilagyi" [ref=e3]:`,
+        `      - cell "Benedek Szilagyi" [ref=e4]:`,
+        `        - link "Benedek Szilagyi" [ref=e5]`,
+        `  - form "Booking" [ref=e6]:`,
+        `    - combobox "Patient" [ref=e7]:`,
+        `      - option "Ottoline Varga"`,
+        `    - button "Book" [ref=e8]`
+      ].join("\n")
+      const url = `${BASE}/bookings/new`
+      const chore = (start: string): Array<TimedCall> => [{
+        call: { name: "mcp__playwright__browser_navigate", input: { url }, result: `### Page\n- Page URL: ${url}\n### Snapshot\n\`\`\`yaml\n${page}\n\`\`\``, failed: false },
+        at: start
+      }]
+      yield* replay(tenantDir, "s1", chore("2026-10-30T10:00:00Z"))
+      yield* replay(tenantDir, "s2", chore("2026-10-30T11:00:00Z"))
+      yield* replay(tenantDir, "s3", chore("2026-10-30T12:00:00Z"))
+      const files = allFiles(home)
+      expect(files).not.toContain("Ottoline")
+      expect(files).not.toContain("Szilagyi")
+      // The app's own words, seen twice, are kept.
+      expect(files).toContain("Booking")
+    })))
+
   it("on a hub screen, names the screens past sessions went on to from it", () =>
     run(Effect.gen(function*() {
       const { tenantDir } = yield* loadHome(tempDir())

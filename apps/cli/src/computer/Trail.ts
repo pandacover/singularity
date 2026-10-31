@@ -117,6 +117,9 @@ interface Current {
 
 const fieldId = (c: ControlRef) => `${c.role}:${c.fp}`
 
+/** Roles whose names are choices among the app's data: a patient picked from a list. */
+const CHOICES = new Set(["option", "menuitemradio", "treeitem", "gridcell"])
+
 /** A screen's key: its address, and the named dialog or form that tells it from others there. Page text only by fingerprint. */
 export const screenKey = (salt: string, address: Address, nodes: ReadonlyArray<SnapNode>): string => {
   const region = screenRegion(nodes)
@@ -141,12 +144,19 @@ export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<P
   }
   const leave = (a: AppAcc, why: string) => a.leftOut.set(why, (a.leftOut.get(why) ?? 0) + 1)
 
-  /** A string's fingerprint on a screen; kept in plain text when another session saw it there too. */
-  const fpOn = (a: AppAcc, screen: string, s: string): string => {
+  /**
+   * A string's fingerprint on a screen; kept in plain text when another
+   * session saw it there too, unless it is content (`plain` false): a list
+   * row's or a choice's words are the app's data, never written down.
+   */
+  const fpOn = (a: AppAcc, screen: string, s: string, plain = true): string => {
     const fp = fingerprint(ctx.salt, s)
-    if (ctx.seenElsewhere(a.app, screen, fp)) a.texts.set(fp, s.replace(/\s+/g, " ").trim().slice(0, 120))
+    if (plain && ctx.seenElsewhere(a.app, screen, fp)) a.texts.set(fp, s.replace(/\s+/g, " ").trim().slice(0, 120))
     return fp
   }
+
+  /** Whether a control's name is the app's own words, not content: not a choice among data, not in a list row or table. */
+  const ownWords = (nodes: ReadonlyArray<SnapNode>, n: SnapNode) => !CHOICES.has(n.role) && !isContent(nodes, n)
 
   let cur: Current | undefined
   // The route being walked: where it started, the screen it is on, and its hops since.
@@ -185,7 +195,7 @@ export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<P
   const read = (a: AppAcc, c: Current, s: ScreenAcc) => {
     for (const n of c.nodes) {
       if (!isControl(n.role) || n.name.trim() === "") continue
-      const fp = fpOn(a, c.key, n.name)
+      const fp = fpOn(a, c.key, n.name, ownWords(c.nodes, n))
       if (s.controls.size < MAX_CONTROLS) s.controls.add(`${n.role}:${fp}`)
       if (s.seen.size < MAX_SEEN) s.seen.add(fp)
       if (!s.readOnce && isField(n.role) && !isTextField(n.role)) {
@@ -202,7 +212,7 @@ export const buildTrails = (steps: ReadonlyArray<Step>, prompts: ReadonlyArray<P
     s.readOnce = true
   }
 
-  const controlOf = (a: AppAcc, c: Current, node: SnapNode): ControlRef => ({ role: node.role, fp: fpOn(a, c.key, node.name) })
+  const controlOf = (a: AppAcc, c: Current, node: SnapNode): ControlRef => ({ role: node.role, fp: fpOn(a, c.key, node.name, ownWords(c.nodes, node)) })
 
   const startRoute = (screen: string) => {
     chain = { start: screen, at: screen, hops: [] }
