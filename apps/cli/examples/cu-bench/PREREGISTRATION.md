@@ -37,7 +37,7 @@ One run per chore per replicate is a small sample; a difference of one run or on
 
 Round 1 (Sonnet, 216 runs, `C:\singularity-workspaces\cu-bench-runs`): every arm passed 72 of 72, so bars 1, 2 and 4 can't tell the arms apart. The privacy audit (bar 5) failed: names from the apps' data, a patient picker's options, were written to memory's files in plain text once two sessions saw them. None reached a hand-over (51 hand-overs checked). Memory now keeps a choice's words (options) and words in list rows and tables as fingerprints only (`Trail.ts` `ownWords`, with a test); re-storing round 1's sessions with the fix gives an audit with nothing found.
 
-Before round 2, the memory builder read `reveal` (chore kinds, the seed list, and cu01's and cu02's full text and traps) to run the audit and to look at the one Haiku chore that differed; the only code change between rounds is the fix above, to what memory stores. The fix changes memory's code, so what it touches runs again, and a weaker agent is added because Sonnet passed everything:
+Before round 2, the memory builder read `reveal` to run the audit: chore kinds, the seed list, and cu01's full text and traps (cu02's only after round 2, to look at the one Haiku chore that differed); the only code change between rounds is the fix above, to what memory stores. The fix changes memory's code, so what it touches runs again, and a weaker agent is added because Sonnet passed everything:
 
 1. **Sonnet, memory again** (`memory-fixed-<k>`), three replicates, fresh homes, against round 1's none and guide.
 2. **Haiku** (`--model haiku --effort medium`): none, memory and guide, three replicates each, fresh homes. Same benchmark, same bars.
