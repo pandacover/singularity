@@ -1,0 +1,5 @@
+memory code frozen: 2026-10-31T00:25:40Z
+branch t3/computer-use-memory at dc1b3a8645572bc454999db894f5144585771180
+benchmark sealed: b6a41f5944e36a0530769be1607c7d4e04e53ffb0cf545d37abe16426429afc0
+claude: 2.1.314 (C:/singularity-workspaces/tools/claude-2.1.314/claude.exe)
+playwright mcp: 0.0.83
