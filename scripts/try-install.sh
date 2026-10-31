@@ -63,6 +63,7 @@ sandboxed() {
   env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u HERMES_HOME -u XDG_CONFIG_HOME \
     HOME="$home" USERPROFILE="$home" LOCALAPPDATA="$home/AppData/Local" APPDATA="$home/AppData/Roaming" \
     SINGULARITY_HOME="$memory" SINGULARITY_REPO="$url" SINGULARITY_REF=main SINGULARITY_NO_PATH=1 \
+    SINGULARITY_CLAUDE_DESKTOP_CONFIG="$home/AppData/Local/Claude-Data/claude_try/claude_desktop_config.json" \
     ${own:+SINGULARITY_OWN_NODE=1} "$@"
 }
 

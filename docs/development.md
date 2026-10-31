@@ -37,7 +37,13 @@ To try the install as a user gets it, with this checkout as it is
 PATH alone: `scripts/try-install.ps1` on Windows, `scripts/try-install.sh`
 elsewhere. The first run installs and runs setup; a run after that updates;
 `-Fresh` (`--fresh`) starts over and `-OwnNode` (`--own-node`) makes the
-installer fetch its own Node.js. Everything singularity prints, the
+installer fetch its own Node.js.
+
+To try a pushed branch for real, on your own machine: `singularity update
+--branch <name>` puts the installed copy (`~/.singularity/app`) on it and
+refreshes what setup put in place from there, so nothing runs from a
+worktree; later updates stay on that branch, status says so, and
+`singularity update --branch main` goes back. Everything singularity prints, the
 installers included, follows one layout, described in
 `apps/cli/src/setup/Ui.ts`.
 
@@ -57,6 +63,7 @@ Under `apps/cli/src`:
 | `local/` | the memory home and git |
 | `handover/` | only `HookInput.ts`, the hook's input |
 | `graph/` | only `Similarity.ts` and the store errors records use |
+| `computer/` | computer-use memory, set up apart (`singularity setup computer-use`): see Computer use below |
 
 On this branch memory is saved scripts only. Memory v1's learning and
 hand-over (the rest of `workflows/`), the learning step (`setup/AutoLearn.ts`,
@@ -325,6 +332,44 @@ replays it over a home's real records, a session left out at a time, its
 facts from the other sessions or only from changes before it, and scores
 each fact that would have fired against what the session did next; it set
 `MIN_RECURRENCE`, `MAX_FACTS_CHARS` and `MAX_FACTS` in `Lookup.ts`.
+
+## Computer use
+
+Memory for agents that drive a browser, built from the agreed design in
+`docs/research/computer-use-design/computer-use-memory.md`; the decisions
+taken while building it (the Claude desktop proxy, the setup's shape) are in
+`build.md` beside it. Everything is in `src/computer/`:
+
+| Module | What it does |
+|---|---|
+| `Calls.ts` | one translator per tool family: Playwright MCP, Claude's built-in browser, Claude in Chrome (both written from their tool descriptions until Step 0's samples), desktop computer use (the app and menu paths only) |
+| `Snapshot.ts` | screens read as text (`[ref=e19]` and `[ref_3]` tags), field states, the named region that tells screens at one address apart |
+| `Text.ts` | salted fingerprints with numbers blanked, the injection filter (`showable`), screen addresses, your rules in prompts |
+| `Trail.ts` | a session's trail per app: hops, screens worked on, fields that start set, traps, keys, where results were checked, routes |
+| `Index.ts` | an app's index from all its trails: seen-twice counts per screen, newest route wins, retirement |
+| `Render.ts` | the app card (700 characters) and screen notes (400) |
+| `HandoverCore.ts`, `Handover.ts` | when each is due, once a session; the core is plain TypeScript for the hook |
+| `Capture.ts`, `Store.ts`, `Model.ts`, `Paths.ts` | storing sessions; files in `<tenant>/computer/`, read back with Schema |
+| `hook.ts`, `HookRun.ts` | the Claude Code hook: plain node, about 45 ms over node's own start per browser call (Effect's import alone is 0.4 s) |
+| `Proxy.ts`, `server.ts` | the Claude desktop server: Playwright MCP behind memory, which captures every call and adds its block to answers |
+| `ClaudeDesktop.ts`, `Setup.ts` | finding Claude desktop's config, registering the server, the hook entries, status and update |
+| `Step0.ts`, `step0-hook.ts`, `Replay.ts` | Step 0's logging hook and the offline replay |
+
+From the repo:
+
+```
+node src/cli.ts computer-use step0 on | off | report        # Step 0's logging hook in your Claude Code settings
+node src/cli.ts computer-use store --session ID --transcript FILE
+node src/cli.ts computer-use show [APP]                     # an app's screens, retired routes, and card
+node src/cli.ts computer-use replay LOG... --home DIR       # each session handed what it would have been, oldest first
+```
+
+The replay of new-job's no-memory arm (42 sessions, free, no model call)
+handed L08 and L14 their notes ("Restock items" and "Send satisfaction
+survey" start ticked); 40% of those sessions' calls came before they reached
+the screen they worked on, against routes of one or two hops. Tests are in
+`test/computer/`; `test/computer/fixtures.ts` is a refund app as Playwright
+MCP shows it.
 
 ## Records, by hand
 

@@ -4,7 +4,9 @@
  *
  *   1. The code: the clone in `<memory home>/app` fetched and reset to the
  *      latest commit of its branch, as the installer does, and its
- *      dependencies installed again when they changed.
+ *      dependencies installed again when they changed. `--branch` puts it
+ *      on another branch, to try one for real; later updates stay on that
+ *      branch until `--branch main`.
  *   2. Setup, refreshed by the new code (`update --no-fetch`, run as a child
  *      process: this one still runs the old code): memory's hooks in the
  *      agents that have them, Hermes Agent's plugin, the skill where it is,
@@ -28,6 +30,7 @@ import { loadHome } from "../local/Home.ts"
 import { type Agent, type AgentDirs, agents, join } from "./Agents.ts"
 import { lockHeld } from "./Background.ts"
 import { addToPath, binDir, COMMAND, pathOffLimits, writeLaunchers } from "./Launcher.ts"
+import { refreshComputerUse } from "../computer/Setup.ts"
 import { codexTrust, noteLines, REACH } from "./Setup.ts"
 import { type SkillState, skillState } from "./Skill.ts"
 import { listWords, makeStyle, makeTree, marks, tilde, title, TITLED_ENV, withSpinner } from "./Ui.ts"
@@ -51,8 +54,24 @@ export const isSetUp = Effect.fn("isSetUp")(function*(root: string) {
 })
 
 export type CodeUpdate =
-  | { readonly kind: "current"; readonly commit: string }
-  | { readonly kind: "updated"; readonly before: string; readonly after: string; readonly ref: string; readonly subject: string; readonly dependencies: boolean }
+  | { readonly kind: "current"; readonly commit: string; readonly ref: string }
+  | {
+    readonly kind: "updated"
+    readonly before: string
+    readonly after: string
+    readonly ref: string
+    readonly subject: string
+    readonly dependencies: boolean
+    /** The branch it was on, when it moved to another. */
+    readonly from?: string
+  }
+
+/** The branch the installed code is on, read from git's HEAD file (no process); undefined when on none. */
+export const installedBranch = Effect.fn("installedBranch")(function*(app: string) {
+  const fs = yield* FileSystem.FileSystem
+  const head = yield* fs.readFileString(join(app, ".git", "HEAD")).pipe(Effect.orElseSucceed(() => ""))
+  return /^ref: refs\/heads\/(.+)$/.exec(head.trim())?.[1]
+})
 
 /**
  * npm, run through the node this process runs so it never picks up another:
@@ -71,10 +90,12 @@ const npmCommand = Effect.fnUntraced(function*() {
 
 /**
  * Bring the code in `app` to the latest commit of its branch (`main` when it
- * is on none), and its dependencies with it. Nothing changes when it is
- * current already and its dependencies were installed.
+ * is on none), or of `branch` when given, and its dependencies with it.
+ * Nothing changes when it is current already and its dependencies were
+ * installed. A branch it moves to is checked out under its own name, so
+ * the next update follows it.
  */
-export const updateCode = Effect.fn("updateCode")(function*(app: string, interactive: boolean) {
+export const updateCode = Effect.fn("updateCode")(function*(app: string, interactive: boolean, branch?: string) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const git = (args: ReadonlyArray<string>, timeoutS = 120) =>
@@ -84,8 +105,9 @@ export const updateCode = Effect.fn("updateCode")(function*(app: string, interac
 
   const before = yield* out(["rev-parse", "HEAD"])
   if (before === undefined) return yield* new UpdateError({ message: `${app} isn't a git checkout of singularity` })
-  const branch = yield* out(["rev-parse", "--abbrev-ref", "HEAD"])
-  const ref = branch === undefined || branch === "HEAD" ? "main" : branch
+  const on = yield* out(["rev-parse", "--abbrev-ref", "HEAD"])
+  const current = on === undefined || on === "HEAD" ? "main" : on
+  const ref = branch ?? current
   const fetched = yield* withSpinner(`fetching ${ref}`, git(["fetch", "--quiet", "--depth", "1", "origin", ref], 300), interactive)
   if (fetched?.exitCode !== 0) {
     return yield* new UpdateError({ message: `couldn't fetch ${ref}: ${fetched?.stderr.trim().split(/\r?\n/).at(-1) ?? "git didn't run"}` })
@@ -93,10 +115,11 @@ export const updateCode = Effect.fn("updateCode")(function*(app: string, interac
   const after = yield* out(["rev-parse", "FETCH_HEAD"])
   if (after === undefined) return yield* new UpdateError({ message: `git fetched ${ref} but didn't say what it got` })
   const installed = (yield* read(path.join("node_modules", ".package-lock.json"))) !== undefined
-  if (after === before && installed) return { kind: "current", commit: before } satisfies CodeUpdate
+  if (after === before && installed && ref === on) return { kind: "current", commit: before, ref } satisfies CodeUpdate
 
   const lockBefore = yield* read("package-lock.json")
-  const reset = yield* git(["reset", "--quiet", "--hard", "FETCH_HEAD"])
+  // The branch made (or reset) at what was fetched and checked out, files and all, as reset --hard does.
+  const reset = yield* git(["checkout", "--quiet", "--force", "-B", ref, "FETCH_HEAD"])
   if (reset?.exitCode !== 0) return yield* new UpdateError({ message: `couldn't move ${app} to ${after.slice(0, 7)}: ${reset?.stderr.trim() ?? "git didn't run"}` })
   const dependencies = !installed || (yield* read("package-lock.json")) !== lockBefore
   if (dependencies) {
@@ -115,7 +138,7 @@ export const updateCode = Effect.fn("updateCode")(function*(app: string, interac
     }
   }
   const subject = (yield* out(["log", "-1", "--format=%s", "HEAD"])) ?? ""
-  return { kind: "updated", before, after, ref, subject, dependencies } satisfies CodeUpdate
+  return { kind: "updated", before, after, ref, subject, dependencies, ...(ref === current ? {} : { from: current }) } satisfies CodeUpdate
 })
 
 /** Run the CLI for daily use in `app` with these arguments, on this terminal; its exit code. */
@@ -140,6 +163,8 @@ export interface UpdateOptions {
   readonly env: Readonly<Record<string, string | undefined>>
   readonly interactive: boolean
   readonly color: boolean
+  /** The branch to move the installed code to (`update --branch`). */
+  readonly branch?: string | undefined
 }
 
 /** `singularity update`: the code, then the new code refreshes setup. False when something failed. */
@@ -164,15 +189,21 @@ export const runUpdate = Effect.fn("runUpdate")(function*(o: UpdateOptions) {
     yield* T.note(`run ${s.cyan("singularity update")} again in a minute`)
     return yield* stop
   }
-  const code = yield* updateCode(app, o.interactive)
+  const code = yield* updateCode(app, o.interactive, o.branch)
+  const onBranch = (ref: string) => (ref === "main" ? "" : `  ${s.dim(`branch ${ref} · singularity update --branch main goes back`)}`)
   if (code.kind === "current") {
-    yield* T.item(M.ok("code", `${code.commit.slice(0, 7)}, already the latest`))
+    yield* T.item(M.ok("code", `${code.commit.slice(0, 7)}, already the latest${onBranch(code.ref)}`))
     yield* T.head(`${s.green("✓")} ${s.bold("Up to date")}`)
     yield* T.close
     yield* Console.log("")
     return true
   }
   yield* T.item(M.ok("code", `${code.ref} · ${code.before.slice(0, 7)} → ${code.after.slice(0, 7)}${code.subject === "" ? "" : `  ${code.subject}`}`))
+  if (code.from !== undefined) {
+    yield* T.note(code.ref === "main"
+      ? `back on main, from ${code.from}`
+      : `on branch ${code.ref} now, from ${code.from}: updates stay on it · ${s.cyan("singularity update --branch main")} goes back`)
+  }
   if (code.dependencies) yield* T.item(M.ok("dependencies"))
   yield* T.close
   return (yield* runInstalled(app, ["update", "--no-fetch"])) === 0
@@ -242,6 +273,17 @@ export const runRefresh = Effect.fn("runRefresh")(function*(o: UpdateOptions) {
     .map((st) => st.agent)
   if (leftOut.length > 0) {
     yield* T.item(M.skip(`${listWords(leftOut.map((a) => a.name))}: no memory · singularity setup adds ${leftOut.length === 1 ? "it" : "them"}`))
+  }
+  // Computer use, when it was set up (`singularity setup computer-use`).
+  const computer = yield* refreshComputerUse(dirs)
+  if (computer !== undefined) {
+    const d = computer.desktop
+    if ("problem" in computer.claude) {
+      ok = false
+      yield* T.item(M.fail(`computer use  ${computer.claude.problem}`))
+    } else yield* T.item(M.ok("computer use", "hooks for browser and computer-use tools"))
+    if (d.kind === "running") yield* T.note(M.warn(`Claude desktop is open, so its server wasn't updated: quit it and run ${s.cyan("singularity setup computer-use")}`))
+    else if (d.kind === "failed") yield* T.note(M.fail(`Claude desktop: ${d.problem}`))
   }
 
   yield* T.head(ok

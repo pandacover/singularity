@@ -21,6 +21,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Console, Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { computerCommand } from "./commands/Computer.ts"
 import { recordCommand } from "./commands/Records.ts"
 import { setupCommands } from "./commands/Setup.ts"
 import { buildCommand, defaultClaude } from "./eval/Agent.ts"
@@ -305,7 +306,7 @@ const reportError = (e: { readonly message: string }) =>
 
 Command.make("singularity").pipe(
   Command.withDescription("procedural memory for coding agents"),
-  Command.withSubcommands([...setupCommands, evalCommand, traces, recordCommand]),
+  Command.withSubcommands([...setupCommands, evalCommand, traces, recordCommand, computerCommand]),
   Command.run({ version: VERSION }),
   Effect.catchTags({
     SuiteError: reportError,

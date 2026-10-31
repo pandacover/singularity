@@ -14,7 +14,7 @@ import { runSetup, type SetupOptions } from "../../src/setup/Setup.ts"
 import { NOTE_BLOCK } from "../../src/setup/Instructions.ts"
 import { SKILL_TEXT, skillState } from "../../src/setup/Skill.ts"
 import { gatherStatus } from "../../src/setup/Status.ts"
-import { runRefresh, runUpdate, updateCode } from "../../src/setup/Update.ts"
+import { installedBranch, runRefresh, runUpdate, updateCode } from "../../src/setup/Update.ts"
 import { agentStates, detectAgents, HOOK_SCRIPT, isWindowsFromWsl, unwireAll } from "../../src/setup/Wiring.ts"
 import { commandOfShim } from "../../src/eval/Agent.ts"
 import { FAKE_CODEX, fakeCommand, git, run, tempDir, withEnv } from "../eval/helpers.ts"
@@ -184,7 +184,8 @@ describe("the singularity command", () => {
     expect(slashes(COMMAND)).toMatch(/\/src\/singularity\.ts$/)
     expect(subcommands(help(COMMAND))).toEqual(["setup", "status", "changes", "visualise", "recall", "store", "update", "uninstall"])
     expect(subcommands(help(CLI))).toEqual(expect.arrayContaining(["store", "record", "eval"]))
-  })
+    // Two CLIs started, about a second each alone, longer while other test files run.
+  }, 30_000)
 
   it("fails a recall in a folder that isn't there, and says nothing is handed over as JSON in one with no memory", () => {
     const env = { ...process.env, SINGULARITY_HOME: join(tempDir(), "home") }
@@ -493,6 +494,27 @@ describe("update", () => {
     expect(await run(updateCode(app, false))).toMatchObject({ kind: "updated", ref: "main", subject: "Say v2", dependencies: false })
     expect(readFileSync(join(app, "README.md"), "utf-8").trim()).toBe("v2")
     expect(await run(updateCode(app, false))).toMatchObject({ kind: "current" })
+
+    // `update --branch`: on the branch under its name, later updates follow it, and --branch main goes back.
+    git(origin, "checkout", "-q", "-b", "try")
+    writeFileSync(join(origin, "README.md"), "try 1\n")
+    git(origin, "commit", "-q", "-am", "Try 1")
+    git(origin, "checkout", "-q", "main")
+    expect(await run(updateCode(app, false, "try"))).toMatchObject({ kind: "updated", ref: "try", from: "main", subject: "Try 1" })
+    expect(await run(installedBranch(app))).toBe("try")
+    expect(await run(updateCode(app, false))).toMatchObject({ kind: "current", ref: "try" })
+    git(origin, "checkout", "-q", "try")
+    writeFileSync(join(origin, "README.md"), "try 2\n")
+    git(origin, "commit", "-q", "-am", "Try 2")
+    git(origin, "checkout", "-q", "main")
+    const followed = await run(updateCode(app, false))
+    expect(followed).toMatchObject({ kind: "updated", ref: "try", subject: "Try 2" })
+    expect(followed).not.toHaveProperty("from")
+    expect(await run(updateCode(app, false, "main"))).toMatchObject({ kind: "updated", ref: "main", from: "try", subject: "Say v2" })
+    expect(readFileSync(join(app, "README.md"), "utf-8").trim()).toBe("v2")
+    expect(await run(installedBranch(app))).toBe("main")
+    await expect(run(updateCode(app, false, "no-such-branch"))).rejects.toThrow(/couldn't fetch no-such-branch/)
+    expect(await run(installedBranch(app))).toBe("main")
 
     // `singularity update`: the new code brings setup up to date, not this process.
     writeFileSync(join(origin, "README.md"), "v3\n")

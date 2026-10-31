@@ -20,10 +20,17 @@ export class HookFileError extends Schema.TaggedError<HookFileError>()("HookFile
 
 const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 
-const isOurs = (entry: unknown): boolean =>
+/**
+ * Which hook commands an edit is about: coding memory's (the default), or
+ * another part's, such as computer use (src/computer/Setup.ts), so that
+ * setting one part up or taking it out never touches the other's entries.
+ */
+export type IsOurs = (command: string) => boolean
+
+const entryIsOurs = (entry: unknown, ours: IsOurs): boolean =>
   Predicate.isObject(entry) && Array.isArray((entry as Json).hooks) &&
   ((entry as Json).hooks as Array<unknown>).some((h) =>
-    Predicate.isObject(h) && Predicate.isString((h as Json).command) && isMemoryHookCommand((h as Json).command as string)
+    Predicate.isObject(h) && Predicate.isString((h as Json).command) && ours((h as Json).command as string)
   )
 
 /** The events object of a file's JSON. */
@@ -38,23 +45,23 @@ export const withEvents = (json: Json, layout: HookFile["layout"], events: Json)
 }
 
 /** `events` without memory's entries; other entries stay as they were, and events left empty go. */
-export const withoutMemoryHooks = (events: Json): Json => {
+export const withoutMemoryHooks = (events: Json, ours: IsOurs = isMemoryHookCommand): Json => {
   const out: Json = {}
   for (const [event, entries] of Object.entries(events)) {
     if (!Array.isArray(entries)) {
       out[event] = entries
       continue
     }
-    const kept = entries.filter((e) => !isOurs(e))
+    const kept = entries.filter((e) => !entryIsOurs(e, ours))
     if (kept.length > 0) out[event] = kept
   }
   return out
 }
 
 /** `events` with memory's entries added after the others, replacing any earlier copy of them. */
-export const withMemoryHooks = (events: Json, ours: HookEvents): Json => {
-  const out = withoutMemoryHooks(events)
-  for (const [event, entries] of Object.entries(ours)) {
+export const withMemoryHooks = (events: Json, added: HookEvents, ours: IsOurs = isMemoryHookCommand): Json => {
+  const out = withoutMemoryHooks(events, ours)
+  for (const [event, entries] of Object.entries(added)) {
     const existing = Array.isArray(out[event]) ? (out[event] as Array<unknown>) : []
     out[event] = [...existing, ...entries]
   }
@@ -62,8 +69,8 @@ export const withMemoryHooks = (events: Json, ours: HookEvents): Json => {
 }
 
 /** The events memory's hooks are on. */
-export const memoryHookEvents = (events: Json): ReadonlyArray<string> =>
-  Object.entries(events).filter(([, entries]) => Array.isArray(entries) && entries.some(isOurs)).map(([event]) => event)
+export const memoryHookEvents = (events: Json, ours: IsOurs = isMemoryHookCommand): ReadonlyArray<string> =>
+  Object.entries(events).filter(([, entries]) => Array.isArray(entries) && entries.some((e) => entryIsOurs(e, ours))).map(([event]) => event)
 
 /** A JSON file's object: `{}` when it is missing or blank. */
 export const readJsonFile = Effect.fn("readJsonFile")(function*(file: string) {
@@ -90,10 +97,11 @@ export const writeJsonFile = Effect.fn("writeJsonFile")(function*(file: string, 
 })
 
 /** Add memory's hooks to a hook file, keeping a copy of the user's file the first time. */
-export const installHooks = Effect.fn("installHooks")(function*(target: HookFile, ours: HookEvents) {
+export const installHooks = Effect.fn("installHooks")(function*(target: HookFile, added: HookEvents, ours: IsOurs = isMemoryHookCommand) {
   const json = yield* readJsonFile(target.file)
   const events = eventsOf(json, target.layout)
-  yield* writeJsonFile(target.file, withEvents(json, target.layout, withMemoryHooks(events, ours)), memoryHookEvents(events).length === 0)
+  // A copy is kept before the first change of any of memory's parts: `.before-singularity` exists already otherwise.
+  yield* writeJsonFile(target.file, withEvents(json, target.layout, withMemoryHooks(events, added, ours)), memoryHookEvents(events, ours).length === 0)
 })
 
 /**
@@ -101,21 +109,21 @@ export const installHooks = Effect.fn("installHooks")(function*(target: HookFile
  * setup made itself (there was none to keep a copy of) goes when nothing
  * else is left in it.
  */
-export const removeHooks = Effect.fn("removeHooks")(function*(target: HookFile) {
+export const removeHooks = Effect.fn("removeHooks")(function*(target: HookFile, ours: IsOurs = isMemoryHookCommand) {
   const fs = yield* FileSystem.FileSystem
   const json = yield* readJsonFile(target.file)
   const events = eventsOf(json, target.layout)
-  if (memoryHookEvents(events).length === 0) return false
-  const rest = withEvents(json, target.layout, withoutMemoryHooks(events))
+  if (memoryHookEvents(events, ours).length === 0) return false
+  const rest = withEvents(json, target.layout, withoutMemoryHooks(events, ours))
   if (Object.keys(rest).length === 0 && !(yield* fs.exists(`${target.file}.before-singularity`))) yield* fs.remove(target.file)
   else yield* writeJsonFile(target.file, rest)
   return true
 })
 
 /** The events memory's hooks are on in a hook file (none when the file is missing or unreadable). */
-export const hooksIn = (target: HookFile) =>
+export const hooksIn = (target: HookFile, ours: IsOurs = isMemoryHookCommand) =>
   readJsonFile(target.file).pipe(
-    Effect.map((json) => memoryHookEvents(eventsOf(json, target.layout))),
+    Effect.map((json) => memoryHookEvents(eventsOf(json, target.layout), ours)),
     Effect.orElseSucceed((): ReadonlyArray<string> => [])
   )
 

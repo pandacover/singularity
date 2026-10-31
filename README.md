@@ -116,6 +116,44 @@ singularity update              # get the latest version, keeping your answers
 singularity uninstall [--purge] # take memory out of every agent (--purge deletes it too)
 ```
 
+## Computer use (preview)
+
+Agents that drive a browser get memory of their own, set up apart from the
+coding memory above:
+
+```
+singularity setup computer-use        # Claude Code's browser tools, and Claude desktop
+singularity uninstall computer-use    # take it out again; coding memory stays
+```
+
+- When the agent opens an app memory knows, it gets the app's card: your
+  rules for it, and the routes past sessions took to the screens they worked
+  on. A route never names a send, pay or confirm button. The card comes at
+  the task's start instead when your prompt names the app: its address, or
+  a word you used before two sessions there and none elsewhere.
+- When it reaches a known screen, it gets short notes: fields that start
+  set, such as a box that starts ticked, ending "decide from the task",
+  errors past sessions saw there, where they checked their result, and on
+  a screen they left for different places, where they went. When the screen
+  has changed, memory says nothing.
+- To teach it a rule, say it in your prompt as an instruction: "Never
+  restock damaged goods", "From now on, CC the manager on refunds". Rules
+  are learned from Claude Code sessions; in Claude desktop memory doesn't
+  see your prompts.
+- `singularity changes --apps` lists the apps memory stored, and
+  `singularity changes --app <app>` an app's sessions and the card an agent
+  gets now.
+- In Claude desktop, setup adds a server named `singularity-browser`: the
+  browser tools of Playwright, through memory. Quit the app before setup;
+  it rewrites its own config.
+- It covers browsers driven from Claude Code (Playwright, Claude in Chrome,
+  Claude's built-in browser) and Playwright in Claude desktop. Desktop apps
+  are only noted, not helped yet.
+- It never keeps screenshots, what you type, or what a page says. Page text
+  is kept as a fingerprint until two sessions have seen it, and text that
+  reads like an instruction, a link or an email address is never shown.
+  Screens with a password field are left out.
+
 ## Privacy
 
 - singularity keeps its records and logs in `~/.singularity`. Set

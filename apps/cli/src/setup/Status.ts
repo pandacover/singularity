@@ -2,7 +2,8 @@
  * `singularity status`: which agents have memory and how (hooks or plugin,
  * skill, the recall note in their instruction file), what memory knows
  * in each repo (the changes it stored) and which of its sessions' commits it
- * left out and why, and whether hooks have been failing.
+ * left out and why, computer use (src/computer/Setup.ts), and whether hooks
+ * have been failing.
  * One screen, or with --json the same as data for agents and scripts.
  */
 import { Console, DateTime, Effect, FileSystem, Path } from "effect"
@@ -15,10 +16,12 @@ import { readRetired } from "../scripts/Retired.ts"
 import { RecordStore } from "../records/RecordStore.ts"
 import { matchSubject } from "../records/Subjects.ts"
 import { isMiss, readSkips, type Skip } from "../workflows/Commits.ts"
+import { type ComputerState, computerState, renderComputerStatus } from "../computer/Setup.ts"
 import type { AgentDirs, Reach } from "./Agents.ts"
 import { codexHooks } from "./CodexHooks.ts"
 import { makeStyle, plural, tilde } from "./Ui.ts"
 import { agentStates, detectAgents, findCommand, findExecutable } from "./Wiring.ts"
+import { appDir, installedBranch } from "./Update.ts"
 
 export const VERSION = "0.2.0"
 
@@ -66,6 +69,8 @@ export const shortDate = (iso: string): string => {
 export interface StatusReport {
   readonly version: string
   readonly memory_home: string
+  /** The branch the installed code is on when it isn't main (`update --branch`); null on main or when not installed. */
+  readonly branch: string | null
   readonly agents: ReadonlyArray<{
     readonly id: string
     readonly name: string
@@ -92,6 +97,8 @@ export interface StatusReport {
   readonly hook_errors: { readonly this_week: number; readonly last: string | null; readonly log: string }
   /** Who picks the past change at a task's start in Claude Code (scripts/Pick.ts): a model, or the word search. */
   readonly picks: { readonly by: "model" | "words"; readonly model: string | null }
+  /** Computer use: where it is set up, and the apps it knows. */
+  readonly computer_use: ComputerState
 }
 
 export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly home: string; readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string; readonly memoryHome?: string | undefined }) {
@@ -148,16 +155,21 @@ export const gatherStatus = Effect.fn("gatherStatus")(function*(o: { readonly ho
     return { repos, hereStored: here !== undefined }
   }).pipe(Effect.provide(JsonRecordStore.layer(home.tenantDir, home.tenant)))
 
+  const computer = yield* computerState(dirs, home)
+
   // Hooks.
   const errors = yield* recentHookErrors(home)
+  const branch = yield* installedBranch(appDir(home.root))
   const report: StatusReport = {
     version: VERSION,
     memory_home: home.root,
+    branch: branch === undefined || branch === "main" ? null : branch,
     agents,
     here: repo === undefined ? null : { name: path.basename(repo.root), root: repo.root, stored: hereStored },
     repos,
     hook_errors: { this_week: errors.count, last: errors.last ?? null, log: path.join(home.root, "hook-errors.log") },
-    picks: home.picks === null ? { by: "words", model: null } : { by: "model", model: home.picks.model }
+    picks: home.picks === null ? { by: "words", model: null } : { by: "model", model: home.picks.model },
+    computer_use: computer
   }
   return report
 })
@@ -169,6 +181,7 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
   const say = (line = "") => void out.push(line)
   say()
   say(`  ${s.magenta("◆")} ${s.bold("singularity")} ${r.version}  ${s.dim(`memory in ${tilde(r.memory_home, o.home)}`)}`)
+  if (r.branch !== null) say(`    ${s.yellow("!")} on branch ${r.branch}  ${s.dim("singularity update --branch main goes back")}`)
 
   say(`\n  ${s.bold("Agents")}`)
   if (r.agents.length === 0) say(`    ${s.dim("no coding agent found")}`)
@@ -203,6 +216,7 @@ export const renderStatus = (r: StatusReport, o: { readonly home: string; readon
     say(`    ${s.dim("see them with")} ${s.cyan(r.here?.stored === true ? "singularity changes" : "singularity changes --repo NAME")}`)
   }
 
+  out.push(...renderComputerStatus(r.computer_use, o))
 
   const e = r.hook_errors
   say(`\n  ${s.bold("Hooks")}  ${e.this_week === 0

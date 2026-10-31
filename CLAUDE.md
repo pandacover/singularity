@@ -58,7 +58,13 @@ removed: memory v0 (`src/memory/`, `src/search/`, most of `src/handover/`,
 of `src/workflows/`; tag `memory-local-first`), the graph setup (`src/graph/`
 keeps only `Similarity.ts` and the store errors), `src/layer/`, `src/web/`,
 and learning in daily use. A second repository's suite is
-`examples/validator/`. Tests mirror it under `test/`.
+`examples/validator/`. Tests mirror it under `test/`. Computer-use memory
+is `src/computer/`, set up apart (`singularity setup computer-use`): its own
+hook (`src/computer/hook.ts`, plain node: Effect's import alone is 0.4 s)
+and a Claude desktop server in front of Playwright MCP (`Proxy.ts`); the
+design and the build decisions are in `docs/research/computer-use-design/`
+(`computer-use-memory.md`, `build.md`), the module map in
+`docs/development.md`.
 
 Daily use, for anyone (`singularity setup | status | changes | visualise |
 recall | store | update | uninstall`, `src/commands/Setup.ts`; what memory
@@ -156,6 +162,9 @@ records use those keys.
   It installs this checkout, uncommitted changes included, in a sandbox home
   (`%TEMP%\singularity-try`) and keeps setup off PATH (`--no-path`): on
   Windows PATH lives in the registry, outside any home.
+- To try a branch on the user's real setup, push it and have them run
+  `singularity update --branch <name>` (back: `--branch main`); never wire
+  their real agents to code in a worktree.
 - Eval runs spend real money on the user's Claude account. Use `--dry-run`
   first and keep `max_budget_usd` set in suites.
 - Compare runs only with runs of the same Claude Code version: it updates
